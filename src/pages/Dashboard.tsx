@@ -2088,28 +2088,83 @@ export function Dashboard() {
         const de = lang === 'de';
         const todayEvents = letzteAktivitaet.filter(a => new Date(a.erstelltAm).toDateString() === new Date().toDateString()).length;
 
+        // Time-aware greeting
+        const hour = new Date().getHours();
+        const greeting = de
+          ? hour < 12 ? 'Guten Morgen' : hour < 18 ? 'Guten Nachmittag' : 'Guten Abend'
+          : hour < 12 ? 'Good Morning' : hour < 18 ? 'Good Afternoon' : 'Good Evening';
+
+        // Smart insight sentence
+        let insight = '';
+        if (kosten.prozent >= 90) {
+          insight = de ? `⚠ Budget fast aufgebraucht (${kosten.prozent}%)` : `⚠ Budget nearly exhausted (${kosten.prozent}%)`;
+        } else if (pendingApprovals > 0) {
+          insight = de ? `${pendingApprovals} Genehmigung${pendingApprovals > 1 ? 'en' : ''} warten auf dich` : `${pendingApprovals} approval${pendingApprovals > 1 ? 's' : ''} waiting for you`;
+        } else if (aufgaben.blockiert > 0) {
+          insight = de ? `${aufgaben.blockiert} blockierte Aufgabe${aufgaben.blockiert > 1 ? 'n' : ''} — Eingriff empfohlen` : `${aufgaben.blockiert} blocked task${aufgaben.blockiert > 1 ? 's' : ''} — action recommended`;
+        } else if (experten.running > 0) {
+          insight = de ? `${experten.running} Agent${experten.running > 1 ? 'en' : ''} arbeite${experten.running > 1 ? 'n' : 't'} gerade` : `${experten.running} agent${experten.running > 1 ? 's' : ''} working right now`;
+        } else if (aufgaben.erledigt > 0) {
+          insight = de ? `${aufgaben.erledigt} Aufgaben erledigt — gute Arbeit!` : `${aufgaben.erledigt} tasks completed — great work!`;
+        } else if (experten.gesamt === 0) {
+          insight = de ? 'Starte mit dem CEO Setup um dein Team einzurichten' : 'Start with CEO Setup to configure your team';
+        } else {
+          insight = de ? 'System bereit — keine aktiven Aufgaben' : 'System ready — no active tasks';
+        }
+
         const bentoItems: BentoItem[] = [
           // ── Status Overview (wide) ──
           {
             icon: <Building2 size={16} style={{ color: '#23CDCB' }} />,
-            title: de ? 'Heute' : 'Today',
+            title: greeting,
             meta: new Date().toLocaleDateString(de ? 'de-DE' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' }),
             colSpan: 2,
             accent: '#23CDCB',
             children: (
-              <div style={{ display: 'flex', gap: '1.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                {[
-                  { label: de ? 'Agenten live' : 'Agents live',      value: experten.running,     color: experten.running > 0 ? '#23CDCB' : '#475569' },
-                  { label: de ? 'Aufgaben offen' : 'Tasks open',      value: aufgaben.offen,       color: '#94a3b8' },
-                  { label: de ? 'Budget genutzt' : 'Budget used',     value: `${kosten.prozent}%`, color: budgetColor },
-                  { label: de ? 'Ereignisse heute' : 'Events today',  value: todayEvents,          color: '#64748b' },
-                  ...(pendingApprovals > 0 ? [{ label: de ? 'Ausstehend' : 'Pending', value: pendingApprovals, color: '#f59e0b' }] : []),
-                ].map((m, i) => (
-                  <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                    <span style={{ fontSize: '1.625rem', fontWeight: 800, color: m.color, lineHeight: 1 }}>{m.value}</span>
-                    <span style={{ fontSize: '0.6875rem', color: '#475569', fontWeight: 500 }}>{m.label}</span>
-                  </div>
-                ))}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {/* Metrics row */}
+                <div style={{ display: 'flex', gap: '0', flexWrap: 'wrap' }}>
+                  {[
+                    { label: de ? 'Agenten live' : 'Agents live',     value: experten.running,     color: experten.running > 0 ? '#23CDCB' : '#475569', pulse: experten.running > 0 },
+                    { label: de ? 'Aufgaben offen' : 'Tasks open',     value: aufgaben.offen,       color: aufgaben.offen > 0 ? '#94a3b8' : '#334155',   pulse: false },
+                    { label: de ? 'Budget genutzt' : 'Budget used',    value: `${kosten.prozent}%`, color: budgetColor,                                   pulse: false },
+                    { label: de ? 'Ereignisse heute' : 'Events today', value: todayEvents,          color: todayEvents > 0 ? '#64748b' : '#334155',        pulse: false },
+                  ].map((m, i, arr) => (
+                    <div key={i} style={{
+                      display: 'flex', flexDirection: 'column', gap: '0.25rem',
+                      paddingRight: i < arr.length - 1 ? '1.75rem' : 0,
+                      marginRight: i < arr.length - 1 ? '1.75rem' : 0,
+                      borderRight: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                        {m.pulse && (
+                          <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#23CDCB', boxShadow: '0 0 6px #23CDCB', animation: 'pulse 2s ease-in-out infinite', flexShrink: 0 }} />
+                        )}
+                        <span style={{ fontSize: '1.75rem', fontWeight: 800, color: m.color, lineHeight: 1 }}>{m.value}</span>
+                      </div>
+                      <span style={{ fontSize: '0.6875rem', color: '#475569', fontWeight: 500 }}>{m.label}</span>
+                    </div>
+                  ))}
+                </div>
+                {/* Insight line */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '0.5rem',
+                  padding: '0.5rem 0.75rem', borderRadius: '8px',
+                  background: pendingApprovals > 0 || aufgaben.blockiert > 0 || kosten.prozent >= 90
+                    ? 'rgba(245,158,11,0.06)' : experten.running > 0
+                    ? 'rgba(35,205,202,0.06)' : 'rgba(255,255,255,0.03)',
+                  border: `1px solid ${pendingApprovals > 0 || aufgaben.blockiert > 0 || kosten.prozent >= 90
+                    ? 'rgba(245,158,11,0.15)' : experten.running > 0
+                    ? 'rgba(35,205,202,0.12)' : 'rgba(255,255,255,0.06)'}`,
+                }}>
+                  <span style={{
+                    fontSize: '0.75rem', fontWeight: 500,
+                    color: pendingApprovals > 0 || aufgaben.blockiert > 0 || kosten.prozent >= 90
+                      ? '#f59e0b' : experten.running > 0 ? '#23CDCB' : '#475569',
+                  }}>
+                    {insight}
+                  </span>
+                </div>
               </div>
             ),
           },
