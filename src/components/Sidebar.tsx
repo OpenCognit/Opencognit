@@ -23,8 +23,9 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem('sidebar-collapsed-sections');
-      return saved ? new Set(JSON.parse(saved)) : new Set();
-    } catch { return new Set(); }
+      // "Mehr"/"More" is collapsed by default
+      return saved ? new Set(JSON.parse(saved)) : new Set(['Mehr', 'More']);
+    } catch { return new Set(['Mehr', 'More']); }
   });
 
   const toggleSection = (section: string) => {
@@ -47,33 +48,35 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
   })), []);
 
   const navItems = [
-    { section: t.sections.uebersicht, items: [
-      { to: '/', icon: LayoutDashboard, label: t.nav.dashboard },
-      { to: '/focus', icon: Zap, label: t.nav.focusMode },
-      { to: '/companies', icon: Building2, label: t.nav.unternehmen },
+    // ── Setup-Reihenfolge: was zuerst gemacht werden muss ──
+    { section: de ? 'Einrichten' : 'Setup', items: [
+      { to: '/settings',     icon: Settings,       label: de ? '1. API Keys & Einstellungen' : '1. API Keys & Settings' },
+      { to: '/experts',      icon: Users,          label: de ? '2. Agenten anlegen' : '2. Create Agents' },
+      { to: '/projects',     icon: FolderOpen,     label: de ? '3. Projekte anlegen' : '3. Create Projects' },
+      { to: '/tasks',        icon: ListTodo,       label: de ? '4. Aufgaben erstellen' : '4. Create Tasks' },
+      { to: '/routines',     icon: Clock,          label: de ? '5. Routinen einrichten' : '5. Set up Routines' },
     ]},
-    { section: t.sections.verwaltung, items: [
-      { to: '/experts', icon: Users, label: t.nav.experten },
-      { to: '/intelligence', icon: Brain, label: t.nav.intelligence },
-      { to: '/goals', icon: Target, label: t.nav.ziele },
-      { to: '/projects', icon: FolderOpen, label: t.nav.projekte },
-      { to: '/tasks', icon: ListTodo, label: t.nav.aufgaben },
-      { to: '/routines', icon: Clock, label: t.nav.routinen },
-      { to: '/meetings', icon: MessagesSquare, label: t.nav.meetings },
-      { to: '/skill-library', icon: BookOpen, label: t.nav.skillLibrary },
-      { to: '/org-chart', icon: GitBranch, label: t.nav.organigramm },
+    // ── Tägliche Nutzung ──
+    { section: de ? 'Betrieb' : 'Operations', items: [
+      { to: '/',             icon: LayoutDashboard, label: t.nav.dashboard },
+      { to: '/approvals',    icon: ShieldCheck,     label: t.nav.genehmigungen },
     ]},
-    { section: 'CognitHub', items: [
-      { to: '/clipmart', icon: Package, label: 'CognitHub' },
-    ]},
-    { section: t.sections.steuerung, items: [
-      { to: '/costs', icon: Wallet, label: t.nav.kosten },
-      { to: '/approvals', icon: ShieldCheck, label: t.nav.genehmigungen },
-      { to: '/activity', icon: Activity, label: t.nav.aktivitaet },
-      { to: '/performance', icon: Trophy, label: t.nav.performance },
-      { to: '/metrics', icon: BarChart3, label: t.nav.metrics },
-      { to: '/weekly-report', icon: BarChart3, label: t.nav.weeklyReport },
-      { to: '/war-room', icon: Zap, label: t.nav.warRoom },
+    // ── Alles weitere ──
+    { section: de ? 'Mehr' : 'More', items: [
+      { to: '/goals',        icon: Target,         label: t.nav.ziele },
+      { to: '/intelligence', icon: Brain,          label: t.nav.intelligence },
+      { to: '/meetings',     icon: MessagesSquare, label: t.nav.meetings },
+      { to: '/war-room',     icon: Zap,            label: t.nav.warRoom },
+      { to: '/costs',        icon: Wallet,         label: t.nav.kosten },
+      { to: '/activity',     icon: Activity,       label: t.nav.aktivitaet },
+      { to: '/performance',  icon: Trophy,         label: t.nav.performance },
+      { to: '/metrics',      icon: BarChart3,      label: t.nav.metrics },
+      { to: '/weekly-report',icon: BarChart3,      label: t.nav.weeklyReport },
+      { to: '/skill-library',icon: BookOpen,       label: t.nav.skillLibrary },
+      { to: '/org-chart',    icon: GitBranch,      label: t.nav.organigramm },
+      { to: '/focus',        icon: Zap,            label: t.nav.focusMode },
+      { to: '/companies',    icon: Building2,      label: t.nav.unternehmen },
+      { to: '/clipmart',     icon: Package,        label: 'CognitHub' },
     ]},
   ];
 
@@ -351,33 +354,28 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
           )}
         </button>
 
-        {/* Settings */}
-        <NavLink
-          to="/settings"
-          title={collapsed ? t.nav.einstellungen : undefined}
-          style={({ isActive }) => ({
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.75rem',
-            padding: collapsed ? '0.625rem' : '0.625rem 0.75rem',
-            borderRadius: '10px',
-            textDecoration: 'none',
-            transition: 'all 0.2s',
-            background: isActive
-              ? 'rgba(35, 205, 202, 0.12)'
-              : 'rgba(255, 255, 255, 0.02)',
-            border: isActive
-              ? '1px solid rgba(35, 205, 202, 0.3)'
-              : '1px solid rgba(255, 255, 255, 0.06)',
-            color: isActive ? '#23CDCB' : '#a1a1aa',
-            fontWeight: isActive ? 600 : 500,
-            backdropFilter: 'blur(10px)',
-            justifyContent: collapsed ? 'center' : 'flex-start',
-          })}
-        >
-          <Settings size={18} />
-          {!collapsed && <span style={{ fontSize: '0.8125rem', fontWeight: 500 }}>{t.nav.einstellungen}</span>}
-        </NavLink>
+        {/* Settings link (collapsed mode only — in expanded mode it's in the nav) */}
+        {collapsed && (
+          <NavLink
+            to="/settings"
+            title={t.nav.einstellungen}
+            style={({ isActive }) => ({
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0.625rem',
+              borderRadius: '10px',
+              textDecoration: 'none',
+              transition: 'all 0.2s',
+              background: isActive ? 'rgba(35, 205, 202, 0.12)' : 'rgba(255, 255, 255, 0.02)',
+              border: isActive ? '1px solid rgba(35, 205, 202, 0.3)' : '1px solid rgba(255, 255, 255, 0.06)',
+              color: isActive ? '#23CDCB' : '#a1a1aa',
+              backdropFilter: 'blur(10px)',
+            })}
+          >
+            <Settings size={18} />
+          </NavLink>
+        )}
 
         {/* User Profile */}
         {benutzer && (
