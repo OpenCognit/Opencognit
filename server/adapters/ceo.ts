@@ -1,5 +1,5 @@
 import { db } from '../db/client.js';
-import { experten, aufgaben, unternehmen, genehmigungen, chatNachrichten, einstellungen, traceEreignisse, agentMeetings } from '../db/schema.js';
+import { experten, aufgaben, unternehmen, projekte, genehmigungen, chatNachrichten, einstellungen, traceEreignisse, agentMeetings } from '../db/schema.js';
 import { eq, and, isNull, desc, or } from 'drizzle-orm';
 import { v4 as uuid } from 'uuid';
 import path from 'path';
@@ -849,8 +849,12 @@ Regeln:
         const agent = agents.find(a => a.id === action.agentId);
 
         if (task && agent) {
-          // Create a project workspace folder for this task if company workDir is set
-          const wsPath = task.workspacePath || createProjectWorkspace(companyWorkDir, task.titel);
+          // Resolve workDir: projekt.workDir → companyWorkDir (per-project takes priority)
+          const projektRow = task.projektId
+            ? db.select({ workDir: projekte.workDir }).from(projekte).where(eq(projekte.id, task.projektId)).get() as any
+            : null;
+          const effectiveWorkDir = projektRow?.workDir || companyWorkDir;
+          const wsPath = task.workspacePath || createProjectWorkspace(effectiveWorkDir, task.titel);
 
           db.update(aufgaben).set({
             zugewiesenAn: agent.id,
@@ -878,8 +882,12 @@ Regeln:
         const agent = action.agentId ? agents.find(a => a.id === action.agentId) : null;
         const taskId = uuid();
 
-        // Create project workspace folder
-        const wsPath = createProjectWorkspace(companyWorkDir, action.titel);
+        // Resolve workDir: use action.projektId's workDir if set, else companyWorkDir
+        const newTaskProjektRow = action.projektId
+          ? db.select({ workDir: projekte.workDir }).from(projekte).where(eq(projekte.id, action.projektId)).get() as any
+          : null;
+        const newTaskWorkDir = newTaskProjektRow?.workDir || companyWorkDir;
+        const wsPath = createProjectWorkspace(newTaskWorkDir, action.titel);
 
         db.insert(aufgaben).values({
           id: taskId,

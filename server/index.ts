@@ -1069,7 +1069,7 @@ app.get('/api/unternehmen/:unternehmenId/projekte', (req, res) => {
 });
 
 app.post('/api/unternehmen/:unternehmenId/projekte', (req, res) => {
-  const { name, beschreibung, prioritaet, zielId, eigentuemerId, farbe, deadline } = req.body;
+  const { name, beschreibung, prioritaet, zielId, eigentuemerId, farbe, deadline, workDir } = req.body;
   if (!name) return res.status(400).json({ error: 'Name ist erforderlich' });
 
   const unternehmenId = req.params.unternehmenId;
@@ -1082,6 +1082,7 @@ app.post('/api/unternehmen/:unternehmenId/projekte', (req, res) => {
     eigentuemerId: eigentuemerId || null,
     farbe: farbe || '#23CDCB',
     deadline: deadline || null,
+    workDir: workDir?.trim() || null,
     fortschritt: 0,
     erstelltAm: now(),
     aktualisiertAm: now(),
@@ -1110,7 +1111,7 @@ app.patch('/api/projekte/:id', (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Projekt nicht gefunden' });
 
   const updates: any = { aktualisiertAm: now() };
-  const allowed = ['name', 'beschreibung', 'status', 'prioritaet', 'zielId', 'eigentuemerId', 'farbe', 'deadline', 'fortschritt'];
+  const allowed = ['name', 'beschreibung', 'status', 'prioritaet', 'zielId', 'eigentuemerId', 'farbe', 'deadline', 'fortschritt', 'workDir'];
   for (const key of allowed) {
     if (req.body[key] !== undefined) updates[key] = req.body[key];
   }

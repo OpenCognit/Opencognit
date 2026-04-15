@@ -79,6 +79,7 @@ function ProjektModal({ unternehmenId, experten, onClose, onSaved }: ProjektModa
   const [deadline, setDeadline] = useState('');
   const [eigentuemerId, setEigentuemerId] = useState('');
   const [farbe, setFarbe] = useState('#23CDCB');
+  const [workDir, setWorkDir] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -97,6 +98,7 @@ function ProjektModal({ unternehmenId, experten, onClose, onSaved }: ProjektModa
         deadline: deadline || undefined,
         eigentuemerId: eigentuemerId || undefined,
         farbe,
+        workDir: workDir.trim() || undefined,
       });
       onSaved();
     } catch (e: any) {
@@ -241,6 +243,27 @@ function ProjektModal({ unternehmenId, experten, onClose, onSaved }: ProjektModa
                 />
               ))}
             </div>
+          </div>
+
+          {/* Arbeitsverzeichnis */}
+          <div>
+            <label style={labelStyle}>
+              <FolderOpen size={11} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+              {i18n.language === 'de' ? 'Arbeitsverzeichnis (optional)' : 'Working Directory (optional)'}
+            </label>
+            <input
+              style={inputStyle}
+              placeholder={i18n.language === 'de' ? '/pfad/zum/projekt — überschreibt Firmen-Ordner' : '/path/to/project — overrides company folder'}
+              value={workDir}
+              onChange={e => setWorkDir(e.target.value)}
+            />
+            {workDir.trim() && (
+              <div style={{ fontSize: '0.7rem', color: '#71717a', marginTop: 3 }}>
+                {i18n.language === 'de'
+                  ? 'Agenten dieses Projekts arbeiten in diesem Ordner.'
+                  : 'Agents in this project will use this folder.'}
+              </div>
+            )}
           </div>
         </div>
 

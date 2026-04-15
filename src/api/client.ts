@@ -168,6 +168,7 @@ export interface Projekt {
   farbe: string;
   deadline: string | null;
   fortschritt: number;
+  workDir: string | null;
   erstelltAm: string;
   aktualisiertAm: string;
 }

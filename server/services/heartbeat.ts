@@ -5,7 +5,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { appEvents } from '../events.js';
 import { db } from '../db/client.js';
-import { arbeitszyklen, agentWakeupRequests, experten, aufgaben, unternehmen, kostenbuchungen, kommentare, workProducts, chatNachrichten, aktivitaetslog, ziele, issueRelations, einstellungen, budgetPolicies, budgetIncidents, agentMeetings } from '../db/schema.js';
+import { arbeitszyklen, agentWakeupRequests, experten, aufgaben, unternehmen, projekte, kostenbuchungen, kommentare, workProducts, chatNachrichten, aktivitaetslog, ziele, issueRelations, einstellungen, budgetPolicies, budgetIncidents, agentMeetings } from '../db/schema.js';
 import { eq, and, sql, inArray, or, isNull, asc, desc, gte } from 'drizzle-orm';
 import { pruefeUndEntblocke } from './issue-dependencies.js';
 import { wakeupService, type PendingWakeup } from './wakeup.js';
@@ -494,15 +494,27 @@ class HeartbeatServiceImpl implements HeartbeatService {
       console.log(`  ⏰ Task ${task.id} lock expired, reclaiming`);
     }
 
-    // Resolve workspace: use company's shared workDir if configured, else isolated data/workspaces/{taskId}
+    // Resolve workspace: projekt.workDir → unternehmen.workDir → isolated fallback
     const company = db.select({ workDir: unternehmen.workDir }).from(unternehmen).where(eq(unternehmen.id, unternehmenId)).get() as any;
     const companyWorkDir = company?.workDir;
 
+    // Check if task belongs to a project with its own workDir
+    const projektWorkDir = task.projektId
+      ? (db.select({ workDir: projekte.workDir }).from(projekte).where(eq(projekte.id, task.projektId)).get() as any)?.workDir
+      : null;
+
+    // Priority: projektWorkDir → companyWorkDir → isolated fallback
+    const effectiveWorkDir = (projektWorkDir && isSafeWorkdir(projektWorkDir))
+      ? projektWorkDir
+      : (companyWorkDir && isSafeWorkdir(companyWorkDir) ? companyWorkDir : null);
+
     let workspacePath: string;
-    if (companyWorkDir && isSafeWorkdir(companyWorkDir)) {
-      // Use company's configured project directory (must be outside OpenCognit root)
-      if (!fs.existsSync(companyWorkDir)) fs.mkdirSync(companyWorkDir, { recursive: true });
-      workspacePath = companyWorkDir;
+    if (effectiveWorkDir) {
+      if (!fs.existsSync(effectiveWorkDir)) fs.mkdirSync(effectiveWorkDir, { recursive: true });
+      workspacePath = effectiveWorkDir;
+      if (projektWorkDir && isSafeWorkdir(projektWorkDir)) {
+        console.log(`  📁 Using project workDir: ${effectiveWorkDir}`);
+      }
     } else {
       if (companyWorkDir && !isSafeWorkdir(companyWorkDir)) {
         console.warn(`[Heartbeat] ⛔ companyWorkDir '${companyWorkDir}' is inside the OpenCognit project root — using isolated workspace instead.`);

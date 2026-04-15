@@ -325,6 +325,7 @@ export const projekte = sqliteTable('projekte', {
   deadline: text('deadline'),
   fortschritt: integer('fortschritt').notNull().default(0),
   whiteboardState: text('whiteboard_state'), // JSON: shared project whiteboard for agents
+  workDir: text('work_dir'),  // per-project workspace path — overrides unternehmen.workDir
   erstelltAm: text('erstellt_am').notNull(),
   aktualisiertAm: text('aktualisiert_am').notNull(),
 });
