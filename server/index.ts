@@ -4954,7 +4954,7 @@ function buildFallbackPlan(description: string, workDir: string, isDE: boolean, 
   };
 }
 
-// POST /api/bootstrap/execute — Creates everything from the plan
+// POST /api/bootstrap/execute — Creates everything from the plan (idempotent: skips existing by name)
 app.post('/api/bootstrap/execute', authMiddleware, async (req, res) => {
   const { plan, unternehmenId, workDir, startProjektName } = req.body;
   if (!plan || !unternehmenId || !workDir) return res.status(400).json({ error: 'plan, unternehmenId, workDir required' });
@@ -4965,18 +4965,32 @@ app.post('/api/bootstrap/execute', authMiddleware, async (req, res) => {
 
   const nowStr = now();
   const created: any = { projekte: [], agenten: [], tasks: [], routinen: [], soulFiles: [] };
+  const skipped: any = { projekte: [], agenten: [], tasks: [], routinen: [] };
   const projektMap: Record<string, string> = {}; // name → id
   const agentMap: Record<string, string> = {};   // name → id
 
-  // 1. Update company goal
+  // Pre-load existing records for this company (for dedup)
+  const existingProjekte = await db.select({ id: projekte.id, name: projekte.name, workDir: projekte.workDir })
+    .from(projekte).where(eq(projekte.unternehmenId, unternehmenId));
+  const existingAgenten = await db.select({ id: experten.id, name: experten.name })
+    .from(experten).where(eq(experten.unternehmenId, unternehmenId));
+  for (const p of existingProjekte) projektMap[p.name] = p.id;
+  for (const a of existingAgenten) agentMap[a.name] = a.id;
+
+  // 1. Update company goal + root workDir
   if (plan.companyGoal) {
     db.update(unternehmen).set({ ziel: plan.companyGoal, workDir: dir, aktualisiertAm: nowStr }).where(eq(unternehmen.id, unternehmenId)).run();
   }
 
-  // 2. Create projects + subfolders
+  // 2. Create projects + subfolders — skip if name already exists for this company
   for (const p of (plan.projekte || [])) {
     const subDir = p.subDir ? path.join(dir, p.subDir) : path.join(dir, p.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''));
     try { fs.mkdirSync(subDir, { recursive: true }); } catch { /* ignore */ }
+
+    if (projektMap[p.name]) {
+      skipped.projekte.push({ name: p.name, reason: 'bereits vorhanden' });
+      continue;
+    }
 
     const projektId = uuid();
     db.insert(projekte).values({
@@ -4993,16 +5007,25 @@ app.post('/api/bootstrap/execute', authMiddleware, async (req, res) => {
     created.projekte.push({ id: projektId, name: p.name, workDir: subDir });
   }
 
-  // 3. Create agents + soul files
+  // Build workDir lookup across all projects (existing + new)
+  const allProjekteNow = await db.select({ id: projekte.id, workDir: projekte.workDir })
+    .from(projekte).where(eq(projekte.unternehmenId, unternehmenId));
+  const projektWorkDirById: Record<string, string> = {};
+  for (const p of allProjekteNow) projektWorkDirById[p.id] = p.workDir || dir;
+
+  // 3. Create agents + soul files — skip if name already exists for this company
   const allSkills = await skillsService.getAllSkills();
   const skillIdSet = new Set(allSkills.map((s: any) => s.id));
 
   for (const a of (plan.agenten || [])) {
+    if (agentMap[a.name]) {
+      skipped.agenten.push({ name: a.name, reason: 'bereits vorhanden' });
+      continue;
+    }
+
     const agentId = uuid();
     const projektId = a.projektName ? projektMap[a.projektName] : null;
-    const agentWorkDir = projektId
-      ? (created.projekte.find((p: any) => p.id === projektId)?.workDir || dir)
-      : dir;
+    const agentWorkDir = projektId ? (projektWorkDirById[projektId] || dir) : dir;
 
     // Write SOUL.md file
     let soulPath: string | null = null;
@@ -5054,9 +5077,18 @@ app.post('/api/bootstrap/execute', authMiddleware, async (req, res) => {
     created.agenten.push({ id: agentId, name: a.name, rolle: a.rolle, soulPath });
   }
 
-  // 4. Create tasks
+  // 4. Create tasks — skip if same title already exists in same project
+  const existingTaskRows = await db.select({ titel: aufgaben.titel, projektId: aufgaben.projektId })
+    .from(aufgaben).where(eq(aufgaben.unternehmenId, unternehmenId));
+  const existingTaskKeys = new Set(existingTaskRows.map(t => `${t.projektId ?? ''}::${t.titel}`));
+
   for (const t of (plan.tasks || [])) {
     const projektId = t.projektName ? projektMap[t.projektName] : null;
+    const dedupKey = `${projektId ?? ''}::${t.titel}`;
+    if (existingTaskKeys.has(dedupKey)) {
+      skipped.tasks.push({ titel: t.titel, reason: 'bereits vorhanden' });
+      continue;
+    }
     const agentId = t.agentName ? agentMap[t.agentName] : null;
     const taskId = uuid();
     db.insert(aufgaben).values({
@@ -5070,13 +5102,23 @@ app.post('/api/bootstrap/execute', authMiddleware, async (req, res) => {
       erstelltVon: agentId || null,
       erstelltAm: nowStr, aktualisiertAm: nowStr,
     }).run();
+    existingTaskKeys.add(dedupKey);
     created.tasks.push({ id: taskId, titel: t.titel, projektName: t.projektName });
   }
 
-  // 5. Create routines
+  // 5. Create routines — skip if same name already exists for the same agent
+  const existingRoutineRows = await db.select({ name: routinen.name, expertId: routinen.expertId })
+    .from(routinen).where(eq(routinen.unternehmenId, unternehmenId));
+  const existingRoutineKeys = new Set(existingRoutineRows.map(r => `${r.expertId}::${r.name}`));
+
   for (const r of (plan.routinen || [])) {
     const agentId = r.agentName ? agentMap[r.agentName] : null;
     if (!agentId) continue;
+    const dedupKey = `${agentId}::${r.name}`;
+    if (existingRoutineKeys.has(dedupKey)) {
+      skipped.routinen.push({ name: r.name, reason: 'bereits vorhanden' });
+      continue;
+    }
     const routineId = uuid();
     db.insert(routinen).values({
       id: routineId, unternehmenId,
@@ -5086,7 +5128,6 @@ app.post('/api/bootstrap/execute', authMiddleware, async (req, res) => {
       aktiv: true,
       erstelltAm: nowStr, aktualisiertAm: nowStr,
     }).run();
-    // Add cron trigger
     if (r.cron) {
       db.insert(routineTrigger).values({
         id: uuid(), routineId,
@@ -5095,16 +5136,20 @@ app.post('/api/bootstrap/execute', authMiddleware, async (req, res) => {
         erstelltAm: nowStr,
       }).run();
     }
+    existingRoutineKeys.add(dedupKey);
     created.routinen.push({ id: routineId, name: r.name, agentName: r.agentName });
   }
 
-  // 6. Set active/start project priority
+  // 6. Set start project to critical priority
   if (startProjektName && projektMap[startProjektName]) {
     db.update(projekte).set({ prioritaet: 'critical', aktualisiertAm: nowStr }).where(eq(projekte.id, projektMap[startProjektName])).run();
   }
 
-  logAktivitaet(unternehmenId, 'system', 'system', 'CEO Bootstrap', `hat ${created.agenten.length} Agenten, ${created.projekte.length} Projekte und ${created.tasks.length} Tasks erstellt`, 'unternehmen', unternehmenId);
-  res.json({ success: true, created });
+  const totalSkipped = skipped.projekte.length + skipped.agenten.length + skipped.tasks.length + skipped.routinen.length;
+  logAktivitaet(unternehmenId, 'system', 'system', 'CEO Bootstrap',
+    `hat ${created.agenten.length} Agenten, ${created.projekte.length} Projekte und ${created.tasks.length} Tasks erstellt (${totalSkipped} übersprungen)`,
+    'unternehmen', unternehmenId);
+  res.json({ success: true, created, skipped });
 });
 
 // GET /api/system/claude-status — Claude Code CLI Auth-Status prüfen

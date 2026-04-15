@@ -1160,12 +1160,14 @@ function MissionControl({
   // Live WS updates for agent status changes
   useEffect(() => {
     if (!unternehmenId) return;
+    let destroyed = false; // StrictMode guard: prevents errors when React unmounts during WS handshake
     const token = localStorage.getItem('opencognit_token');
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${proto}//${window.location.hostname}:3201/ws${token ? `?token=${token}` : ''}`);
     wsRef.current = ws;
 
     ws.onmessage = ev => {
+      if (destroyed) return;
       try {
         const msg = JSON.parse(ev.data);
         // Update agent status when heartbeat fires
@@ -1200,7 +1202,17 @@ function MissionControl({
       } catch {}
     };
 
-    return () => { ws.close(); wsRef.current = null; };
+    // Suppress console noise from StrictMode double-invoke closing the socket mid-handshake
+    ws.onerror = () => { if (!destroyed) console.warn('[MissionControl] WebSocket error'); };
+    ws.onclose = () => { if (!destroyed) console.debug('[MissionControl] WebSocket closed'); };
+
+    return () => {
+      destroyed = true;
+      ws.onerror = null;
+      ws.onclose = null;
+      ws.close();
+      wsRef.current = null;
+    };
   }, [unternehmenId]);
 
   const handleWakeup = async (agentId: string) => {

@@ -111,6 +111,7 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
   const [execError, setExecError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [created, setCreated] = useState<any>(null);
+  const [skipped, setSkipped] = useState<any>(null);
 
   // Priority ordering (drag-to-reorder placeholder — using up/down buttons)
   const [projektOrder, setProjektOrder] = useState<PlanProject[]>([]);
@@ -210,6 +211,7 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
       if (!resp.ok) throw new Error(await resp.text());
       const data = await resp.json();
       setCreated(data.created);
+      setSkipped(data.skipped);
       setDone(true);
       setStep(5);
     } catch (e: any) {
@@ -555,10 +557,26 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
             {created.soulFiles?.length > 0 && (
               <div style={{ width: '100%', background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.15)', borderRadius: 10, padding: '0.625rem 0.875rem' }}>
                 <div style={{ fontSize: '0.7rem', color: '#a78bfa', fontWeight: 600, marginBottom: 4 }}>
-                  ✨ Soul-Dateien gespeichert
+                  Soul-Dateien gespeichert
                 </div>
                 {created.soulFiles.map((f: string) => (
                   <div key={f} style={{ fontSize: '0.65rem', color: '#475569', fontFamily: 'monospace' }}>{f}</div>
+                ))}
+              </div>
+            )}
+
+            {skipped && (skipped.projekte?.length + skipped.agenten?.length + skipped.tasks?.length + skipped.routinen?.length) > 0 && (
+              <div style={{ width: '100%', background: 'rgba(100,116,139,0.06)', border: '1px solid rgba(100,116,139,0.15)', borderRadius: 10, padding: '0.625rem 0.875rem' }}>
+                <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, marginBottom: 4 }}>
+                  {de ? 'Bereits vorhanden (übersprungen)' : 'Already existed (skipped)'}
+                </div>
+                {[
+                  ...(skipped.projekte || []).map((x: any) => `Projekt: ${x.name}`),
+                  ...(skipped.agenten || []).map((x: any) => `Agent: ${x.name}`),
+                  ...(skipped.tasks || []).map((x: any) => `Task: ${x.titel}`),
+                  ...(skipped.routinen || []).map((x: any) => `Routine: ${x.name}`),
+                ].map(label => (
+                  <div key={label} style={{ fontSize: '0.65rem', color: '#475569' }}>{label}</div>
                 ))}
               </div>
             )}

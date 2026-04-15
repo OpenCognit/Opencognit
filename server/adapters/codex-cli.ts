@@ -234,12 +234,16 @@ export class CodexCLIAdapter implements Adapter {
   }
 
   async isAvailable(): Promise<boolean> {
-    try {
-      await execAsync(`${this.options.codexPath} --version`, { timeout: 5000 });
-      return true;
-    } catch {
-      return false;
-    }
+    return new Promise(resolve => {
+      try {
+        const child = spawn(this.options.codexPath!, ['--version'], { stdio: 'ignore', shell: false });
+        child.on('error', () => resolve(false));
+        child.on('close', code => resolve(code === 0));
+        setTimeout(() => { try { child.kill(); } catch {} resolve(false); }, 5000);
+      } catch {
+        resolve(false);
+      }
+    });
   }
 }
 

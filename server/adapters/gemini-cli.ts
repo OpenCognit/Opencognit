@@ -3,7 +3,7 @@
 // Binary: https://github.com/google-gemini/gemini-cli
 
 import { Adapter, AdapterConfig, AdapterExecutionResult, AdapterTask, AdapterContext } from './types.js';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -212,12 +212,16 @@ export class GeminiCLIAdapter implements Adapter {
   }
 
   async isAvailable(): Promise<boolean> {
-    try {
-      await execAsync(`${this.options.geminiPath} --version`, { timeout: 5000 });
-      return true;
-    } catch {
-      return false;
-    }
+    return new Promise(resolve => {
+      try {
+        const child = spawn(this.options.geminiPath!, ['--version'], { stdio: 'ignore', shell: false });
+        child.on('error', () => resolve(false));
+        child.on('close', code => resolve(code === 0));
+        setTimeout(() => { try { child.kill(); } catch {} resolve(false); }, 5000);
+      } catch {
+        resolve(false);
+      }
+    });
   }
 }
 
