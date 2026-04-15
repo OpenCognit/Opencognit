@@ -48,6 +48,11 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
   })), []);
 
   const navItems = [
+    // ── Tägliche Nutzung ──
+    { section: de ? 'Betrieb' : 'Operations', items: [
+      { to: '/',             icon: LayoutDashboard, label: t.nav.dashboard },
+      { to: '/approvals',    icon: ShieldCheck,     label: t.nav.genehmigungen },
+    ]},
     // ── Setup-Reihenfolge: was zuerst gemacht werden muss ──
     { section: de ? 'Einrichten' : 'Setup', items: [
       { to: '/settings',     icon: Settings,       label: de ? '1. API Keys & Einstellungen' : '1. API Keys & Settings' },
@@ -55,11 +60,6 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
       { to: '/projects',     icon: FolderOpen,     label: de ? '3. Projekte anlegen' : '3. Create Projects' },
       { to: '/tasks',        icon: ListTodo,       label: de ? '4. Aufgaben erstellen' : '4. Create Tasks' },
       { to: '/routines',     icon: Clock,          label: de ? '5. Routinen einrichten' : '5. Set up Routines' },
-    ]},
-    // ── Tägliche Nutzung ──
-    { section: de ? 'Betrieb' : 'Operations', items: [
-      { to: '/',             icon: LayoutDashboard, label: t.nav.dashboard },
-      { to: '/approvals',    icon: ShieldCheck,     label: t.nav.genehmigungen },
     ]},
     // ── Alles weitere ──
     { section: de ? 'Mehr' : 'More', items: [
