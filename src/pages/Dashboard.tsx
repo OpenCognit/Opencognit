@@ -17,6 +17,7 @@ import { ExpertChatDrawer } from '../components/ExpertChatDrawer';
 import { StandupPanel } from '../components/StandupPanel';
 import { SetupWizard } from '../components/SetupWizard';
 import { authFetch } from '../utils/api';
+import { BentoGrid, type BentoItem } from '../components/BentoGrid';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1780,6 +1781,7 @@ export function Dashboard() {
 
   const budgetColor = kosten.prozent > 95 ? '#ef4444' : kosten.prozent > 80 ? '#f59e0b' : '#22c55e';
   const hasRunningAgents = experten.running > 0;
+  const { score: healthScore, grade: healthGrade, gradeColor: healthColor } = computeHealthScore(experten, aufgaben, kosten, pendingApprovals);
 
   // Derive simple trends from current values
   const taskTrend: 'up' | 'down' | 'neutral' = aufgaben.inBearbeitung > 0 ? 'up' : 'neutral';
@@ -1990,62 +1992,123 @@ export function Dashboard() {
         navigate={navigate}
       />
 
-      {/* ── Company Brief + Health Score ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '1rem', alignItems: 'stretch' }}>
-        <CompanyBrief
-          experten={experten}
-          aufgaben={aufgaben}
-          kosten={kosten}
-          pendingApprovals={pendingApprovals}
-          letzteAktivitaet={letzteAktivitaet}
-          lang={lang}
-        />
-        <HealthScoreCard
-          experten={experten}
-          aufgaben={aufgaben}
-          kosten={kosten}
-          pendingApprovals={pendingApprovals}
-          lang={lang}
-        />
-      </div>
+      {/* ── Status Bento Grid ── */}
+      {(() => {
+        const de = lang === 'de';
+        const todayEvents = letzteAktivitaet.filter(a => new Date(a.erstelltAm).toDateString() === new Date().toDateString()).length;
 
-      {/* ── KPI Row ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
-        <KpiCard
-          label={t.dashboard.aktiveExperten}
-          value={experten.aktiv}
-          sub={lang === 'de'
-            ? `${experten.gesamt} gesamt · ${experten.running} arbeiten`
-            : `${experten.gesamt} total · ${experten.running} working`}
-          icon={Users} accent="#23CDCB"
-          trend={experten.running > 0 ? 'up' : 'neutral'}
-        />
-        <KpiCard
-          label={t.dashboard.offeneAufgaben}
-          value={aufgaben.offen}
-          sub={lang === 'de'
-            ? `${aufgaben.inBearbeitung} aktiv · ${aufgaben.blockiert} blockiert`
-            : `${aufgaben.inBearbeitung} active · ${aufgaben.blockiert} blocked`}
-          icon={ListTodo} accent="#3b82f6"
-          trend={taskTrend}
-        />
-        <KpiCard
-          label={t.dashboard.monatskosten}
-          value={euro(kosten.gesamtVerbraucht)}
-          sub={`${lang === 'de' ? 'von' : 'of'} ${euro(kosten.gesamtBudget)} ${lang === 'de' ? 'Budget' : 'budget'}`}
-          icon={Wallet} accent="#22c55e"
-        />
-        <KpiCard
-          label={t.dashboard.auslastung}
-          value={`${kosten.prozent}%`}
-          sub={kosten.prozent > 80
-            ? (lang === 'de' ? 'Budget-Warnung' : 'Budget warning')
-            : (lang === 'de' ? 'Budget OK' : 'Budget OK')}
-          icon={Gauge} accent={budgetColor}
-          bar={{ pct: kosten.prozent, color: budgetColor }}
-          trend={budgetTrend}
-        />
-      </div>
+        const bentoItems: BentoItem[] = [
+          // ── Status Overview (wide) ──
+          {
+            icon: <Building2 size={16} style={{ color: '#23CDCB' }} />,
+            title: de ? 'Heute' : 'Today',
+            meta: new Date().toLocaleDateString(de ? 'de-DE' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' }),
+            colSpan: 2,
+            accent: '#23CDCB',
+            children: (
+              <div style={{ display: 'flex', gap: '1.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                {[
+                  { label: de ? 'Agenten live' : 'Agents live',      value: experten.running,     color: experten.running > 0 ? '#23CDCB' : '#475569' },
+                  { label: de ? 'Aufgaben offen' : 'Tasks open',      value: aufgaben.offen,       color: '#94a3b8' },
+                  { label: de ? 'Budget genutzt' : 'Budget used',     value: `${kosten.prozent}%`, color: budgetColor },
+                  { label: de ? 'Ereignisse heute' : 'Events today',  value: todayEvents,          color: '#64748b' },
+                  ...(pendingApprovals > 0 ? [{ label: de ? 'Ausstehend' : 'Pending', value: pendingApprovals, color: '#f59e0b' }] : []),
+                ].map((m, i) => (
+                  <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                    <span style={{ fontSize: '1.625rem', fontWeight: 800, color: m.color, lineHeight: 1 }}>{m.value}</span>
+                    <span style={{ fontSize: '0.6875rem', color: '#475569', fontWeight: 500 }}>{m.label}</span>
+                  </div>
+                ))}
+              </div>
+            ),
+          },
+          // ── Health Score ──
+          {
+            icon: <Gauge size={16} style={{ color: healthColor }} />,
+            title: healthGrade,
+            meta: `${healthScore}/100`,
+            description: de ? 'Unternehmensgesundheit' : 'Company Health',
+            colSpan: 1,
+            accent: healthColor,
+            children: (
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: '0.25rem' }}>
+                <div style={{ position: 'relative' }}>
+                  <HealthScoreGauge score={healthScore} color={healthColor} size={64} />
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontSize: 17, fontWeight: 800, color: healthColor, lineHeight: 1 }}>{healthScore}</span>
+                  </div>
+                </div>
+              </div>
+            ),
+          },
+          // ── Agents ──
+          {
+            icon: <Users size={16} style={{ color: '#23CDCB' }} />,
+            title: String(experten.aktiv),
+            meta: de ? 'Agenten aktiv' : 'Agents active',
+            description: de
+              ? `${experten.gesamt} gesamt · ${experten.running} laufen gerade`
+              : `${experten.gesamt} total · ${experten.running} running`,
+            status: experten.running > 0 ? 'LIVE' : de ? 'Bereit' : 'Ready',
+            statusColor: experten.running > 0 ? '#23CDCB' : '#475569',
+            accent: '#23CDCB',
+            cta: de ? 'Agenten →' : 'Agents →',
+            hasPersistentHover: experten.running > 0,
+            onClick: () => navigate('/experts'),
+          },
+          // ── Tasks ──
+          {
+            icon: <ListTodo size={16} style={{ color: '#3b82f6' }} />,
+            title: String(aufgaben.offen),
+            meta: de ? 'Aufgaben offen' : 'Tasks open',
+            description: de
+              ? `${aufgaben.inBearbeitung} aktiv · ${aufgaben.blockiert} blockiert · ${aufgaben.erledigt} erledigt`
+              : `${aufgaben.inBearbeitung} active · ${aufgaben.blockiert} blocked · ${aufgaben.erledigt} done`,
+            status: aufgaben.blockiert > 0 ? `${aufgaben.blockiert} blockiert` : 'OK',
+            statusColor: aufgaben.blockiert > 0 ? '#ef4444' : '#22c55e',
+            accent: '#3b82f6',
+            cta: de ? 'Aufgaben →' : 'Tasks →',
+            onClick: () => navigate('/tasks'),
+          },
+          // ── Budget ──
+          {
+            icon: <Wallet size={16} style={{ color: budgetColor }} />,
+            title: euro(kosten.gesamtVerbraucht),
+            meta: `${de ? 'von' : 'of'} ${euro(kosten.gesamtBudget)}`,
+            description: de ? `${kosten.prozent}% des Budgets genutzt` : `${kosten.prozent}% of budget used`,
+            status: kosten.prozent > 90 ? '⚠ Kritisch' : kosten.prozent > 75 ? (de ? 'Hoch' : 'High') : 'OK',
+            statusColor: kosten.prozent > 90 ? '#ef4444' : kosten.prozent > 75 ? '#f59e0b' : '#22c55e',
+            accent: budgetColor,
+            cta: de ? 'Kosten →' : 'Costs →',
+            onClick: () => navigate('/costs'),
+            children: (
+              <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%', borderRadius: 2, background: budgetColor,
+                  width: `${Math.min(kosten.prozent, 100)}%`, transition: 'width 0.6s ease',
+                }} />
+              </div>
+            ),
+          },
+          // ── Approvals ──
+          {
+            icon: <ShieldCheck size={16} style={{ color: pendingApprovals > 0 ? '#f59e0b' : '#22c55e' }} />,
+            title: pendingApprovals > 0 ? String(pendingApprovals) : '✓',
+            meta: de ? 'Genehmigungen' : 'Approvals',
+            description: pendingApprovals > 0
+              ? (de ? 'Anfragen warten auf deine Freigabe' : 'Requests waiting for your approval')
+              : (de ? 'Keine ausstehenden Anfragen' : 'No pending requests'),
+            status: pendingApprovals > 0 ? (de ? 'Aktion nötig' : 'Action needed') : (de ? 'Alles klar' : 'All clear'),
+            statusColor: pendingApprovals > 0 ? '#f59e0b' : '#22c55e',
+            accent: pendingApprovals > 0 ? '#f59e0b' : '#22c55e',
+            hasPersistentHover: pendingApprovals > 0,
+            cta: pendingApprovals > 0 ? (de ? 'Prüfen →' : 'Review →') : undefined,
+            onClick: () => navigate('/approvals'),
+          },
+        ];
+
+        return <BentoGrid items={bentoItems} columns={3} />;
+      })()}
 
       {/* ── AI Daily Briefing ── */}
       <DailyBriefingWidget unternehmenId={aktivesUnternehmen.id} lang={lang} />
