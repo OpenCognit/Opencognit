@@ -270,16 +270,50 @@ function VelocityChart({ completedPerDay, lang }: { completedPerDay: number[]; l
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function Card({ children, style = {} }: { children: React.ReactNode; style?: React.CSSProperties }) {
+function Card({ children, style = {}, accent = '#23CDCB', onClick }: {
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+  accent?: string;
+  onClick?: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
   return (
-    <div style={{
-      backgroundColor: 'rgba(255,255,255,0.02)',
-      backdropFilter: 'blur(20px)',
-      borderRadius: '20px',
-      border: '1px solid rgba(255,255,255,0.08)',
-      ...style,
-    }}>
-      {children}
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        position: 'relative',
+        overflow: 'hidden',
+        backgroundColor: hovered ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.025)',
+        backdropFilter: 'blur(20px)',
+        borderRadius: '20px',
+        border: `1px solid ${hovered ? `${accent}22` : 'rgba(255,255,255,0.07)'}`,
+        transform: hovered ? 'translateY(-2px)' : 'none',
+        boxShadow: hovered
+          ? `0 8px 32px rgba(0,0,0,0.25), 0 0 0 1px ${accent}18`
+          : '0 2px 8px rgba(0,0,0,0.12)',
+        transition: 'all 0.25s ease',
+        cursor: onClick ? 'pointer' : 'default',
+        ...style,
+      }}
+    >
+      {/* Dot pattern */}
+      <div style={{
+        position: 'absolute', inset: 0, pointerEvents: 'none',
+        opacity: hovered ? 1 : 0, transition: 'opacity 0.3s',
+        backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.035) 1px, transparent 1px)',
+        backgroundSize: '16px 16px',
+      }} />
+      {/* Gradient glow */}
+      <div style={{
+        position: 'absolute', inset: 0, borderRadius: '20px', pointerEvents: 'none',
+        background: `linear-gradient(135deg, ${accent}12, transparent 60%, ${accent}08)`,
+        opacity: hovered ? 1 : 0, transition: 'opacity 0.3s',
+      }} />
+      <div style={{ position: 'relative' }}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -1706,6 +1740,63 @@ function CommandBar({ agents, companyId, lang }: { agents: LiveAgent[]; companyI
   );
 }
 
+// ── Quick Action Card ─────────────────────────────────────────────────────────
+
+function QuickActionCard({ item, onClick }: {
+  item: { icon: React.ElementType; label: string; accent: string; badge?: number };
+  onClick: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const accent = item.accent;
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        position: 'relative', overflow: 'hidden',
+        display: 'flex', alignItems: 'center', gap: '0.75rem',
+        padding: '0.875rem 1.125rem', borderRadius: '16px',
+        background: hovered ? `${accent}10` : 'rgba(255,255,255,0.025)',
+        border: `1px solid ${hovered ? `${accent}30` : 'rgba(255,255,255,0.07)'}`,
+        transform: hovered ? 'translateY(-2px)' : 'none',
+        boxShadow: hovered ? `0 8px 24px rgba(0,0,0,0.2), 0 0 0 1px ${accent}15` : '0 2px 8px rgba(0,0,0,0.1)',
+        cursor: 'pointer', textAlign: 'left', transition: 'all 0.25s ease',
+      }}
+    >
+      {/* Dot pattern */}
+      <div style={{
+        position: 'absolute', inset: 0, pointerEvents: 'none',
+        opacity: hovered ? 1 : 0, transition: 'opacity 0.3s',
+        backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.03) 1px, transparent 1px)',
+        backgroundSize: '14px 14px',
+      }} />
+      <div style={{
+        width: 34, height: 34, borderRadius: '10px', flexShrink: 0,
+        background: hovered ? `${accent}20` : `${accent}15`,
+        border: `1px solid ${hovered ? `${accent}35` : `${accent}20`}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'all 0.25s', position: 'relative',
+      }}>
+        <item.icon size={15} style={{ color: accent }} />
+      </div>
+      <span style={{ fontSize: '0.875rem', fontWeight: 600, color: hovered ? '#f1f5f9' : '#94a3b8', transition: 'color 0.2s', position: 'relative' }}>
+        {item.label}
+      </span>
+      {item.badge !== undefined && (
+        <span style={{
+          position: 'absolute', top: '0.5rem', right: '0.5rem',
+          background: '#f59e0b', color: '#0a0a0f', borderRadius: '999px',
+          fontSize: '0.625rem', fontWeight: 800, padding: '0.1rem 0.375rem',
+          minWidth: 16, textAlign: 'center',
+        }}>
+          {item.badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export function Dashboard() {
@@ -2267,46 +2358,7 @@ export function Dashboard() {
           { icon: MessageSquare,label: lang === 'de' ? 'Meetings'       : 'Meetings',           to: '/meetings',     accent: '#6366f1' },
           { icon: Clock,        label: lang === 'de' ? 'Aktivität'      : 'Activity',           to: '/activity',     accent: '#3b82f6' },
         ].map(item => (
-          <button
-            key={item.to}
-            onClick={() => navigate(item.to)}
-            onMouseEnter={e => {
-              (e.currentTarget as HTMLElement).style.background = `${item.accent}12`;
-              (e.currentTarget as HTMLElement).style.borderColor = `${item.accent}30`;
-            }}
-            onMouseLeave={e => {
-              (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.02)';
-              (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.08)';
-            }}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '0.75rem',
-              padding: '0.875rem 1.125rem', borderRadius: '14px',
-              background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)',
-              cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
-              position: 'relative',
-            }}
-          >
-            <div style={{
-              width: 32, height: 32, borderRadius: '9px', flexShrink: 0,
-              background: item.accent + '18',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <item.icon size={15} style={{ color: item.accent }} />
-            </div>
-            <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#e2e8f0' }}>
-              {item.label}
-            </span>
-            {item.badge !== undefined && (
-              <span style={{
-                position: 'absolute', top: '0.5rem', right: '0.5rem',
-                background: '#f59e0b', color: '#0a0a0f', borderRadius: '999px',
-                fontSize: '0.625rem', fontWeight: 800, padding: '0.1rem 0.375rem',
-                minWidth: 16, textAlign: 'center',
-              }}>
-                {item.badge}
-              </span>
-            )}
-          </button>
+          <QuickActionCard key={item.to} item={item} onClick={() => navigate(item.to)} />
         ))}
       </div>
 
