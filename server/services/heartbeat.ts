@@ -1372,30 +1372,53 @@ Verfügbare Team-Mitglieder: ${teamMembers.map(m => m.name).join(', ')}
     advisorPlan: string | null,
   ): Promise<void> {
     try {
-      // Fetch goals to decide if planning is needed
+      // Fetch active goals (optional — system works without them)
       const activeGoals = await db.select({ id: ziele.id, titel: ziele.titel, fortschritt: ziele.fortschritt, status: ziele.status })
         .from(ziele)
         .where(and(eq(ziele.unternehmenId, unternehmenId), inArray(ziele.status, ['active', 'planned'])))
         .limit(5);
 
-      if (activeGoals.length === 0) {
-        console.log(`  ℹ️ No active goals — skipping planning cycle`);
+      // Fetch open backlog tasks — used as fallback when no goals exist
+      const backlogTasks = await db.select({ id: aufgaben.id, titel: aufgaben.titel, prioritaet: aufgaben.prioritaet })
+        .from(aufgaben)
+        .where(and(
+          eq(aufgaben.unternehmenId, unternehmenId),
+          inArray(aufgaben.status, ['backlog', 'todo', 'open']),
+        ))
+        .limit(10);
+
+      // Skip only if truly nothing to work on
+      if (activeGoals.length === 0 && backlogTasks.length === 0) {
+        console.log(`  ℹ️ No goals or open tasks — nothing to plan`);
         return;
+      }
+
+      // Build planning context — goals take priority, tasks are the fallback
+      let planningContext: string;
+      if (activeGoals.length > 0) {
+        planningContext =
+          `Aktive Ziele: ${activeGoals.map(g => `"${g.titel}" (${g.fortschritt}%)`).join(', ')}. ` +
+          `Analysiere was als nächstes getan werden muss und weise Aufgaben den passenden Team-Mitgliedern zu.`;
+      } else {
+        planningContext =
+          `Keine übergeordneten Ziele gesetzt. Offene Aufgaben im Backlog: ${backlogTasks.map(t => `"${t.titel}" [${t.prioritaet}]`).join(', ')}. ` +
+          `Priorisiere und weise diese Aufgaben den passenden Team-Mitgliedern zu. Erstelle bei Bedarf Unter-Tasks.`;
       }
 
       // Create a synthetic planning task (not persisted to DB)
       const syntheticTask = {
         id: `planning-${runId}`,
         titel: 'Strategische Planung & Task-Erstellung',
-        beschreibung: `Überprüfe den aktuellen Status aller Ziele und erstelle neue Aufgaben für das Team. ` +
-          `Aktive Ziele: ${activeGoals.map(g => `"${g.titel}" (${g.fortschritt}%)`).join(', ')}. ` +
-          `Analysiere was als nächstes getan werden muss und weise Aufgaben den passenden Team-Mitgliedern zu.`,
+        beschreibung: `Überprüfe den aktuellen Status des Teams und koordiniere die Arbeit. ${planningContext}`,
         status: 'todo',
         prioritaet: 'high',
         executionLockedAt: null,
       };
 
-      trace(expertId, unternehmenId, 'action', 'Planungszyklus gestartet', `Ziele: ${activeGoals.map(g => g.titel).join(', ')}`, runId);
+      const traceLabel = activeGoals.length > 0
+        ? `Ziele: ${activeGoals.map(g => g.titel).join(', ')}`
+        : `Backlog: ${backlogTasks.length} offene Tasks`;
+      trace(expertId, unternehmenId, 'action', 'Planungszyklus gestartet', traceLabel, runId);
 
       // Reuse executeTaskViaAdapter with the synthetic task
       await this.executeTaskViaAdapter(runId, expertId, unternehmenId, syntheticTask, advisorPlan);

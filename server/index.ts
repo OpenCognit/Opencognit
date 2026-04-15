@@ -4980,6 +4980,25 @@ app.post('/api/bootstrap/execute', authMiddleware, async (req, res) => {
   // 1. Update company goal + root workDir
   if (plan.companyGoal) {
     db.update(unternehmen).set({ ziel: plan.companyGoal, workDir: dir, aktualisiertAm: nowStr }).where(eq(unternehmen.id, unternehmenId)).run();
+
+    // Auto-create a top-level company goal so the Orchestrator has something to plan against
+    const existingTopGoal = db.select({ id: ziele.id }).from(ziele)
+      .where(and(eq(ziele.unternehmenId, unternehmenId), eq(ziele.ebene, 'company'), inArray(ziele.status, ['active', 'planned'])))
+      .get();
+    if (!existingTopGoal) {
+      db.insert(ziele).values({
+        id: uuid(),
+        unternehmenId,
+        titel: plan.companyGoal,
+        beschreibung: `Automatisch erstellt durch CEO Setup. Arbeitsverzeichnis: ${dir}`,
+        ebene: 'company',
+        status: 'active',
+        fortschritt: 0,
+        parentId: null,
+        erstelltAm: nowStr,
+        aktualisiertAm: nowStr,
+      }).run();
+    }
   }
 
   // 2. Create projects + subfolders — skip if name already exists for this company
