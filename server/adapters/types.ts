@@ -58,6 +58,12 @@ export interface AdapterContext {
     /** Active strategic goals with live progress */
     goals?: CompanyGoal[];
   };
+  /** Context of the project this task belongs to (if any) */
+  projektContext?: {
+    name: string;
+    beschreibung: string | null;
+    workDir: string | null;
+  };
   agentContext: {
     name: string;
     rolle: string;

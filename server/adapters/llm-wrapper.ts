@@ -153,6 +153,18 @@ export class LLMWrapperAdapter implements Adapter {
     }
     parts.push('');
 
+    // Project context (injected when task belongs to a project)
+    if (context.projektContext) {
+      parts.push(`[PROJEKT: ${context.projektContext.name}]`);
+      if (context.projektContext.beschreibung) {
+        parts.push(context.projektContext.beschreibung);
+      }
+      if (context.projektContext.workDir) {
+        parts.push(`Arbeitsverzeichnis: ${context.projektContext.workDir}`);
+      }
+      parts.push('');
+    }
+
     parts.push(`[AGENT]\nName: ${context.agentContext.name}\nRolle: ${context.agentContext.rolle}`);
     if (context.agentContext.faehigkeiten) {
       parts.push(`Fähigkeiten: ${context.agentContext.faehigkeiten}`);

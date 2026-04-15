@@ -161,6 +161,11 @@ export class GeminiCLIAdapter implements Adapter {
     if (context.agentContext.faehigkeiten) {
       parts.push(`Fähigkeiten: ${context.agentContext.faehigkeiten}`);
     }
+    if (context.projektContext) {
+      parts.push('');
+      parts.push(`Projekt: ${context.projektContext.name}`);
+      if (context.projektContext.beschreibung) parts.push(context.projektContext.beschreibung);
+    }
     parts.push('');
 
     parts.push(`## Aufgabe: ${task.titel}`);

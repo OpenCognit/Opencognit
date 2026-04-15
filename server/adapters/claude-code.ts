@@ -280,6 +280,18 @@ Respond in the language of the task (German if the task is in German, English if
     }
     parts.push('');
 
+    // Project context (injected when task belongs to a project)
+    if (context.projektContext) {
+      parts.push(`[PROJEKT: ${context.projektContext.name}]`);
+      if (context.projektContext.beschreibung) {
+        parts.push(context.projektContext.beschreibung);
+      }
+      if (context.projektContext.workDir) {
+        parts.push(`Arbeitsverzeichnis: ${context.projektContext.workDir}`);
+      }
+      parts.push('');
+    }
+
     // Agent context
     parts.push(`[AGENT]\nName: ${context.agentContext.name}\nRolle: ${context.agentContext.rolle}`);
     if (context.agentContext.faehigkeiten) {

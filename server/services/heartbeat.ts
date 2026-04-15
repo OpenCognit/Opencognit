@@ -793,6 +793,19 @@ class HeartbeatServiceImpl implements HeartbeatService {
             .limit(20)
         : [];
 
+      // Load project context if task belongs to a project
+      let projektContext: AdapterContext['projektContext'] | undefined;
+      if (taskFull.projektId) {
+        const proj = await db.select({ name: projekte.name, beschreibung: projekte.beschreibung, workDir: projekte.workDir })
+          .from(projekte)
+          .where(eq(projekte.id, taskFull.projektId))
+          .limit(1)
+          .then((rows: any[]) => rows[0]);
+        if (proj) {
+          projektContext = { name: proj.name, beschreibung: proj.beschreibung, workDir: proj.workDir };
+        }
+      }
+
       const adapterContext: AdapterContext = {
         task: adapterTask,
         previousComments: comments.map((c: any) => ({
@@ -806,6 +819,7 @@ class HeartbeatServiceImpl implements HeartbeatService {
           ziel: unternehmenData?.ziel || null,
           goals: activeGoals.length > 0 ? activeGoals : undefined,
         },
+        ...(projektContext ? { projektContext } : {}),
         agentContext: {
           name: expert?.name || 'Unknown Agent',
           rolle: expert?.rolle || 'Agent',
