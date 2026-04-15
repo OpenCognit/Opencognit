@@ -137,6 +137,7 @@ export function ExpertModal({ expert, onClose, onSaved, isOpen = true }: { exper
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showPermissions, setShowPermissions] = useState(false);
   const [isOrchestrator, setIsOrchestrator] = useState(false);
+  const [extendedThinking, setExtendedThinking] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -190,6 +191,7 @@ export function ExpertModal({ expert, onClose, onSaved, isOpen = true }: { exper
           if (config.assignedSkills) setSelectedSkills(config.assignedSkills);
           if (config.baseUrl) setBaseUrl(config.baseUrl);
           if (config.isOrchestrator) setIsOrchestrator(true);
+          if (config.extendedThinking === false) setExtendedThinking(false);
         }
       } catch (e) {}
       
@@ -293,7 +295,8 @@ export function ExpertModal({ expert, onClose, onSaved, isOpen = true }: { exper
           autonomyLevel,
           assignedSkills: selectedSkills,
           baseUrl: baseUrl.trim() || undefined,
-          isOrchestrator
+          isOrchestrator,
+          ...(isOrchestrator && !extendedThinking ? { extendedThinking: false } : {}),
         }),
         isOrchestrator,
         reportsTo: reportsTo || null,
@@ -509,6 +512,48 @@ export function ExpertModal({ expert, onClose, onSaved, isOpen = true }: { exper
                   }} />
                 </div>
               </div>
+
+              {/* EXTENDED THINKING TOGGLE — only for CEO Engine */}
+              {isOrchestrator && (
+                <div
+                  style={{
+                    background: extendedThinking ? 'linear-gradient(135deg, rgba(79, 70, 229, 0.08), rgba(139, 92, 246, 0.08))' : 'rgba(255,255,255,0.02)',
+                    border: `1px solid ${extendedThinking ? 'rgba(139, 92, 246, 0.4)' : 'rgba(255,255,255,0.06)'}`,
+                    borderRadius: '14px', padding: '0.875rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    transition: 'all 0.3s ease', cursor: 'pointer',
+                  }}
+                  onClick={() => setExtendedThinking(!extendedThinking)}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{
+                      width: '34px', height: '34px', borderRadius: '10px',
+                      background: extendedThinking ? 'rgba(139, 92, 246, 0.2)' : 'rgba(255,255,255,0.05)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: extendedThinking ? '#a78bfa' : '#52525b', fontSize: 18
+                    }}>
+                      🧠
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: extendedThinking ? '#c4b5fd' : '#71717a' }}>
+                        {de ? 'Extended Thinking (Claude)' : 'Extended Thinking (Claude)'}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--color-text-tertiary)' }}>
+                        {de ? 'Tieferes Reasoning — höhere Kosten' : 'Deeper reasoning — higher cost'}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{
+                    width: '44px', height: '24px', borderRadius: '12px',
+                    background: extendedThinking ? '#7c3aed' : 'rgba(255,255,255,0.1)',
+                    padding: '2px', position: 'relative', transition: 'background 0.3s', flexShrink: 0
+                  }}>
+                    <div style={{
+                      width: '20px', height: '20px', borderRadius: '10px', background: '#fff',
+                      position: 'absolute', left: extendedThinking ? '22px' : '2px', transition: 'left 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)'
+                    }} />
+                  </div>
+                </div>
+              )}
 
               {/* Skill Library Selector */}
               {skillsLibrary.length > 0 && (

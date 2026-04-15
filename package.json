@@ -5,9 +5,9 @@
   "license": "AGPL-3.0",
   "type": "module",
   "scripts": {
-    "start": "NODE_ENV=production node_modules/.bin/tsx --env-file=.env server/index.ts",
+    "start": "NODE_ENV=production node --env-file=.env node_modules/.bin/tsx server/index.ts",
     "dev": "concurrently -n server,ui -c blue,green \"npm run dev:server\" \"npm run dev:ui\"",
-    "dev:server": "tsx --env-file=.env watch server/index.ts",
+    "dev:server": "node --env-file=.env node_modules/.bin/tsx watch server/index.ts",
     "dev:ui": "vite",
     "build": "vite build",
     "preview": "vite preview",

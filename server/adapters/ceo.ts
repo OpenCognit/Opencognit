@@ -425,8 +425,10 @@ Regeln:
           : 'claude-sonnet-4-6';
 
         // Extended Thinking: enabled on Sonnet 4.5+ and Opus — CEO "thinks" before acting
-        const supportsThinking = model.includes('sonnet-4') || model.includes('opus-4') || model.includes('claude-4');
-        const thinkingBudget = 8000; // tokens reserved for internal reasoning
+        // Can be disabled via verbindungsConfig.extendedThinking = false
+        const thinkingDisabled = config.extendedThinking === false;
+        const supportsThinking = !thinkingDisabled && (model.includes('sonnet-4') || model.includes('opus-4') || model.includes('claude-4'));
+        const thinkingBudget = typeof config.thinkingBudget === 'number' ? config.thinkingBudget : 8000;
 
         const requestBody: any = {
           model,
