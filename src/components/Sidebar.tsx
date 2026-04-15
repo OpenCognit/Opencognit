@@ -51,6 +51,7 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
     // ── Tägliche Nutzung ──
     { section: de ? 'Betrieb' : 'Operations', items: [
       { to: '/',             icon: LayoutDashboard, label: t.nav.dashboard },
+      { to: '/experts',      icon: Users,           label: t.nav.experten },
       { to: '/approvals',    icon: ShieldCheck,     label: t.nav.genehmigungen },
       { to: '/costs',        icon: Wallet,          label: t.nav.kosten },
       { to: '/org-chart',    icon: GitBranch,       label: t.nav.organigramm },
