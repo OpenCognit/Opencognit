@@ -1,0 +1,12 @@
+{
+  "name": "opencognit-ollama-extended",
+  "displayName": "Ollama Extended",
+  "version": "1.0.0",
+  "description": "Erweiterte Ollama-Integration mit Modell-Management und Performance-Optimierungen",
+  "author": "OpenCognit Team",
+  "license": "MIT",
+  "main": "index.js",
+  "engines": {
+    "opencognit": ">=0.1.0"
+  }
+}

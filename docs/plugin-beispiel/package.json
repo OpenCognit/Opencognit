@@ -1,0 +1,12 @@
+{
+  "name": "opencognit-example-plugin",
+  "displayName": "Beispiel Plugin",
+  "version": "1.0.0",
+  "description": "Ein Beispiel-Plugin für OpenCognit",
+  "author": "OpenCognit Team",
+  "license": "MIT",
+  "main": "index.js",
+  "engines": {
+    "opencognit": ">=0.1.0"
+  }
+}

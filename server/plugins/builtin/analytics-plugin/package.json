@@ -1,0 +1,12 @@
+{
+  "name": "opencognit-analytics",
+  "displayName": "Analytics Plugin",
+  "version": "1.0.0",
+  "description": "Sammelt und visualisiert Nutzungsdaten von OpenCognit",
+  "author": "OpenCognit Team",
+  "license": "MIT",
+  "main": "index.js",
+  "engines": {
+    "opencognit": ">=0.1.0"
+  }
+}

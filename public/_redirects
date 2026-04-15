@@ -1,0 +1,5 @@
+# SPA Routing: alle Nicht-Asset-Requests auf index.html weiterleiten
+# Wird von Netlify und Cloudflare Pages automatisch verarbeitet.
+# Für nginx: try_files $uri $uri/ /index.html;
+
+/*  /index.html  200

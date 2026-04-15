@@ -1,0 +1,23 @@
+services:
+  opencognit:
+    build: .
+    image: opencognit:latest
+    ports:
+      - "3201:3201"
+    volumes:
+      # Persist database + encryption key across restarts
+      - ./data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3201
+      # Optional: set API keys here or configure them in the Settings UI
+      # - ANTHROPIC_API_KEY=sk-ant-...
+      # - OPENROUTER_API_KEY=sk-or-...
+      # - OPENAI_API_KEY=sk-...
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3201/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s

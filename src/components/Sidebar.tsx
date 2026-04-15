@@ -1,0 +1,463 @@
+import { useMemo, useState } from 'react';
+import { NavLink } from 'react-router-dom';
+import {
+  LayoutDashboard, Building2, Users, ListTodo,
+  GitBranch, Wallet, ShieldCheck, Activity,
+  Settings, LogOut, Search, Globe, Brain,
+  ChevronLeft, ChevronRight, ChevronDown, Clock, FolderOpen, BookOpen, MessagesSquare, Target, Trophy, Zap, BarChart3, Package
+} from 'lucide-react';
+import { useI18n } from '../i18n';
+import { useCompany } from '../hooks/useCompany';
+import { useAuth } from '../hooks/useAuth';
+import { useApprovalCount } from '../hooks/useApprovalCount';
+
+export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boolean; onToggle: () => void; onSearchClick: () => void }) {
+  useCompany();
+  const { benutzer, abmelden } = useAuth();
+  const { t, language, setLanguage } = useI18n();
+  const de = language === 'de';
+  const approvalCount = useApprovalCount();
+  const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+
+  // Collapsible sections state (persisted in localStorage)
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('sidebar-collapsed-sections');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch { return new Set(); }
+  });
+
+  const toggleSection = (section: string) => {
+    setCollapsedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(section)) next.delete(section);
+      else next.add(section);
+      localStorage.setItem('sidebar-collapsed-sections', JSON.stringify([...next]));
+      return next;
+    });
+  };
+
+  // Generate random particle positions once
+  const particles = useMemo(() => Array.from({ length: 15 }, () => ({
+    top: `${Math.random() * 100}%`,
+    left: `${Math.random() * 100}%`,
+    size: 1.5 + Math.random() * 2.5,
+    delay: Math.random() * 4,
+    duration: 6 + Math.random() * 6,
+  })), []);
+
+  const navItems = [
+    { section: t.sections.uebersicht, items: [
+      { to: '/', icon: LayoutDashboard, label: t.nav.dashboard },
+      { to: '/focus', icon: Zap, label: t.nav.focusMode },
+      { to: '/companies', icon: Building2, label: t.nav.unternehmen },
+    ]},
+    { section: t.sections.verwaltung, items: [
+      { to: '/experts', icon: Users, label: t.nav.experten },
+      { to: '/intelligence', icon: Brain, label: t.nav.intelligence },
+      { to: '/goals', icon: Target, label: t.nav.ziele },
+      { to: '/projects', icon: FolderOpen, label: t.nav.projekte },
+      { to: '/tasks', icon: ListTodo, label: t.nav.aufgaben },
+      { to: '/routines', icon: Clock, label: t.nav.routinen },
+      { to: '/meetings', icon: MessagesSquare, label: t.nav.meetings },
+      { to: '/skill-library', icon: BookOpen, label: t.nav.skillLibrary },
+      { to: '/org-chart', icon: GitBranch, label: t.nav.organigramm },
+    ]},
+    { section: 'CognitHub', items: [
+      { to: '/clipmart', icon: Package, label: 'CognitHub' },
+    ]},
+    { section: t.sections.steuerung, items: [
+      { to: '/costs', icon: Wallet, label: t.nav.kosten },
+      { to: '/approvals', icon: ShieldCheck, label: t.nav.genehmigungen },
+      { to: '/activity', icon: Activity, label: t.nav.aktivitaet },
+      { to: '/performance', icon: Trophy, label: 'Performance' },
+      { to: '/metrics', icon: BarChart3, label: 'Metriken' },
+      { to: '/weekly-report', icon: BarChart3, label: t.nav.weeklyReport },
+    ]},
+  ];
+
+  return (
+    <aside style={{
+      width: collapsed ? '80px' : '280px',
+      background: 'transparent',
+      borderRight: '1px solid rgba(255, 255, 255, 0.06)',
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100vh',
+      position: 'fixed',
+      left: 0,
+      top: 0,
+      zIndex: 100,
+      overflow: 'hidden',
+      transition: 'width 0.3s ease',
+    }}>
+      {/* Background Particles */}
+      <div style={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none', overflow: 'hidden' }}>
+        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.5 }} xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <pattern id="sidebar-dash-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(56, 189, 248, 0.06)" strokeWidth="0.5" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#sidebar-dash-grid)" />
+        </svg>
+        {particles.map((p, i) => (
+          <div key={i} style={{
+            position: 'absolute',
+            width: `${p.size}px`,
+            height: `${p.size}px`,
+            background: 'rgba(35, 205, 202, 0.3)',
+            borderRadius: '50%',
+            top: p.top,
+            left: p.left,
+            animation: `sidebar-float ${p.duration}s ease-in-out infinite`,
+            animationDelay: `${p.delay}s`,
+          }} />
+        ))}
+      </div>
+
+      {/* Logo */}
+      <div style={{
+        padding: '1.5rem 1rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '0.75rem',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+        position: 'relative',
+        zIndex: 1,
+      }}>
+        {!collapsed && (
+          <>
+            <span style={{
+              fontSize: '1.25rem',
+              fontWeight: 700,
+              color: '#ffffff',
+              letterSpacing: '-0.02em',
+              background: 'linear-gradient(to right, #23CDCB, #ffffff)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+              whiteSpace: 'nowrap',
+            }}>
+              {t.app.name}
+            </span>
+            <img src="/opencognit.png" alt="OpenCognit" style={{ width: 56, height: 56, objectFit: 'contain' }} />
+          </>
+        )}
+        {collapsed && (
+          <img src="/opencognit.png" alt="OpenCognit" style={{ width: 48, height: 48, objectFit: 'contain' }} />
+        )}
+        <button
+          onClick={onToggle}
+          style={{
+            position: 'absolute',
+            top: '1rem',
+            right: '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '28px',
+            height: '28px',
+            borderRadius: '8px',
+            background: 'rgba(35, 205, 202, 0.1)',
+            border: '1px solid rgba(35, 205, 202, 0.2)',
+            color: '#23CDCB',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(35, 205, 202, 0.2)';
+            e.currentTarget.style.borderColor = 'rgba(35, 205, 202, 0.4)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(35, 205, 202, 0.1)';
+            e.currentTarget.style.borderColor = 'rgba(35, 205, 202, 0.2)';
+          }}
+        >
+          {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        </button>
+      </div>
+
+      {/* Navigation */}
+      <nav style={{ flex: 1, padding: '1rem', overflowY: 'auto', position: 'relative', zIndex: 1 }}>
+        {navItems.map((section) => {
+          const isCollapsed = !collapsed && collapsedSections.has(section.section);
+          return (
+          <div key={section.section} style={{ marginBottom: '1.25rem' }}>
+            {!collapsed && (
+              <button
+                onClick={() => toggleSection(section.section)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  width: '100%',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '0 0.5rem',
+                  marginBottom: '0.5rem',
+                  gap: '0.25rem',
+                }}
+              >
+                <span style={{
+                  fontSize: '0.6875rem',
+                  fontWeight: 600,
+                  color: '#71717a',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                }}>{section.section}</span>
+                <ChevronDown
+                  size={12}
+                  style={{
+                    color: '#71717a',
+                    flexShrink: 0,
+                    transition: 'transform 0.2s ease',
+                    transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                  }}
+                />
+              </button>
+            )}
+            <div style={{
+              overflow: 'hidden',
+              maxHeight: isCollapsed ? '0px' : '1000px',
+              transition: 'max-height 0.25s ease',
+            }}>
+            {section.items.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
+                end={item.to === '/'}
+                title={collapsed ? item.label : undefined}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  padding: collapsed ? '0.625rem' : '0.625rem 0.75rem',
+                  marginBottom: '0.25rem',
+                  borderRadius: '10px',
+                  textDecoration: 'none',
+                  transition: 'all 0.2s',
+                  backdropFilter: 'blur(10px)',
+                  justifyContent: collapsed ? 'center' : 'flex-start',
+                  position: 'relative',
+                }}
+              >
+                <div style={{ position: 'relative', flexShrink: 0 }}>
+                  <item.icon size={18} style={{ color: 'inherit' }} />
+                  {/* Collapsed mode: dot above icon */}
+                  {item.to === '/approvals' && approvalCount > 0 && collapsed && (
+                    <span style={{
+                      position: 'absolute',
+                      top: -4,
+                      right: -4,
+                      width: 8,
+                      height: 8,
+                      background: '#ef4444',
+                      borderRadius: '50%',
+                      border: '1.5px solid rgba(10,10,20,0.9)',
+                      animation: 'approval-pulse 2s infinite',
+                    }} />
+                  )}
+                </div>
+                {!collapsed && <span style={{ fontSize: '0.8125rem', whiteSpace: 'nowrap', flex: 1 }}>{item.label}</span>}
+                {/* Expanded mode: badge with count */}
+                {item.to === '/approvals' && approvalCount > 0 && !collapsed && (
+                  <span style={{
+                    minWidth: 20,
+                    height: 20,
+                    padding: '0 5px',
+                    background: '#ef4444',
+                    color: '#fff',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    borderRadius: 10,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    lineHeight: 1,
+                    animation: 'approval-pulse 2s infinite',
+                    flexShrink: 0,
+                  }}>
+                    {approvalCount > 99 ? '99+' : approvalCount}
+                  </span>
+                )}
+              </NavLink>
+            ))}
+            </div>
+          </div>
+          );
+        })}
+      </nav>
+
+      {/* Bottom Section */}
+      <div style={{
+        padding: collapsed ? '0.75rem' : '1rem',
+        borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.5rem',
+        position: 'relative',
+        zIndex: 1,
+      }}>
+        {/* Language Switch */}
+        <button
+          onClick={() => setLanguage(language === 'de' ? 'en' : 'de')}
+          title={collapsed ? (language === 'de' ? 'Deutsch' : 'English') : undefined}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            padding: collapsed ? '0.625rem' : '0.625rem 0.75rem',
+            background: 'rgba(255, 255, 255, 0.02)',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+            borderRadius: '10px',
+            color: '#a1a1aa',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            width: collapsed ? '40px' : '100%',
+            justifyContent: collapsed ? 'center' : 'space-between',
+            backdropFilter: 'blur(10px)',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
+            e.currentTarget.style.borderColor = 'rgba(35, 205, 202, 0.2)';
+            e.currentTarget.style.color = '#23CDCB';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)';
+            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.06)';
+            e.currentTarget.style.color = '#a1a1aa';
+          }}
+        >
+          <Globe size={18} />
+          {!collapsed && (
+            <>
+              <span style={{ flex: 1, fontSize: '0.8125rem', fontWeight: 500 }}>{language === 'de' ? 'Deutsch' : 'English'}</span>
+              <span style={{
+                fontSize: '10px',
+                padding: '2px 6px',
+                borderRadius: '6px',
+                background: 'rgba(35, 205, 202, 0.1)',
+                color: '#23CDCB',
+                border: '1px solid rgba(35, 205, 202, 0.2)',
+              }}>
+                {language === 'de' ? 'EN' : 'DE'}
+              </span>
+            </>
+          )}
+        </button>
+
+        {/* Settings */}
+        <NavLink
+          to="/settings"
+          title={collapsed ? t.nav.einstellungen : undefined}
+          style={({ isActive }) => ({
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            padding: collapsed ? '0.625rem' : '0.625rem 0.75rem',
+            borderRadius: '10px',
+            textDecoration: 'none',
+            transition: 'all 0.2s',
+            background: isActive
+              ? 'rgba(35, 205, 202, 0.12)'
+              : 'rgba(255, 255, 255, 0.02)',
+            border: isActive
+              ? '1px solid rgba(35, 205, 202, 0.3)'
+              : '1px solid rgba(255, 255, 255, 0.06)',
+            color: isActive ? '#23CDCB' : '#a1a1aa',
+            fontWeight: isActive ? 600 : 500,
+            backdropFilter: 'blur(10px)',
+            justifyContent: collapsed ? 'center' : 'flex-start',
+          })}
+        >
+          <Settings size={18} />
+          {!collapsed && <span style={{ fontSize: '0.8125rem', fontWeight: 500 }}>{t.nav.einstellungen}</span>}
+        </NavLink>
+
+        {/* User Profile */}
+        {benutzer && (
+          <div
+            title={collapsed ? benutzer.name : undefined}
+            style={{
+              display: collapsed ? 'none' : 'flex',
+              alignItems: 'center',
+              gap: '0.625rem',
+              padding: '0.625rem 0.75rem',
+              background: 'rgba(35, 205, 202, 0.06)',
+              border: '1px solid rgba(35, 205, 202, 0.2)',
+              borderRadius: '12px',
+              marginTop: '0.25rem',
+              backdropFilter: 'blur(10px)',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(35, 205, 202, 0.1)';
+              e.currentTarget.style.borderColor = 'rgba(35, 205, 202, 0.3)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(35, 205, 202, 0.06)';
+              e.currentTarget.style.borderColor = 'rgba(35, 205, 202, 0.2)';
+            }}
+          >
+            <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '0.6875rem',
+              fontWeight: 700,
+              background: 'rgba(35, 205, 202, 0.15)',
+              border: '1px solid rgba(35, 205, 202, 0.3)',
+              color: '#23CDCB',
+              flexShrink: 0,
+            }}>
+              {benutzer.name.slice(0, 2).toUpperCase()}
+            </div>
+            <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {benutzer.name}
+              </div>
+              <div style={{ fontSize: '0.625rem', color: '#71717a', fontWeight: 500 }}>
+                {benutzer.rolle === 'admin' ? 'Administrator' : 'Mitglied'}
+              </div>
+            </div>
+            <button
+              onClick={abmelden}
+              title="Abmelden"
+              style={{
+                padding: '0.375rem',
+                background: 'transparent',
+                border: 'none',
+                borderRadius: '6px',
+                color: '#71717a',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s',
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                e.currentTarget.style.color = '#ef4444';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = '#71717a';
+              }}
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
+        )}
+      </div>
+
+    </aside>
+  );
+}

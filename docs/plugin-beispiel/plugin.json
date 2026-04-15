@@ -1,0 +1,36 @@
+{
+  "icon": "zap",
+  "categories": ["utilities", "example"],
+  "isPremium": false,
+  "settings": [
+    {
+      "id": "enableNotifications",
+      "type": "boolean",
+      "label": "Benachrichtigungen aktivieren",
+      "description": "Benachrichtigungen für neue Ereignisse anzeigen",
+      "default": true
+    },
+    {
+      "id": "notificationSound",
+      "type": "string",
+      "label": "Benachrichtigungston",
+      "description": "Sound für Benachrichtigungen",
+      "default": "ping",
+      "options": [
+        {"label": "Ping", "value": "ping"},
+        {"label": "Ding", "value": "ding"},
+        {"label": "Chime", "value": "chime"},
+        {"label": "None", "value": "none"}
+      ]
+    },
+    {
+      "id": "refreshInterval",
+      "type": "number",
+      "label": "Aktualisierungsintervall (Sekunden)",
+      "description": "Intervall für die Aktualisierung der Daten",
+      "default": 60,
+      "min": 10,
+      "max": 3600
+    }
+  ]
+}

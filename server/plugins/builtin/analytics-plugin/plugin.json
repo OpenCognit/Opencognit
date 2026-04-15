@@ -1,0 +1,23 @@
+{
+  "icon": "bar-chart",
+  "categories": ["analytics", "dashboard"],
+  "isPremium": false,
+  "settings": [
+    {
+      "id": "trackTokenUsage",
+      "type": "boolean",
+      "label": "Token-Nutzung verfolgen",
+      "description": "Verfolge die Nutzung von Token pro Modell und Agent",
+      "default": true
+    },
+    {
+      "id": "retentionDays",
+      "type": "number",
+      "label": "Aufbewahrungstage",
+      "description": "Anzahl der Tage, für die Analysedaten aufbewahrt werden",
+      "default": 30,
+      "min": 1,
+      "max": 365
+    }
+  ]
+}

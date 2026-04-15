@@ -1,0 +1,36 @@
+{
+  "name": "@opencognit/cli",
+  "version": "0.9.0",
+  "description": "Zero-config launcher for OpenCognit — autonomous agent platform",
+  "type": "module",
+  "main": "./index.js",
+  "bin": {
+    "opencognit": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "README.md"
+  ],
+  "scripts": {
+    "start": "node index.js",
+    "build:ts": "tsc -p tsconfig.json",
+    "dev:ts": "node --loader ts-node/esm bin/opencognit.ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": ["ai", "agents", "autonomous", "opencognit", "llm", "cli"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OpenCognit/Opencognit.git"
+  }
+}

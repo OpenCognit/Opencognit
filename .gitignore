@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+
+# Build artifacts
+dist/
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+
+# Database & data
+*.db
+*.sqlite
+data/
+
+# Logs
+*.log
+*.txt
+server_logs.txt
+server_out.txt
+test_out.txt
+ui.log
+server.log
+
+# TypeScript build info
+tsconfig.tsbuildinfo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Claude AI context (internal dev file)
+.claude/
+
+# Internal dev / scratch files
+scratch/
+strategy_plan.md
+design_notes_hyperchain.md
+STRATEGIE_HOMEPAGE_BLOCKCHAIN.md
+CLAUDE.md
+TODO.md
+scripts/test-*.ts
+scripts/import-*.ts
+
+# DB WAL files
+*.db-shm
+*.db-wal
+
+# Root-level DB (if present)
+opencognit.db
+
+# Temp files
+90
+
+# Agent-created deployment configs (belong in project dirs, not here)
+deployments/
+
+# Internal QA / release docs
+docs/qa/
+docs/qa-powerchain/
