@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, Building2, Users, ListTodo,
-  GitBranch, Wallet, ShieldCheck, Activity,
-  Settings, LogOut, Search, Globe, Brain,
-  ChevronLeft, ChevronRight, ChevronDown, Clock, FolderOpen, BookOpen, MessagesSquare, Target, Trophy, Zap, BarChart3, Package
+  LayoutDashboard, Users, ListTodo,
+  Wallet, ShieldCheck, Activity,
+  Settings, LogOut, Globe, Brain,
+  ChevronLeft, ChevronRight, ChevronDown, Clock, FolderOpen, MessagesSquare, Target, Zap, BarChart3, Package,
 } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { useCompany } from '../hooks/useCompany';
@@ -69,13 +69,7 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
       { to: '/war-room',     icon: Zap,            label: t.nav.warRoom },
       { to: '/costs',        icon: Wallet,         label: t.nav.kosten },
       { to: '/activity',     icon: Activity,       label: t.nav.aktivitaet },
-      { to: '/performance',  icon: Trophy,         label: t.nav.performance },
-      { to: '/metrics',      icon: BarChart3,      label: t.nav.metrics },
       { to: '/weekly-report',icon: BarChart3,      label: t.nav.weeklyReport },
-      { to: '/skill-library',icon: BookOpen,       label: t.nav.skillLibrary },
-      { to: '/org-chart',    icon: GitBranch,      label: t.nav.organigramm },
-      { to: '/focus',        icon: Zap,            label: t.nav.focusMode },
-      { to: '/companies',    icon: Building2,      label: t.nav.unternehmen },
       { to: '/clipmart',     icon: Package,        label: 'CognitHub' },
     ]},
   ];
