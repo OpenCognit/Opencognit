@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Fragment as Frag } from 'react';
 import {
   Sparkles, FolderOpen, ChevronRight, ChevronLeft,
   Loader2, CheckCircle2, AlertCircle, Bot, Folder,
@@ -268,10 +268,10 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
           {/* Step indicator */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginTop: '1rem' }}>
             {STEPS.map((label, i) => (
-              <>
-                <StepDot key={i} step={i + 1} current={step} label={label} />
-                {i < STEPS.length - 1 && <StepLine key={`line-${i}`} done={step > i + 1} />}
-              </>
+              <Frag key={i}>
+                <StepDot step={i + 1} current={step} label={label} />
+                {i < STEPS.length - 1 && <StepLine done={step > i + 1} />}
+              </Frag>
             ))}
           </div>
         </div>
