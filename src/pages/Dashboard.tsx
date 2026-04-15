@@ -2124,76 +2124,10 @@ export function Dashboard() {
         }}
       />
 
-      {/* ── Main: Team + Activity ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.1fr) minmax(0,0.9fr)', gap: '1rem' }}>
+      {/* ── Activity + Task Stats ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.2fr) minmax(0,0.8fr)', gap: '1rem' }}>
 
-        {/* Team */}
-        <Card style={{ padding: '1.5rem' }}>
-          <SectionHeader
-            title={lang === 'de' ? 'Team' : 'Team'}
-            to="/experts"
-            linkLabel={lang === 'de' ? 'Alle anzeigen' : 'View all'}
-          />
-          {topExperten.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: '#475569' }}>
-              <Users size={32} style={{ opacity: 0.2, marginBottom: '0.75rem' }} />
-              <p style={{ fontSize: '0.875rem', margin: 0 }}>
-                {lang === 'de' ? 'Noch keine Agenten' : 'No agents yet'}
-              </p>
-              <button onClick={() => navigate('/experts')} style={{
-                marginTop: '1rem', padding: '0.5rem 1rem', borderRadius: '10px',
-                background: 'rgba(35,205,202,0.1)', border: '1px solid rgba(35,205,202,0.2)',
-                color: '#23CDCB', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600,
-              }}>
-                {lang === 'de' ? 'Ersten Agenten erstellen' : 'Create first agent'}
-              </button>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              {topExperten.map(expert => (
-                <AgentRow key={expert.id} expert={expert} lang={lang} onChat={setChatExpert} onClick={setEditExpert} />
-              ))}
-            </div>
-          )}
-
-          {/* Velocity chart */}
-          {aufgaben.gesamt > 0 && (
-            <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-              <VelocityChart completedPerDay={aufgaben.completedPerDay ?? []} lang={lang} />
-            </div>
-          )}
-
-          {/* Task breakdown */}
-          {aufgaben.gesamt > 0 && (
-            <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569', marginBottom: '0.625rem', letterSpacing: '0.05em' }}>
-                {lang === 'de' ? 'AUFGABEN-STATUS' : 'TASK STATUS'}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                {[
-                  { label: lang === 'de' ? 'Aktiv' : 'Active',      value: aufgaben.inBearbeitung,                  color: '#3b82f6' },
-                  { label: lang === 'de' ? 'Offen' : 'Open',        value: aufgaben.offen - aufgaben.inBearbeitung, color: '#94a3b8' },
-                  { label: lang === 'de' ? 'Blockiert' : 'Blocked', value: aufgaben.blockiert,                      color: '#ef4444' },
-                  { label: lang === 'de' ? 'Erledigt' : 'Done',     value: aufgaben.erledigt,                       color: '#22c55e' },
-                ].filter(s => s.value > 0).map(s => (
-                  <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                    <span style={{ fontSize: '0.6875rem', color: '#475569', width: 56, flexShrink: 0 }}>{s.label}</span>
-                    <div style={{ flex: 1, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-                      <div style={{
-                        height: '100%', borderRadius: 2, background: s.color,
-                        width: `${Math.round((s.value / aufgaben.gesamt) * 100)}%`,
-                        transition: 'width 0.5s ease',
-                      }} />
-                    </div>
-                    <span style={{ fontSize: '0.6875rem', color: '#475569', width: 18, textAlign: 'right', flexShrink: 0 }}>{s.value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </Card>
-
-        {/* Activity */}
+        {/* Recent Activity */}
         <Card style={{ padding: '1.5rem' }}>
           <SectionHeader
             title={t.dashboard.letzteAktivitaet}
@@ -2218,6 +2152,72 @@ export function Dashboard() {
                 <ActivityItem key={a.id} item={a} lang={lang} />
               ))}
             </div>
+          )}
+        </Card>
+
+        {/* Task Stats: Velocity + Breakdown */}
+        <Card style={{ padding: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+            <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#f8fafc', margin: 0 }}>
+              {lang === 'de' ? 'Aufgaben' : 'Tasks'}
+            </h2>
+            <Link to="/tasks" style={{
+              display: 'flex', alignItems: 'center', gap: '0.375rem',
+              fontSize: '0.8125rem', color: '#64748b', textDecoration: 'none',
+              padding: '0.375rem 0.75rem', borderRadius: '8px',
+              border: '1px solid rgba(255,255,255,0.07)',
+              transition: 'color 0.15s, border-color 0.15s',
+            }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#23CDCB'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(35,205,202,0.3)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#64748b'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.07)'; }}
+            >
+              {lang === 'de' ? 'Alle anzeigen' : 'View all'} <ArrowRight size={12} />
+            </Link>
+          </div>
+
+          {aufgaben.gesamt === 0 ? (
+            <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: '#475569' }}>
+              <ListTodo size={32} style={{ opacity: 0.2, marginBottom: '0.75rem' }} />
+              <p style={{ fontSize: '0.875rem', margin: 0 }}>
+                {lang === 'de' ? 'Noch keine Aufgaben' : 'No tasks yet'}
+              </p>
+              <button onClick={() => navigate('/tasks')} style={{
+                marginTop: '1rem', padding: '0.5rem 1rem', borderRadius: '10px',
+                background: 'rgba(35,205,202,0.1)', border: '1px solid rgba(35,205,202,0.2)',
+                color: '#23CDCB', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600,
+              }}>
+                {lang === 'de' ? 'Erste Aufgabe anlegen' : 'Create first task'}
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Status breakdown */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.25rem' }}>
+                {[
+                  { label: lang === 'de' ? 'Aktiv' : 'Active',      value: aufgaben.inBearbeitung,                  color: '#3b82f6' },
+                  { label: lang === 'de' ? 'Offen' : 'Open',        value: aufgaben.offen - aufgaben.inBearbeitung, color: '#94a3b8' },
+                  { label: lang === 'de' ? 'Blockiert' : 'Blocked', value: aufgaben.blockiert,                      color: '#ef4444' },
+                  { label: lang === 'de' ? 'Erledigt' : 'Done',     value: aufgaben.erledigt,                       color: '#22c55e' },
+                ].filter(s => s.value > 0).map(s => (
+                  <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                    <span style={{ fontSize: '0.6875rem', color: '#475569', width: 56, flexShrink: 0 }}>{s.label}</span>
+                    <div style={{ flex: 1, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%', borderRadius: 2, background: s.color,
+                        width: `${Math.round((s.value / aufgaben.gesamt) * 100)}%`,
+                        transition: 'width 0.5s ease',
+                      }} />
+                    </div>
+                    <span style={{ fontSize: '0.6875rem', color: '#475569', width: 18, textAlign: 'right', flexShrink: 0 }}>{s.value}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Velocity chart */}
+              <div style={{ paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                <VelocityChart completedPerDay={aufgaben.completedPerDay ?? []} lang={lang} />
+              </div>
+            </>
           )}
         </Card>
       </div>
