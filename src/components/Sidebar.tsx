@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, ListTodo,
   Wallet, ShieldCheck, Activity,
   Settings, LogOut, Globe, Brain,
-  ChevronLeft, ChevronRight, ChevronDown, Clock, FolderOpen, MessagesSquare, Target, Zap, BarChart3, Package,
+  ChevronLeft, ChevronRight, ChevronDown, Clock, FolderOpen, MessagesSquare, Target, Zap, BarChart3, Package, GitBranch,
 } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { useCompany } from '../hooks/useCompany';
@@ -52,6 +52,7 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
     { section: de ? 'Betrieb' : 'Operations', items: [
       { to: '/',             icon: LayoutDashboard, label: t.nav.dashboard },
       { to: '/approvals',    icon: ShieldCheck,     label: t.nav.genehmigungen },
+      { to: '/org-chart',    icon: GitBranch,       label: t.nav.organigramm },
     ]},
     // ── Setup-Reihenfolge: was zuerst gemacht werden muss ──
     { section: de ? 'Einrichten' : 'Setup', items: [
