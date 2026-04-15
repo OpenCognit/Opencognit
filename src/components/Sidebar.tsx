@@ -70,9 +70,10 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
       { to: '/costs', icon: Wallet, label: t.nav.kosten },
       { to: '/approvals', icon: ShieldCheck, label: t.nav.genehmigungen },
       { to: '/activity', icon: Activity, label: t.nav.aktivitaet },
-      { to: '/performance', icon: Trophy, label: 'Performance' },
-      { to: '/metrics', icon: BarChart3, label: 'Metriken' },
+      { to: '/performance', icon: Trophy, label: t.nav.performance },
+      { to: '/metrics', icon: BarChart3, label: t.nav.metrics },
       { to: '/weekly-report', icon: BarChart3, label: t.nav.weeklyReport },
+      { to: '/war-room', icon: Zap, label: t.nav.warRoom },
     ]},
   ];
 

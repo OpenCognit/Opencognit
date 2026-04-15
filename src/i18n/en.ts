@@ -45,6 +45,8 @@ export const en = {
     focusMode: 'Focus Mode',
     warRoom: 'War Room',
     weeklyReport: 'Weekly Report',
+    performance: 'Performance',
+    metrics: 'Metrics',
   },
   sections: {
     uebersicht: 'Overview',
