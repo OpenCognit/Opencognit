@@ -52,6 +52,7 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
     { section: de ? 'Betrieb' : 'Operations', items: [
       { to: '/',             icon: LayoutDashboard, label: t.nav.dashboard },
       { to: '/approvals',    icon: ShieldCheck,     label: t.nav.genehmigungen },
+      { to: '/costs',        icon: Wallet,          label: t.nav.kosten },
       { to: '/org-chart',    icon: GitBranch,       label: t.nav.organigramm },
     ]},
     // ── Setup-Reihenfolge: was zuerst gemacht werden muss ──
@@ -68,7 +69,6 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
       { to: '/intelligence', icon: Brain,          label: t.nav.intelligence },
       { to: '/meetings',     icon: MessagesSquare, label: t.nav.meetings },
       { to: '/war-room',     icon: Zap,            label: t.nav.warRoom },
-      { to: '/costs',        icon: Wallet,         label: t.nav.kosten },
       { to: '/activity',     icon: Activity,       label: t.nav.aktivitaet },
       { to: '/weekly-report',icon: BarChart3,      label: t.nav.weeklyReport },
       { to: '/clipmart',     icon: Package,        label: 'CognitHub' },
