@@ -15,6 +15,7 @@ import { useApi } from '../hooks/useApi';
 import { apiDashboard, apiChannels, type DashboardData, type Experte as ExperteType } from '../api/client';
 import { ExpertChatDrawer } from '../components/ExpertChatDrawer';
 import { StandupPanel } from '../components/StandupPanel';
+import { SetupWizard } from '../components/SetupWizard';
 import { authFetch } from '../utils/api';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1736,6 +1737,11 @@ export function Dashboard() {
   const [chatExpert, setChatExpert] = useState<ExperteType | null>(null);
   const [editExpert, setEditExpert] = useState<ExperteType | null>(null);
   const [standupOpen, setStandupOpen] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
+  const [wizardDismissed, setWizardDismissed] = useState(() => !!localStorage.getItem('oc_wizard_dismissed'));
+
+  // Show wizard banner when no agents exist
+  const isFirstRun = !loading && data && (data.experten?.gesamt === 0);
 
   if (!aktivesUnternehmen) return null;
 
@@ -1769,6 +1775,77 @@ export function Dashboard() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+      {/* ── CEO Setup Wizard Modal ── */}
+      {showWizard && (
+        <SetupWizard
+          onClose={() => setShowWizard(false)}
+          onDone={() => { setShowWizard(false); setWizardDismissed(true); localStorage.setItem('oc_wizard_dismissed', '1'); reload(); }}
+        />
+      )}
+
+      {/* ── First-Run Banner ── */}
+      {isFirstRun && !wizardDismissed && (
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(35,205,202,0.08), rgba(79,70,229,0.08))',
+          border: '1px solid rgba(35,205,202,0.25)',
+          borderRadius: '16px', padding: '1.25rem 1.5rem',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem',
+          flexWrap: 'wrap',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(35,205,202,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Sparkles size={22} style={{ color: '#23CDCB' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#fff', marginBottom: 3 }}>
+                {lang === 'de' ? 'Lass den CEO dein Team einrichten' : 'Let the CEO set up your team'}
+              </div>
+              <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                {lang === 'de'
+                  ? 'Beschreibe dein Vorhaben — CEO erstellt Projekte, Ordner, Agenten und Tasks automatisch'
+                  : 'Describe your goal — CEO creates projects, folders, agents and tasks automatically'}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+            <button
+              onClick={() => { setWizardDismissed(true); localStorage.setItem('oc_wizard_dismissed', '1'); }}
+              style={{ padding: '0.5rem 0.875rem', borderRadius: 9, background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: '#64748b', fontSize: '0.8rem', cursor: 'pointer' }}
+            >
+              {lang === 'de' ? 'Später' : 'Later'}
+            </button>
+            <button
+              onClick={() => setShowWizard(true)}
+              style={{
+                padding: '0.5rem 1.25rem', borderRadius: 9,
+                background: 'rgba(35,205,202,0.9)', border: '1px solid rgba(35,205,202,0.4)',
+                color: '#000', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              <Sparkles size={14} /> {lang === 'de' ? 'CEO Setup starten' : 'Start CEO Setup'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── CEO Setup Button (always accessible) ── */}
+      {!isFirstRun && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => setShowWizard(true)}
+            style={{
+              padding: '0.4rem 0.875rem', borderRadius: 9,
+              background: 'rgba(35,205,202,0.08)', border: '1px solid rgba(35,205,202,0.2)',
+              color: '#23CDCB', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            <Sparkles size={12} /> {lang === 'de' ? 'CEO Setup' : 'CEO Setup'}
+          </button>
+        </div>
+      )}
 
       {/* ── Header ── */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>

@@ -4731,6 +4731,382 @@ app.get('/api/setup/status', authMiddleware, (_req, res) => {
   res.json({ isFirstRun: expertenCount === 0 || unternehmenCount === 0 });
 });
 
+// =============================================
+// CEO BOOTSTRAP — AI-Powered Company Setup
+// =============================================
+
+// POST /api/bootstrap/plan — CEO analyzes description → returns full company plan
+app.post('/api/bootstrap/plan', authMiddleware, async (req, res) => {
+  const { businessDescription, workDir, language = 'de', unternehmenId } = req.body;
+  if (!businessDescription?.trim()) return res.status(400).json({ error: 'businessDescription required' });
+  if (!workDir?.trim() || !path.isAbsolute(workDir.trim())) return res.status(400).json({ error: 'workDir muss ein absoluter Pfad sein' });
+
+  const dir = workDir.trim();
+  const opencognitRoot = path.resolve('.');
+  if (dir.startsWith(opencognitRoot)) return res.status(400).json({ error: 'workDir darf nicht im OpenCognit-Verzeichnis liegen' });
+
+  // Resolve API key (prefer configured, then env)
+  const orKeyRow = unternehmenId
+    ? db.select().from(einstellungen).where(and(eq(einstellungen.schluessel, 'openrouter_api_key'), eq(einstellungen.unternehmenId, unternehmenId))).get()
+    : null;
+  const orKeyGlobal = db.select().from(einstellungen).where(and(eq(einstellungen.schluessel, 'openrouter_api_key'), eq(einstellungen.unternehmenId, ''))).get();
+  const anthropicRow = unternehmenId
+    ? db.select().from(einstellungen).where(and(eq(einstellungen.schluessel, 'anthropic_api_key'), eq(einstellungen.unternehmenId, unternehmenId))).get()
+    : null;
+  const anthropicGlobal = db.select().from(einstellungen).where(and(eq(einstellungen.schluessel, 'anthropic_api_key'), eq(einstellungen.unternehmenId, ''))).get();
+
+  const orKey = orKeyRow?.wert ? decryptSetting('openrouter_api_key', orKeyRow.wert) : (orKeyGlobal?.wert ? decryptSetting('openrouter_api_key', orKeyGlobal.wert) : '');
+  const anthropicKey = anthropicRow?.wert ? decryptSetting('anthropic_api_key', anthropicRow.wert) : (anthropicGlobal?.wert ? decryptSetting('anthropic_api_key', anthropicGlobal.wert) : '');
+
+  const isDE = language === 'de';
+  const allSkills = await skillsService.getAllSkills();
+  const skillIds = allSkills.map((s: any) => s.id).join(', ');
+
+  const systemPrompt = isDE
+    ? `Du bist ein erfahrener Unternehmensberater und KI-Architekt. Du analysierst Geschäftsideen und erstellst vollständige KI-Team-Setups.
+Antworte NUR mit einem validen JSON-Objekt — kein Text davor oder danach.`
+    : `You are an experienced business consultant and AI architect. You analyze business ideas and create complete AI team setups.
+Respond ONLY with a valid JSON object — no text before or after.`;
+
+  const userPrompt = isDE
+    ? `Analysiere diese Geschäftsidee und erstelle ein vollständiges KI-Team-Setup:
+
+BESCHREIBUNG: "${businessDescription}"
+ARBEITSVERZEICHNIS: ${dir}
+VERFÜGBARE SKILLS: ${skillIds}
+
+Erstelle folgendes JSON-Objekt:
+{
+  "companyGoal": "Übergeordnetes Ziel (1 Satz)",
+  "projekte": [
+    {
+      "name": "Projektname",
+      "beschreibung": "Was dieses Projekt ist und welche Regeln für Agenten gelten — wird direkt als Projekt-Kontext an Agenten gegeben",
+      "prioritaet": "critical|high|medium|low",
+      "farbe": "#hex",
+      "subDir": "ordner-name",
+      "startFirst": true
+    }
+  ],
+  "agenten": [
+    {
+      "name": "Vorname",
+      "rolle": "Rollenbezeichnung",
+      "faehigkeiten": "Komma-getrennte Skills",
+      "systemPrompt": "Vollständiger, detaillierter Charakter-Prompt (min. 3 Sätze): Wer ist dieser Agent, was ist sein Fokus, wie arbeitet er?",
+      "soul": "# {{agent.name}} — Soul\\n\\n## Identität\\n[2-3 Sätze wer er/sie ist]\\n\\n## Mission\\n[Was dieser Agent erreichen will]\\n\\n## Arbeitsweise\\n[Wie er/sie vorgeht]\\n\\n## Persönlichkeit\\n[Tonalität, Kommunikationsstil]",
+      "skills": ["skill-id-aus-liste"],
+      "projektName": "Name des zugehörigen Projekts",
+      "zyklusIntervallSek": 300,
+      "istOrchestrator": false
+    }
+  ],
+  "tasks": [
+    {
+      "titel": "Task-Titel (konkret und umsetzbar)",
+      "beschreibung": "Detaillierte Beschreibung was getan werden soll",
+      "prioritaet": "critical|high|medium|low",
+      "projektName": "Projektname",
+      "agentName": "Agent der das übernimmt"
+    }
+  ],
+  "routinen": [
+    {
+      "name": "Routinenname",
+      "beschreibung": "Was diese Routine tut",
+      "cron": "0 9 * * 1-5",
+      "agentName": "Zugehöriger Agent"
+    }
+  ]
+}
+
+Regeln:
+- 2-4 Projekte, logisch nach Bereichen aufgeteilt
+- 3-6 Agenten, jeder klar einem Projekt zugeordnet
+- Pro Projekt 2-4 konkrete Start-Tasks
+- Pro Agent 1 Routine (sinnvolle Cron-Zeit)
+- startFirst: true nur beim wichtigsten Projekt
+- Skills NUR aus der verfügbaren Liste wählen
+- Soul-Template mit \\n für Zeilenumbrüche`
+    : `Analyze this business idea and create a complete AI team setup:
+
+DESCRIPTION: "${businessDescription}"
+WORKING DIRECTORY: ${dir}
+AVAILABLE SKILLS: ${skillIds}
+
+Create this JSON object:
+{
+  "companyGoal": "Overarching goal (1 sentence)",
+  "projekte": [
+    {
+      "name": "Project name",
+      "beschreibung": "What this project is and what rules agents should follow — passed directly as project context to agents",
+      "prioritaet": "critical|high|medium|low",
+      "farbe": "#hex",
+      "subDir": "folder-name",
+      "startFirst": true
+    }
+  ],
+  "agenten": [
+    {
+      "name": "First name",
+      "rolle": "Role title",
+      "faehigkeiten": "Comma-separated skills",
+      "systemPrompt": "Complete, detailed character prompt (min. 3 sentences): Who is this agent, what is their focus, how do they work?",
+      "soul": "# {{agent.name}} — Soul\\n\\n## Identity\\n[2-3 sentences who they are]\\n\\n## Mission\\n[What this agent wants to achieve]\\n\\n## Approach\\n[How they go about their work]\\n\\n## Personality\\n[Tone, communication style]",
+      "skills": ["skill-id-from-list"],
+      "projektName": "Name of the associated project",
+      "zyklusIntervallSek": 300,
+      "istOrchestrator": false
+    }
+  ],
+  "tasks": [
+    {
+      "titel": "Task title (concrete and actionable)",
+      "beschreibung": "Detailed description of what needs to be done",
+      "prioritaet": "critical|high|medium|low",
+      "projektName": "Project name",
+      "agentName": "Agent who handles this"
+    }
+  ],
+  "routinen": [
+    {
+      "name": "Routine name",
+      "beschreibung": "What this routine does",
+      "cron": "0 9 * * 1-5",
+      "agentName": "Associated agent"
+    }
+  ]
+}
+
+Rules:
+- 2-4 projects, logically divided by domain
+- 3-6 agents, each clearly assigned to a project
+- 2-4 concrete start tasks per project
+- 1 routine per agent (sensible cron time)
+- startFirst: true only for the most important project
+- Skills ONLY from the available list
+- Soul template with \\n for line breaks`;
+
+  try {
+    let responseText = '';
+    let endpoint = '', model = '', headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+    if (orKey) {
+      endpoint = 'https://openrouter.ai/api/v1/chat/completions';
+      model = 'openrouter/auto';
+      headers['Authorization'] = `Bearer ${orKey}`;
+      headers['HTTP-Referer'] = 'https://opencognit.dev';
+    } else if (anthropicKey) {
+      endpoint = 'https://api.anthropic.com/v1/messages';
+      model = 'claude-3-5-haiku-20241022';
+      headers['x-api-key'] = anthropicKey;
+      headers['anthropic-version'] = '2023-06-01';
+    } else {
+      // No API key — return keyword-based fallback plan
+      return res.json({ plan: buildFallbackPlan(businessDescription, dir, isDE, allSkills), source: 'default' });
+    }
+
+    let body: any;
+    if (endpoint.includes('anthropic.com')) {
+      body = { model, max_tokens: 4096, system: systemPrompt, messages: [{ role: 'user', content: userPrompt }] };
+    } else {
+      body = { model, max_tokens: 4096, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }] };
+    }
+
+    const r = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
+    const d = await r.json() as any;
+
+    if (endpoint.includes('anthropic.com')) {
+      responseText = d.content?.[0]?.text ?? '';
+    } else {
+      responseText = d.choices?.[0]?.message?.content ?? '';
+    }
+
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON in response');
+    const plan = JSON.parse(jsonMatch[0]);
+
+    res.json({ plan, source: 'ai' });
+  } catch (e: any) {
+    console.error('[Bootstrap] Plan generation failed:', e.message);
+    const allSkillsFallback = await skillsService.getAllSkills();
+    res.json({ plan: buildFallbackPlan(businessDescription, dir, isDE, allSkillsFallback), source: 'default', warning: e.message });
+  }
+});
+
+function buildFallbackPlan(description: string, workDir: string, isDE: boolean, allSkills: any[]) {
+  const firstSkill = allSkills[0]?.id || 'javascript';
+  return {
+    companyGoal: isDE ? `${description.slice(0, 80)} erfolgreich umsetzen` : `Successfully implement: ${description.slice(0, 80)}`,
+    projekte: [
+      { name: isDE ? 'Hauptprojekt' : 'Main Project', beschreibung: description, prioritaet: 'high', farbe: '#23CDCB', subDir: 'main', startFirst: true },
+    ],
+    agenten: [
+      { name: isDE ? 'Max' : 'Max', rolle: isDE ? 'Projektmanager' : 'Project Manager', faehigkeiten: isDE ? 'Planung, Koordination' : 'Planning, Coordination', systemPrompt: isDE ? `Du bist Max, der Projektmanager. Du koordinierst das Team, priorisierst Aufgaben und stellst sicher dass Deadlines eingehalten werden.` : `You are Max, the project manager. You coordinate the team, prioritize tasks and ensure deadlines are met.`, soul: isDE ? `# Max — Soul\n\n## Identität\nIch bin Max, der Projektmanager.\n\n## Mission\nDas Team zum Erfolg führen.\n\n## Arbeitsweise\nStrukturiert und lösungsorientiert.\n\n## Persönlichkeit\nDirekt, motivierend, professionell.` : `# Max — Soul\n\n## Identity\nI am Max, the project manager.\n\n## Mission\nLead the team to success.\n\n## Approach\nStructured and solution-oriented.\n\n## Personality\nDirect, motivating, professional.`, skills: [firstSkill], projektName: isDE ? 'Hauptprojekt' : 'Main Project', zyklusIntervallSek: 300, istOrchestrator: false },
+    ],
+    tasks: [
+      { titel: isDE ? 'Projektplan erstellen' : 'Create project plan', beschreibung: isDE ? 'Erstelle einen detaillierten Projektplan mit Meilensteinen.' : 'Create a detailed project plan with milestones.', prioritaet: 'high', projektName: isDE ? 'Hauptprojekt' : 'Main Project', agentName: 'Max' },
+    ],
+    routinen: [
+      { name: isDE ? 'Täglicher Status' : 'Daily Status', beschreibung: isDE ? 'Täglicher Statusbericht' : 'Daily status report', cron: '0 9 * * 1-5', agentName: 'Max' },
+    ],
+  };
+}
+
+// POST /api/bootstrap/execute — Creates everything from the plan
+app.post('/api/bootstrap/execute', authMiddleware, async (req, res) => {
+  const { plan, unternehmenId, workDir, startProjektName } = req.body;
+  if (!plan || !unternehmenId || !workDir) return res.status(400).json({ error: 'plan, unternehmenId, workDir required' });
+
+  const dir = workDir.trim();
+  const opencognitRoot = path.resolve('.');
+  if (dir.startsWith(opencognitRoot)) return res.status(400).json({ error: 'workDir darf nicht im OpenCognit-Verzeichnis liegen' });
+
+  const nowStr = now();
+  const created: any = { projekte: [], agenten: [], tasks: [], routinen: [], soulFiles: [] };
+  const projektMap: Record<string, string> = {}; // name → id
+  const agentMap: Record<string, string> = {};   // name → id
+
+  // 1. Update company goal
+  if (plan.companyGoal) {
+    db.update(unternehmen).set({ ziel: plan.companyGoal, workDir: dir, aktualisiertAm: nowStr }).where(eq(unternehmen.id, unternehmenId)).run();
+  }
+
+  // 2. Create projects + subfolders
+  for (const p of (plan.projekte || [])) {
+    const subDir = p.subDir ? path.join(dir, p.subDir) : path.join(dir, p.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''));
+    try { fs.mkdirSync(subDir, { recursive: true }); } catch { /* ignore */ }
+
+    const projektId = uuid();
+    db.insert(projekte).values({
+      id: projektId, unternehmenId,
+      name: p.name,
+      beschreibung: p.beschreibung || null,
+      prioritaet: (['critical','high','medium','low'].includes(p.prioritaet) ? p.prioritaet : 'medium') as any,
+      farbe: p.farbe || '#23CDCB',
+      workDir: subDir,
+      fortschritt: 0,
+      erstelltAm: nowStr, aktualisiertAm: nowStr,
+    }).run();
+    projektMap[p.name] = projektId;
+    created.projekte.push({ id: projektId, name: p.name, workDir: subDir });
+  }
+
+  // 3. Create agents + soul files
+  const allSkills = await skillsService.getAllSkills();
+  const skillIdSet = new Set(allSkills.map((s: any) => s.id));
+
+  for (const a of (plan.agenten || [])) {
+    const agentId = uuid();
+    const projektId = a.projektName ? projektMap[a.projektName] : null;
+    const agentWorkDir = projektId
+      ? (created.projekte.find((p: any) => p.id === projektId)?.workDir || dir)
+      : dir;
+
+    // Write SOUL.md file
+    let soulPath: string | null = null;
+    if (a.soul) {
+      const soulFileName = `${a.name.toLowerCase().replace(/\s+/g, '-')}.soul.md`;
+      soulPath = path.join(agentWorkDir, soulFileName);
+      try { fs.writeFileSync(soulPath, a.soul.replace(/\\n/g, '\n')); } catch { soulPath = null; }
+      if (soulPath) created.soulFiles.push(soulPath);
+    }
+
+    db.insert(experten).values({
+      id: agentId,
+      unternehmenId,
+      name: a.name,
+      rolle: a.rolle || 'Agent',
+      faehigkeiten: a.faehigkeiten || '',
+      systemPrompt: a.systemPrompt || null,
+      soulPath,
+      verbindungsTyp: 'openrouter' as any,
+      verbindungsConfig: JSON.stringify({ model: 'openrouter/auto' }),
+      budgetMonatCent: 5000,
+      zyklusAktiv: true,
+      zyklusIntervallSek: a.zyklusIntervallSek || 300,
+      avatarFarbe: '#23CDCA',
+      isOrchestrator: a.istOrchestrator === true,
+      status: 'idle' as any,
+      erstelltAm: nowStr, aktualisiertAm: nowStr,
+    }).run();
+
+    // Default permissions
+    db.insert(agentPermissions).values({
+      id: uuid(), expertId: agentId,
+      darfAufgabenErstellen: true, darfAufgabenZuweisen: false,
+      darfGenehmigungAnfordern: true, darfGenehmigungEntscheiden: false,
+      darfExpertenAnwerben: false,
+      erstelltAm: nowStr, aktualisiertAm: nowStr,
+    }).run();
+
+    // Assign skills
+    for (const skillId of (a.skills || [])) {
+      if (skillIdSet.has(skillId)) {
+        try {
+          db.insert(expertenSkills).values({ id: uuid(), expertId: agentId, skillId, proficiency: 80, erstelltAm: nowStr }).run();
+        } catch { /* duplicate */ }
+      }
+    }
+
+    agentMap[a.name] = agentId;
+    created.agenten.push({ id: agentId, name: a.name, rolle: a.rolle, soulPath });
+  }
+
+  // 4. Create tasks
+  for (const t of (plan.tasks || [])) {
+    const projektId = t.projektName ? projektMap[t.projektName] : null;
+    const agentId = t.agentName ? agentMap[t.agentName] : null;
+    const taskId = uuid();
+    db.insert(aufgaben).values({
+      id: taskId, unternehmenId,
+      titel: t.titel,
+      beschreibung: t.beschreibung || null,
+      status: 'backlog' as any,
+      prioritaet: (['critical','high','medium','low'].includes(t.prioritaet) ? t.prioritaet : 'medium') as any,
+      projektId: projektId || null,
+      zugewiesenAn: agentId || null,
+      erstelltVon: agentId || null,
+      erstelltAm: nowStr, aktualisiertAm: nowStr,
+    }).run();
+    created.tasks.push({ id: taskId, titel: t.titel, projektName: t.projektName });
+  }
+
+  // 5. Create routines
+  for (const r of (plan.routinen || [])) {
+    const agentId = r.agentName ? agentMap[r.agentName] : null;
+    if (!agentId) continue;
+    const routineId = uuid();
+    db.insert(routinen).values({
+      id: routineId, unternehmenId,
+      name: r.name,
+      beschreibung: r.beschreibung || null,
+      expertId: agentId,
+      aktiv: true,
+      erstelltAm: nowStr, aktualisiertAm: nowStr,
+    }).run();
+    // Add cron trigger
+    if (r.cron) {
+      db.insert(routineTrigger).values({
+        id: uuid(), routineId,
+        typ: 'cron' as any,
+        wert: r.cron,
+        erstelltAm: nowStr,
+      }).run();
+    }
+    created.routinen.push({ id: routineId, name: r.name, agentName: r.agentName });
+  }
+
+  // 6. Set active/start project priority
+  if (startProjektName && projektMap[startProjektName]) {
+    db.update(projekte).set({ prioritaet: 'critical', aktualisiertAm: nowStr }).where(eq(projekte.id, projektMap[startProjektName])).run();
+  }
+
+  logAktivitaet(unternehmenId, 'system', 'system', 'CEO Bootstrap', `hat ${created.agenten.length} Agenten, ${created.projekte.length} Projekte und ${created.tasks.length} Tasks erstellt`, 'unternehmen', unternehmenId);
+  res.json({ success: true, created });
+});
+
 // GET /api/system/claude-status — Claude Code CLI Auth-Status prüfen
 app.get('/api/system/claude-status', authMiddleware, async (_req, res) => {
   try {
