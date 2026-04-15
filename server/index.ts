@@ -5220,8 +5220,9 @@ app.get('/api/system/cli-status', authMiddleware, async (_req, res) => {
         let out = '';
         proc.stdout?.on('data', (d: Buffer) => { out += d.toString(); });
         proc.stderr?.on('data', (d: Buffer) => { out += d.toString(); });
+        proc.on('error', () => reject(new Error('not found'))); // ENOENT guard
         proc.on('close', (code) => code === 0 ? resolve({ stdout: out }) : reject(new Error('not found')));
-        setTimeout(() => { proc.kill(); reject(new Error('timeout')); }, 4000);
+        setTimeout(() => { try { proc.kill(); } catch {} reject(new Error('timeout')); }, 4000);
       });
       return { installed: true, version: stdout.trim().split('\n')[0] || 'installed' };
     } catch {
