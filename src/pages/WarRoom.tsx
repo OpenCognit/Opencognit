@@ -339,12 +339,15 @@ function AgentCard({ agent, traces, onWakeup, waking, language, onOpenLog }: {
 
   return (
     <div style={{
-      borderRadius: 16,
+      borderRadius: 20,
       background: isRunning
-        ? 'linear-gradient(135deg, rgba(35,205,202,0.06) 0%, rgba(35,205,202,0.01) 100%)'
-        : 'rgba(255,255,255,0.02)',
-      border: `1px solid ${isRunning ? 'rgba(35,205,202,0.25)' : 'rgba(255,255,255,0.07)'}`,
-      boxShadow: isRunning ? cfg.glow : 'none',
+        ? 'rgba(35,205,202,0.06)'
+        : 'rgba(255,255,255,0.04)',
+      backdropFilter: 'blur(24px) saturate(160%)',
+      border: `1px solid ${isRunning ? 'rgba(35,205,202,0.3)' : 'rgba(255,255,255,0.09)'}`,
+      boxShadow: isRunning
+        ? `inset 0 1px 0 rgba(255,255,255,0.12), ${cfg.glow}`
+        : 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
       transition: 'all 0.4s ease',
       overflow: 'hidden',
     }}>
@@ -871,7 +874,7 @@ export function WarRoom() {
               { icon: <Target size={14} style={{ color: '#a855f7' }} />, label: de ? 'OFFEN' : 'OPEN', value: data?.aufgaben.offen || 0, sub: `${data?.aufgaben.blockiert || 0} ${de ? 'blockiert' : 'blocked'}`, color: data?.aufgaben.blockiert ? '#f59e0b' : '#a855f7' },
               { icon: <Wallet size={14} style={{ color: '#f59e0b' }} />, label: 'BUDGET', value: `${data?.kosten.prozent || 0}%`, sub: formatCost(data?.kosten.gesamtVerbraucht || 0, language), color: (data?.kosten.prozent || 0) > 80 ? '#ef4444' : '#f59e0b' },
             ].map((m, i) => (
-              <div key={i} style={{ padding: '11px 12px', borderRadius: 10, background: `${m.color}08`, border: `1px solid ${m.color}20` }}>
+              <div key={i} style={{ padding: '11px 12px', borderRadius: 12, background: `${m.color}08`, border: `1px solid ${m.color}25`, backdropFilter: 'blur(24px) saturate(160%)', boxShadow: `inset 0 1px 0 rgba(255,255,255,0.06)` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                   {m.icon}
                   <span style={{ fontSize: 8, fontWeight: 800, color: '#475569', letterSpacing: '0.12em', textTransform: 'uppercase' }}>{m.label}</span>

@@ -163,10 +163,13 @@ export function Experts() {
                   onClick={() => setActiveChatExpert(m)}
                   style={{
                     padding: '1.5rem',
-                    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                    backdropFilter: 'blur(20px)',
+                    background: isCEO ? 'rgba(255,215,0,0.04)' : 'rgba(255,255,255,0.04)',
+                    backdropFilter: 'blur(24px) saturate(160%)',
                     borderRadius: '24px',
-                    border: `1px solid ${isCEO ? 'rgba(255, 215, 0, 0.3)' : 'rgba(255, 255, 255, 0.08)'}`,
+                    border: `1px solid ${isCEO ? 'rgba(255, 215, 0, 0.3)' : 'rgba(255, 255, 255, 0.09)'}`,
+                    boxShadow: isCEO
+                      ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 4px 16px rgba(0,0,0,0.2), 0 0 20px rgba(255,215,0,0.06)'
+                      : 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
                     cursor: 'pointer',
                     transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                     position: 'relative',
@@ -175,13 +178,17 @@ export function Experts() {
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.transform = 'translateY(-4px)';
-                    e.currentTarget.style.boxShadow = isCEO ? '0 10px 40px rgba(255, 215, 0, 0.15)' : '0 20px 40px rgba(0, 0, 0, 0.3)';
+                    e.currentTarget.style.boxShadow = isCEO
+                      ? 'inset 0 1px 0 rgba(255,255,255,0.18), 0 20px 50px rgba(0,0,0,0.35), 0 0 30px rgba(255,215,0,0.15)'
+                      : 'inset 0 1px 0 rgba(255,255,255,0.18), 0 20px 40px rgba(0,0,0,0.35), 0 0 0 1px rgba(35,205,202,0.15)';
                     e.currentTarget.style.borderColor = isCEO ? 'rgba(255, 215, 0, 0.6)' : 'rgba(35, 205, 202, 0.3)';
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.borderColor = isCEO ? 'rgba(255, 215, 0, 0.3)' : 'rgba(255, 255, 255, 0.08)';
-                    e.currentTarget.style.boxShadow = isCEO ? '0 0 20px rgba(255, 215, 0, 0.05)' : 'none';
+                    e.currentTarget.style.borderColor = isCEO ? 'rgba(255, 215, 0, 0.3)' : 'rgba(255, 255, 255, 0.09)';
+                    e.currentTarget.style.boxShadow = isCEO
+                      ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 4px 16px rgba(0,0,0,0.2), 0 0 20px rgba(255,215,0,0.06)'
+                      : 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)';
                   }}
                 >
                   {isCEO && (

@@ -408,9 +408,10 @@ export function Projects() {
               { label: i18n.t.projekte.aufgaben, value: alleAufgaben.length, color: '#3b82f6' },
             ].map(stat => (
               <div key={stat.label} style={{
-                padding: '1rem 1.25rem', borderRadius: '14px',
-                background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
-                backdropFilter: 'blur(10px)',
+                padding: '1rem 1.25rem', borderRadius: '16px',
+                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
+                backdropFilter: 'blur(24px) saturate(160%)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
               }}>
                 <div style={{ fontSize: '1.75rem', fontWeight: 700, color: stat.color }}>{stat.value}</div>
                 <div style={{ fontSize: '0.75rem', color: '#71717a', marginTop: '0.25rem' }}>{stat.label}</div>
@@ -443,15 +444,16 @@ export function Projects() {
 
                 return (
                   <div key={projekt.id} style={{
-                    borderRadius: '16px',
-                    background: 'rgba(255,255,255,0.025)',
-                    border: `1px solid ${projekt.farbe}22`,
-                    backdropFilter: 'blur(10px)',
+                    borderRadius: '20px',
+                    background: 'rgba(255,255,255,0.04)',
+                    border: `1px solid ${projekt.farbe}30`,
+                    backdropFilter: 'blur(24px) saturate(160%)',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
                     overflow: 'hidden',
-                    transition: 'border-color 0.2s',
+                    transition: 'all 0.25s ease',
                   }}
-                  onMouseEnter={e => (e.currentTarget.style.borderColor = `${projekt.farbe}44`)}
-                  onMouseLeave={e => (e.currentTarget.style.borderColor = `${projekt.farbe}22`)}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = `${projekt.farbe}55`; e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.18), 0 12px 40px rgba(0,0,0,0.35), 0 0 0 1px ${projekt.farbe}18`; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = `${projekt.farbe}30`; e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)'; e.currentTarget.style.transform = 'none'; }}
                   >
                     {/* Projekt Header */}
                     <div
@@ -613,10 +615,11 @@ export function Projects() {
               {/* Aufgaben ohne Projekt */}
               {aufgabenOhneProjekt.length > 0 && (
                 <div style={{
-                  borderRadius: '16px',
-                  background: 'rgba(255,255,255,0.02)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  backdropFilter: 'blur(10px)',
+                  borderRadius: '20px',
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.09)',
+                  backdropFilter: 'blur(24px) saturate(160%)',
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
                   overflow: 'hidden',
                 }}>
                   <div

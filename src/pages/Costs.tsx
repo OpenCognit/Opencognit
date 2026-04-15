@@ -100,9 +100,11 @@ export function Costs() {
               { label: i18n.t.kosten.verbleibend, value: data.gesamtBudget === 0 ? '∞' : centZuEuro(data.gesamtBudget - data.gesamtVerbraucht), color: '#22c55e', sub: data.gesamtBudget === 0 ? (de ? 'Unbegrenzt' : 'Unlimited') : undefined },
             ].map((card, i) => (
               <div key={i} style={{
-                padding: '1.5rem', backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                backdropFilter: 'blur(20px)', borderRadius: '20px',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
+                padding: '1.5rem',
+                background: 'rgba(255,255,255,0.04)',
+                backdropFilter: 'blur(24px) saturate(160%)', borderRadius: '20px',
+                border: '1px solid rgba(255,255,255,0.09)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
                 animation: `fadeInUp 0.5s ease-out ${i * 0.1}s both`,
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
@@ -150,8 +152,9 @@ export function Costs() {
           {/* Agent Tab (existierend) */}
           {tab === 'agent' && (
             <div style={{
-              backgroundColor: 'rgba(255,255,255,0.02)', backdropFilter: 'blur(20px)',
-              borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden',
+              background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(24px) saturate(160%)',
+              borderRadius: '20px', border: '1px solid rgba(255,255,255,0.09)', overflow: 'hidden',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
               animation: 'fadeInUp 0.3s ease-out',
             }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -204,8 +207,9 @@ export function Costs() {
           {/* Provider Tab */}
           {tab === 'provider' && providerData && (
             <div style={{
-              backgroundColor: 'rgba(255,255,255,0.02)', backdropFilter: 'blur(20px)',
-              borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)',
+              background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(24px) saturate(160%)',
+              borderRadius: '20px', border: '1px solid rgba(255,255,255,0.09)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
               padding: '1.5rem', animation: 'fadeInUp 0.3s ease-out',
             }}>
               {providerData.length === 0 ? (
@@ -221,8 +225,9 @@ export function Costs() {
                     return (
                       <div key={p.anbieter} style={{
                         display: 'flex', alignItems: 'center', gap: '1rem',
-                        padding: '1rem', borderRadius: '12px',
-                        background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)',
+                        padding: '1rem', borderRadius: '14px',
+                        background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
+                        transition: 'all 0.2s',
                       }}>
                         <div style={{
                           width: 40, height: 40, borderRadius: 10,
@@ -255,8 +260,9 @@ export function Costs() {
           {/* Timeline Tab */}
           {tab === 'timeline' && timelineData && (
             <div style={{
-              backgroundColor: 'rgba(255,255,255,0.02)', backdropFilter: 'blur(20px)',
-              borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)',
+              background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(24px) saturate(160%)',
+              borderRadius: '20px', border: '1px solid rgba(255,255,255,0.09)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
               padding: '1.5rem', animation: 'fadeInUp 0.3s ease-out',
             }}>
               <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#d4d4d8', marginBottom: '1rem' }}>
@@ -297,8 +303,9 @@ export function Costs() {
           {/* Policies Tab */}
           {tab === 'policies' && (
             <div style={{
-              backgroundColor: 'rgba(255,255,255,0.02)', backdropFilter: 'blur(20px)',
-              borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)',
+              background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(24px) saturate(160%)',
+              borderRadius: '20px', border: '1px solid rgba(255,255,255,0.09)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
               padding: '1.5rem', animation: 'fadeInUp 0.3s ease-out',
             }}>
               {/* Header + Neu-Button */}

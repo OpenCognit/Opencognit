@@ -122,11 +122,12 @@ export function Approvals() {
                     key={g.id}
                     style={{
                       padding: '1.5rem',
-                      backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                      backdropFilter: 'blur(20px)',
+                      background: 'rgba(255,255,255,0.04)',
+                      backdropFilter: 'blur(24px) saturate(160%)',
                       borderRadius: '20px',
                       border: '1px solid rgba(234, 179, 8, 0.3)',
                       borderLeft: '3px solid #eab308',
+                      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
                       animation: `fadeInUp 0.5s ease-out ${Math.min(i, 4) * 0.1}s both`,
                     }}
                   >
@@ -263,12 +264,13 @@ export function Approvals() {
                     key={g.id}
                     style={{
                       padding: '1rem 1.25rem',
-                      backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                      backdropFilter: 'blur(20px)',
+                      background: 'rgba(255,255,255,0.03)',
+                      backdropFilter: 'blur(24px) saturate(160%)',
                       borderRadius: '16px',
-                      border: '1px solid rgba(255, 255, 255, 0.06)',
+                      border: '1px solid rgba(255,255,255,0.08)',
                       borderLeft: `3px solid ${g.status === 'approved' ? '#22c55e' : '#ef4444'}`,
-                      opacity: 0.6,
+                      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.15)',
+                      opacity: 0.7,
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -290,10 +292,11 @@ export function Approvals() {
             <div style={{
               padding: '4rem 2rem',
               textAlign: 'center',
-              backgroundColor: 'rgba(255, 255, 255, 0.02)',
-              backdropFilter: 'blur(20px)',
+              background: 'rgba(255,255,255,0.04)',
+              backdropFilter: 'blur(24px) saturate(160%)',
               borderRadius: '20px',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(255,255,255,0.09)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
             }}>
               <div style={{
                 width: '64px',

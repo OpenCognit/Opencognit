@@ -52,16 +52,16 @@ function BentoCard({ item }: { item: BentoItem }) {
         position: 'relative',
         padding: '1.25rem',
         borderRadius: '16px',
-        border: `1px solid ${active ? `${accent}22` : 'rgba(255,255,255,0.07)'}`,
+        border: `1px solid ${active ? `${accent}30` : 'rgba(255,255,255,0.09)'}`,
         background: active
-          ? `rgba(255,255,255,0.04)`
-          : 'rgba(255,255,255,0.025)',
-        backdropFilter: 'blur(20px)',
+          ? 'rgba(255,255,255,0.07)'
+          : 'rgba(255,255,255,0.04)',
+        backdropFilter: 'blur(24px) saturate(160%)',
         transition: 'all 0.25s ease',
         transform: active ? 'translateY(-2px)' : 'none',
         boxShadow: active
-          ? `0 8px 32px rgba(0,0,0,0.25), 0 0 0 1px ${accent}18`
-          : '0 2px 8px rgba(0,0,0,0.12)',
+          ? `inset 0 1px 0 rgba(255,255,255,0.18), 0 12px 40px rgba(0,0,0,0.35), 0 0 0 1px ${accent}18`
+          : 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
         cursor: item.onClick ? 'pointer' : 'default',
         overflow: 'hidden',
         display: 'flex',

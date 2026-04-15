@@ -77,7 +77,9 @@ function ActivityHeatmap({ data, de }: { data: AktivitaetType[]; de: boolean }) 
   return (
     <div style={{
       padding: '1.25rem 1.5rem', borderRadius: '20px',
-      background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)',
+      background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
+      backdropFilter: 'blur(24px) saturate(160%)',
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
       marginBottom: '1.5rem',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
@@ -286,8 +288,10 @@ export function Activity() {
       <div style={{
         display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap',
         marginBottom: '1.5rem', padding: '0.75rem 1rem',
-        background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
-        borderRadius: '12px',
+        background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
+        backdropFilter: 'blur(24px) saturate(160%)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)',
+        borderRadius: '14px',
       }}>
         <Filter size={13} style={{ color: '#52525b', flexShrink: 0 }} />
         <span style={{ fontSize: '0.6875rem', color: '#52525b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 }}>
@@ -340,7 +344,9 @@ export function Activity() {
 
       {/* Activity Feed — grouped by date */}
       <div style={{
-        background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)',
+        background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
+        backdropFilter: 'blur(24px) saturate(160%)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
         borderRadius: '20px', overflow: 'hidden',
       }}>
         {grouped.length === 0 ? (

@@ -164,20 +164,22 @@ function GoalRow({
     <div style={{ marginLeft: indent }}>
       <div style={{
         display: 'flex', alignItems: 'flex-start', gap: '0.875rem',
-        padding: '0.875rem 1rem', borderRadius: '14px',
+        padding: '0.875rem 1rem', borderRadius: '16px',
         background: goal.status === 'achieved'
-          ? 'rgba(35,205,202,0.03)'
-          : 'rgba(255,255,255,0.02)',
+          ? 'rgba(35,205,202,0.05)'
+          : 'rgba(255,255,255,0.04)',
         border: `1px solid ${goal.status === 'active'
-          ? 'rgba(34,197,94,0.15)'
+          ? 'rgba(34,197,94,0.2)'
           : goal.status === 'achieved'
-            ? 'rgba(35,205,202,0.15)'
-            : 'rgba(255,255,255,0.06)'}`,
-        transition: 'all 0.15s', marginBottom: '0.375rem',
+            ? 'rgba(35,205,202,0.2)'
+            : 'rgba(255,255,255,0.09)'}`,
+        backdropFilter: 'blur(24px) saturate(160%)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
+        transition: 'all 0.25s ease', marginBottom: '0.375rem',
         opacity: goal.status === 'cancelled' ? 0.5 : 1,
       }}
-        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = goal.status === 'active' ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.12)'; }}
-        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = goal.status === 'active' ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)'; }}
+        onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.transform = 'translateY(-1px)'; el.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.18), 0 8px 28px rgba(0,0,0,0.3)'; el.style.borderColor = goal.status === 'active' ? 'rgba(34,197,94,0.35)' : goal.status === 'achieved' ? 'rgba(35,205,202,0.35)' : 'rgba(255,255,255,0.15)'; }}
+        onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.transform = 'none'; el.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)'; el.style.borderColor = goal.status === 'active' ? 'rgba(34,197,94,0.2)' : goal.status === 'achieved' ? 'rgba(35,205,202,0.2)' : 'rgba(255,255,255,0.09)'; }}
       >
         {/* Expand/collapse toggle */}
         <button
@@ -511,8 +513,10 @@ export function Goals() {
             { label: de ? 'Erreicht' : 'Achieved', value: stats.achieved,    color: '#23CDCB' },
           ].map(s => (
             <div key={s.label} style={{
-              padding: '0.875rem 1.25rem', borderRadius: '14px', textAlign: 'center',
-              background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)',
+              padding: '0.875rem 1.25rem', borderRadius: '16px', textAlign: 'center',
+              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
+              backdropFilter: 'blur(24px) saturate(160%)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
             }}>
               <div style={{ fontSize: '1.5rem', fontWeight: 800, color: s.color }}>{s.value}</div>
               <div style={{ fontSize: '0.6875rem', color: '#475569', fontWeight: 500 }}>{s.label}</div>
@@ -522,8 +526,10 @@ export function Goals() {
           {/* Average progress card */}
           {stats.active > 0 && (
             <div style={{
-              padding: '0.875rem 1.25rem', borderRadius: '14px', textAlign: 'center',
-              background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.12)',
+              padding: '0.875rem 1.25rem', borderRadius: '16px', textAlign: 'center',
+              background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.18)',
+              backdropFilter: 'blur(24px) saturate(160%)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
               minWidth: 100,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', marginBottom: '0.25rem' }}>
@@ -545,8 +551,10 @@ export function Goals() {
       {/* Progress overview bar (only when there are active goals with progress) */}
       {stats.active > 0 && stats.avgProgress > 0 && (
         <div style={{
-          padding: '1rem 1.25rem', borderRadius: '16px', marginBottom: '1.5rem',
-          background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)',
+          padding: '1rem 1.25rem', borderRadius: '20px', marginBottom: '1.5rem',
+          background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
+          backdropFilter: 'blur(24px) saturate(160%)',
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
           display: 'flex', alignItems: 'center', gap: '1rem',
         }}>
           <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569', flexShrink: 0 }}>
@@ -590,7 +598,9 @@ export function Goals() {
 
       {/* Goals tree */}
       <div style={{
-        background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)',
+        background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
+        backdropFilter: 'blur(24px) saturate(160%)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
         borderRadius: '20px', padding: '1.5rem',
       }}>
         {filteredRoots.length === 0 ? (

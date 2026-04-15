@@ -600,12 +600,14 @@ export function Tasks() {
                     onDrop={() => handleDrop(spalte.key)}
                     style={{
                       padding: '1rem',
-                      backgroundColor: isDragTarget ? 'rgba(35, 205, 202, 0.04)' : 'rgba(255, 255, 255, 0.02)',
-                      backdropFilter: 'blur(20px)',
-                      borderRadius: '16px',
-                      border: isDragTarget ? `2px solid ${spalte.color}55` : '1px solid rgba(255, 255, 255, 0.06)',
+                      background: isDragTarget ? `rgba(35,205,202,0.06)` : 'rgba(255,255,255,0.04)',
+                      backdropFilter: 'blur(24px) saturate(160%)',
+                      borderRadius: '20px',
+                      border: isDragTarget ? `2px solid ${spalte.color}55` : '1px solid rgba(255,255,255,0.09)',
                       transition: 'all 0.15s',
-                      boxShadow: isDragTarget ? `0 0 20px ${spalte.color}15` : 'none',
+                      boxShadow: isDragTarget
+                        ? `inset 0 1px 0 rgba(255,255,255,0.12), 0 0 20px ${spalte.color}18`
+                        : 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
                     }}
                   >
                     <div style={{
@@ -651,9 +653,13 @@ export function Tasks() {
                             style={{
                               position: 'relative',
                               padding: '0.875rem',
-                              backgroundColor: isChecked ? 'rgba(35, 205, 202, 0.06)' : isBeingDragged ? 'rgba(35, 205, 202, 0.06)' : 'rgba(255, 255, 255, 0.03)',
-                              borderRadius: '12px',
-                              border: isChecked ? '1px solid rgba(35,205,202,0.35)' : isBeingDragged ? '1px solid rgba(35, 205, 202, 0.4)' : '1px solid rgba(255, 255, 255, 0.06)',
+                              background: isChecked ? 'rgba(35,205,202,0.07)' : isBeingDragged ? 'rgba(35,205,202,0.07)' : 'rgba(255,255,255,0.04)',
+                              backdropFilter: 'blur(16px)',
+                              borderRadius: '14px',
+                              border: isChecked ? '1px solid rgba(35,205,202,0.35)' : isBeingDragged ? '1px solid rgba(35,205,202,0.4)' : '1px solid rgba(255,255,255,0.09)',
+                              boxShadow: isChecked
+                                ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 0 0 1px rgba(35,205,202,0.15)'
+                                : 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.15)',
                               cursor: 'grab',
                               transition: 'all 0.2s',
                               opacity: isBeingDragged ? 0.5 : 1,
@@ -661,13 +667,17 @@ export function Tasks() {
                             }}
                             onMouseEnter={(e) => {
                               if (!isBeingDragged) {
-                                e.currentTarget.style.borderColor = 'rgba(35, 205, 202, 0.3)';
+                                e.currentTarget.style.borderColor = 'rgba(35,205,202,0.3)';
                                 e.currentTarget.style.transform = 'translateY(-2px)';
+                                e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.12), 0 8px 24px rgba(0,0,0,0.3), 0 0 0 1px rgba(35,205,202,0.15)';
                               }
                             }}
                             onMouseLeave={(e) => {
-                              e.currentTarget.style.borderColor = isBeingDragged ? 'rgba(35, 205, 202, 0.4)' : 'rgba(255, 255, 255, 0.06)';
+                              e.currentTarget.style.borderColor = isChecked ? 'rgba(35,205,202,0.35)' : isBeingDragged ? 'rgba(35,205,202,0.4)' : 'rgba(255,255,255,0.09)';
                               e.currentTarget.style.transform = 'translateY(0)';
+                              e.currentTarget.style.boxShadow = isChecked
+                                ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 0 0 1px rgba(35,205,202,0.15)'
+                                : 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.15)';
                             }}
                           >
                             {/* Checkbox overlay */}
@@ -778,10 +788,11 @@ export function Tasks() {
           ) : ansicht === 'liste' ? (
             /* List View */
             <div style={{
-              backgroundColor: 'rgba(255, 255, 255, 0.02)',
-              backdropFilter: 'blur(20px)',
-              borderRadius: '16px',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              background: 'rgba(255,255,255,0.04)',
+              backdropFilter: 'blur(24px) saturate(160%)',
+              borderRadius: '20px',
+              border: '1px solid rgba(255,255,255,0.09)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
               overflow: 'hidden',
               animation: 'fadeInUp 0.5s ease-out',
             }}>

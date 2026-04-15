@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, ListTodo,
   Wallet, ShieldCheck, Activity,
   Settings, LogOut, Globe, Brain,
-  ChevronLeft, ChevronRight, ChevronDown, Clock, FolderOpen, MessagesSquare, Target, Zap, BarChart3, Package, GitBranch,
+  ChevronLeft, ChevronRight, ChevronDown, Clock, FolderOpen, MessagesSquare, Target, Zap, BarChart3, Package, GitBranch, BookOpen,
 } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { useCompany } from '../hooks/useCompany';
@@ -50,11 +50,12 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
   const navItems = [
     // ── Tägliche Nutzung ──
     { section: de ? 'Betrieb' : 'Operations', items: [
-      { to: '/',             icon: LayoutDashboard, label: t.nav.dashboard },
-      { to: '/experts',      icon: Users,           label: t.nav.experten },
-      { to: '/approvals',    icon: ShieldCheck,     label: t.nav.genehmigungen },
-      { to: '/costs',        icon: Wallet,          label: t.nav.kosten },
-      { to: '/org-chart',    icon: GitBranch,       label: t.nav.organigramm },
+      { to: '/',              icon: LayoutDashboard, label: t.nav.dashboard },
+      { to: '/experts',       icon: Users,           label: t.nav.experten },
+      { to: '/skill-library', icon: BookOpen,        label: t.nav.skillLibrary },
+      { to: '/approvals',     icon: ShieldCheck,     label: t.nav.genehmigungen },
+      { to: '/costs',         icon: Wallet,          label: t.nav.kosten },
+      { to: '/org-chart',     icon: GitBranch,       label: t.nav.organigramm },
     ]},
     // ── Setup-Reihenfolge: was zuerst gemacht werden muss ──
     { section: de ? 'Einrichten' : 'Setup', items: [

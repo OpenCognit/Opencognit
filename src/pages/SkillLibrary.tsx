@@ -263,6 +263,13 @@ export function SkillLibrary() {
     [aktivesUnternehmen?.id],
   );
 
+  // Auto-seed when library is empty on first load
+  useEffect(() => {
+    if (skills && skills.length === 0 && aktivesUnternehmen && !seeding) {
+      handleSeedStandardSkills();
+    }
+  }, [skills, aktivesUnternehmen?.id]);
+
   const { data: experten } = useApi<Experte[]>(
     () => authFetch(`/api/unternehmen/${aktivesUnternehmen!.id}/experten`).then(r => r.json()),
     [aktivesUnternehmen?.id],

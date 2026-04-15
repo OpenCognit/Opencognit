@@ -401,11 +401,11 @@ export function Settings() {
             {/* Allgemein */}
             <div className="glass-card" style={{
               padding: '1.5rem',
-              backgroundColor: 'rgba(255, 255, 255, 0.02)',
-              backdropFilter: 'blur(20px)',
+              background: 'rgba(255,255,255,0.04)',
+              backdropFilter: 'blur(24px) saturate(160%)',
               borderRadius: '20px',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              animation: 'fadeInUp 0.5s ease-out',
+              border: '1px solid rgba(255,255,255,0.09)',
+              animation: 'fadeInUp 0.5s ease-out', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
                 <Globe size={18} style={{ color: '#23CDCB' }} />
@@ -446,10 +446,10 @@ export function Settings() {
             {/* Claude Code Status */}
             <div className="glass-card" style={{
               padding: '1.5rem',
-              backgroundColor: 'rgba(255, 255, 255, 0.02)',
-              backdropFilter: 'blur(20px)',
+              background: 'rgba(255,255,255,0.04)',
+              backdropFilter: 'blur(24px) saturate(160%)',
               borderRadius: '20px',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(255,255,255,0.09)',
               animation: 'fadeInUp 0.5s ease-out 0.05s both',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
@@ -569,10 +569,10 @@ export function Settings() {
             {cliStatus?.gemini?.installed && (
               <div className="glass-card" style={{
                 padding: '1.5rem',
-                backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                backdropFilter: 'blur(20px)',
+                background: 'rgba(255,255,255,0.04)',
+                backdropFilter: 'blur(24px) saturate(160%)',
                 borderRadius: '20px',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255,255,255,0.09)',
                 animation: 'fadeInUp 0.5s ease-out 0.15s both',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
@@ -599,10 +599,10 @@ export function Settings() {
             {cliStatus?.codex?.installed && (
               <div className="glass-card" style={{
                 padding: '1.5rem',
-                backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                backdropFilter: 'blur(20px)',
+                background: 'rgba(255,255,255,0.04)',
+                backdropFilter: 'blur(24px) saturate(160%)',
                 borderRadius: '20px',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255,255,255,0.09)',
                 animation: 'fadeInUp 0.5s ease-out 0.2s both',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
@@ -628,10 +628,10 @@ export function Settings() {
             {/* API Keys */}
             <div className="glass-card" style={{
               padding: '1.5rem',
-              backgroundColor: 'rgba(255, 255, 255, 0.02)',
-              backdropFilter: 'blur(20px)',
+              background: 'rgba(255,255,255,0.04)',
+              backdropFilter: 'blur(24px) saturate(160%)',
               borderRadius: '20px',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(255,255,255,0.09)',
               animation: 'fadeInUp 0.5s ease-out 0.1s both',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
@@ -720,10 +720,10 @@ export function Settings() {
             {/* Budget & Kontrolle */}
             <div className="glass-card" style={{
               padding: '1.5rem',
-              backgroundColor: 'rgba(255, 255, 255, 0.02)',
-              backdropFilter: 'blur(20px)',
+              background: 'rgba(255,255,255,0.04)',
+              backdropFilter: 'blur(24px) saturate(160%)',
               borderRadius: '20px',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(255,255,255,0.09)',
               animation: 'fadeInUp 0.5s ease-out 0.2s both',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
@@ -782,10 +782,10 @@ export function Settings() {
             {/* Benachrichtigungen */}
             <div className="glass-card" style={{
               padding: '1.5rem',
-              backgroundColor: 'rgba(255, 255, 255, 0.02)',
-              backdropFilter: 'blur(20px)',
+              background: 'rgba(255,255,255,0.04)',
+              backdropFilter: 'blur(24px) saturate(160%)',
               borderRadius: '20px',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(255,255,255,0.09)',
               animation: 'fadeInUp 0.5s ease-out 0.3s both',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
@@ -811,8 +811,8 @@ export function Settings() {
             {aktivesUnternehmen && (
               <div className="glass-card" style={{
                 padding: '1.5rem',
-                backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                backdropFilter: 'blur(20px)',
+                background: 'rgba(255,255,255,0.04)',
+                backdropFilter: 'blur(24px) saturate(160%)',
                 borderRadius: '20px',
                 border: workDirStatus?.writable ? '1px solid rgba(34,197,94,0.3)' : workDirStatus?.exists === false ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(255, 255, 255, 0.08)',
                 animation: 'fadeInUp 0.5s ease-out 0.35s both',
@@ -911,8 +911,8 @@ export function Settings() {
             {/* Integrationen */}
             <div className="glass-card" style={{
               padding: '1.5rem',
-              backgroundColor: 'rgba(255, 255, 255, 0.02)',
-              backdropFilter: 'blur(20px)',
+              background: 'rgba(255,255,255,0.04)',
+              backdropFilter: 'blur(24px) saturate(160%)',
               borderRadius: '20px',
               border: (telegramBotToken && telegramChatId) ? '1px solid rgba(0, 136, 204, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)',
               animation: 'fadeInUp 0.5s ease-out 0.38s both',
@@ -1059,10 +1059,10 @@ export function Settings() {
             {/* Datenbank */}
             <div className="glass-card" style={{
               padding: '1.5rem',
-              backgroundColor: 'rgba(255, 255, 255, 0.02)',
-              backdropFilter: 'blur(20px)',
+              background: 'rgba(255,255,255,0.04)',
+              backdropFilter: 'blur(24px) saturate(160%)',
               borderRadius: '20px',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(255,255,255,0.09)',
               animation: 'fadeInUp 0.5s ease-out 0.4s both',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
@@ -1117,10 +1117,10 @@ export function Settings() {
             {/* Export / Import */}
             <div className="glass-card" style={{
               padding: '1.5rem',
-              backgroundColor: 'rgba(255, 255, 255, 0.02)',
-              backdropFilter: 'blur(20px)',
+              background: 'rgba(255,255,255,0.04)',
+              backdropFilter: 'blur(24px) saturate(160%)',
               borderRadius: '20px',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(255,255,255,0.09)',
               animation: 'fadeInUp 0.5s ease-out 0.45s both',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
@@ -1260,7 +1260,7 @@ export function Settings() {
             <div className="glass-card" style={{
               padding: '1.5rem',
               backgroundColor: 'rgba(239, 68, 68, 0.03)',
-              backdropFilter: 'blur(20px)',
+              backdropFilter: 'blur(24px) saturate(160%)',
               borderRadius: '20px',
               border: '1px solid rgba(239, 68, 68, 0.2)',
               animation: 'fadeInUp 0.5s ease-out 0.55s both',
@@ -1381,8 +1381,8 @@ export function Settings() {
             {/* Version */}
             <div className="glass-card" style={{
               padding: '1rem 1.5rem',
-              backgroundColor: 'rgba(255, 255, 255, 0.02)',
-              backdropFilter: 'blur(20px)',
+              background: 'rgba(255,255,255,0.04)',
+              backdropFilter: 'blur(24px) saturate(160%)',
               borderRadius: '16px',
               border: '1px solid rgba(255, 255, 255, 0.06)',
               opacity: 0.6,
