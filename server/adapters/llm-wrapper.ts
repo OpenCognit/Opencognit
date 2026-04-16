@@ -37,9 +37,9 @@ export class LLMWrapperAdapter implements Adapter {
     const startTime = Date.now();
 
     // Get API key and optional base URL for this agent's verbindungsTyp
-    const apiKey = await this.getApiKey(config.unternehmenId, this.verbindungsTyp);
+    const apiKey = await this.getApiKey(config.unternehmenId, this.verbindungsTyp, config.expertId);
     const customBaseUrl = this.verbindungsTyp === 'custom'
-      ? await this.getCustomBaseUrl()
+      ? await this.getCustomBaseUrl(config.expertId)
       : undefined;
 
     // Build prompt from context
@@ -106,7 +106,7 @@ export class LLMWrapperAdapter implements Adapter {
     }
   }
 
-  private async getApiKey(unternehmenId: string, verbindungsTyp: string): Promise<string> {
+  private async getApiKey(unternehmenId: string, verbindungsTyp: string, expertId?: string): Promise<string> {
     if (verbindungsTyp === 'openrouter') {
       const e = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'openrouter_api_key')).get();
       return e ? decryptSetting('openrouter_api_key', e.wert) : '';
@@ -124,13 +124,49 @@ export class LLMWrapperAdapter implements Adapter {
       return e ? e.wert : 'http://localhost:11434';
     }
     if (verbindungsTyp === 'custom') {
+      // Check if agent has a named connection (connectionId in verbindungsConfig)
+      if (expertId) {
+        const expert = db.select().from(experten).where(eq(experten.id, expertId)).get();
+        const connId = (() => { try { return JSON.parse(expert?.verbindungsConfig || '{}').connectionId || ''; } catch { return ''; } })();
+        if (connId) {
+          const connsRow = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'custom_connections')).get();
+          if (connsRow?.wert) {
+            try {
+              const conns: { id: string; apiKey: string }[] = JSON.parse(decryptSetting('custom_connections', connsRow.wert));
+              const match = conns.find(c => c.id === connId);
+              if (match?.apiKey) return match.apiKey;
+            } catch {}
+          }
+        }
+      }
+      // Fallback to global custom_api_key
       const e = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'custom_api_key')).get();
       return e ? decryptSetting('custom_api_key', e.wert) : '';
     }
     return '';
   }
 
-  private async getCustomBaseUrl(): Promise<string> {
+  private async getCustomBaseUrl(expertId?: string): Promise<string> {
+    // Check if agent has a named connection with a baseUrl
+    if (expertId) {
+      const expert = db.select().from(experten).where(eq(experten.id, expertId)).get();
+      // Per-agent baseUrl override takes priority
+      const agentBaseUrl = (() => { try { return JSON.parse(expert?.verbindungsConfig || '{}').baseUrl || ''; } catch { return ''; } })();
+      if (agentBaseUrl) return agentBaseUrl;
+      // Named connection baseUrl
+      const connId = (() => { try { return JSON.parse(expert?.verbindungsConfig || '{}').connectionId || ''; } catch { return ''; } })();
+      if (connId) {
+        const connsRow = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'custom_connections')).get();
+        if (connsRow?.wert) {
+          try {
+            const conns: { id: string; baseUrl: string }[] = JSON.parse(decryptSetting('custom_connections', connsRow.wert));
+            const match = conns.find(c => c.id === connId);
+            if (match?.baseUrl) return match.baseUrl;
+          } catch {}
+        }
+      }
+    }
+    // Fallback to global custom_api_base_url
     const e = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'custom_api_base_url')).get();
     return e?.wert || '';
   }

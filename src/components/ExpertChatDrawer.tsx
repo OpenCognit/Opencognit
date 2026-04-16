@@ -343,6 +343,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
     autonomyLevel: (() => { try { return JSON.parse(expert.verbindungsConfig || '{}').autonomyLevel || 'copilot'; } catch { return 'copilot'; } })(),
     baseUrl: (() => { try { return JSON.parse(expert.verbindungsConfig || '{}').baseUrl || ''; } catch { return ''; } })(),
     workDir: (() => { try { return JSON.parse(expert.verbindungsConfig || '{}').workDir || ''; } catch { return ''; } })(),
+    connectionId: (() => { try { return JSON.parse(expert.verbindungsConfig || '{}').connectionId || ''; } catch { return ''; } })(),
     isOrchestrator: expert.isOrchestrator || false,
     budgetMonatCent: Math.round(expert.budgetMonatCent / 100),
     zyklusAktiv: expert.zyklusAktiv || false,
@@ -392,6 +393,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [allExperts, setAllExperts] = useState<Experte[]>([]);
   const [globalCustomBaseUrl, setGlobalCustomBaseUrl] = useState('');
+  const [customConnections, setCustomConnections] = useState<{ id: string; name: string; baseUrl: string }[]>([]);
 
   useEffect(() => {
     if (!expert.id) return;
@@ -401,10 +403,16 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
       .then(list => setAllExperts(list))
       .catch(() => {});
 
-    // Fetch global custom API base URL as hint for the per-agent field
+    // Fetch global settings: custom connections + legacy base URL hint
     authFetch(`/api/einstellungen?unternehmenId=${expert.unternehmenId}`)
       .then(r => r.json())
-      .then((data: Record<string, string>) => setGlobalCustomBaseUrl(data.custom_api_base_url || ''))
+      .then((data: Record<string, string>) => {
+        setGlobalCustomBaseUrl(data.custom_api_base_url || '');
+        try {
+          const conns = JSON.parse(data.custom_connections || '[]');
+          setCustomConnections(conns.map((c: any) => ({ id: c.id, name: c.name, baseUrl: c.baseUrl })));
+        } catch { setCustomConnections([]); }
+      })
       .catch(() => {});
 
     // Fetch permissions
@@ -449,6 +457,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
       autonomyLevel: (() => { try { return JSON.parse(expert.verbindungsConfig || '{}').autonomyLevel || 'copilot'; } catch { return 'copilot'; } })(),
       baseUrl: (() => { try { return JSON.parse(expert.verbindungsConfig || '{}').baseUrl || ''; } catch { return ''; } })(),
       workDir: (() => { try { return JSON.parse(expert.verbindungsConfig || '{}').workDir || ''; } catch { return ''; } })(),
+      connectionId: (() => { try { return JSON.parse(expert.verbindungsConfig || '{}').connectionId || ''; } catch { return ''; } })(),
       budgetMonatCent: Math.round(expert.budgetMonatCent / 100),
       zyklusAktiv: expert.zyklusAktiv || false,
       zyklusIntervallSek: expert.zyklusIntervallSek || 120,
@@ -873,6 +882,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
           autonomyLevel: editForm.autonomyLevel,
           baseUrl: editForm.baseUrl || undefined,
           workDir: editForm.workDir || undefined,
+          connectionId: editForm.connectionId || undefined,
           isOrchestrator: editForm.isOrchestrator,
         }),
         isOrchestrator: editForm.isOrchestrator,
@@ -1536,7 +1546,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                         <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', display: 'block', marginBottom: 6 }}>{de ? 'Verbindung' : 'Connection'}</label>
                         <Select
                           value={editForm.verbindungsTyp}
-                          onChange={v => setEditForm(f => ({ ...f, verbindungsTyp: v as any }))}
+                          onChange={v => setEditForm(f => ({ ...f, verbindungsTyp: v as any, connectionId: '' }))}
                           options={[
                             { value: 'claude-code', label: de ? '⚡ Claude Code CLI (Pro/Max-Abo)' : '⚡ Claude Code CLI (Pro/Max plan)' },
                             { value: 'openrouter', label: 'OpenRouter' },
@@ -1549,6 +1559,27 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                             { value: 'http', label: 'HTTP Webhook' },
                           ]}
                         />
+                        {/* Custom connection picker — shown when Custom API is selected */}
+                        {editForm.verbindungsTyp === 'custom' && customConnections.length > 0 && (
+                          <div style={{ marginTop: 8 }}>
+                            <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-muted)', display: 'block', marginBottom: 4 }}>
+                              {de ? 'Welche Verbindung?' : 'Which connection?'}
+                            </label>
+                            <select
+                              value={editForm.connectionId}
+                              onChange={e => {
+                                const conn = customConnections.find(c => c.id === e.target.value);
+                                setEditForm(f => ({ ...f, connectionId: e.target.value, baseUrl: conn?.baseUrl || f.baseUrl }));
+                              }}
+                              style={{ width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(35,205,202,0.2)', background: 'rgba(35,205,202,0.05)', color: 'var(--color-text-primary)', fontSize: 12, cursor: 'pointer' }}
+                            >
+                              <option value="" style={{ background: '#1a1a2e' }}>{de ? '— Global (Standard) —' : '— Global (default) —'}</option>
+                              {customConnections.map(c => (
+                                <option key={c.id} value={c.id} style={{ background: '#1a1a2e' }}>{c.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
                       </div>
                       <div>
                         <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', display: 'block', marginBottom: 6 }}>{de ? 'Modell / URL' : 'Model / URL'}</label>

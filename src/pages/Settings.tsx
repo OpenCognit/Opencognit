@@ -1,5 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
-import { Save, RotateCcw, Globe, Shield, Bell, Database, Loader2, Key, Sparkles, Download, Upload, CheckCircle2, AlertCircle, Trash2, AlertTriangle, FolderOpen, Send, Terminal, RefreshCw, Zap } from 'lucide-react';
+import { Save, RotateCcw, Globe, Shield, Bell, Database, Loader2, Key, Sparkles, Download, Upload, CheckCircle2, AlertCircle, Trash2, AlertTriangle, FolderOpen, Send, Terminal, RefreshCw, Zap, Plus, X } from 'lucide-react';
+
+interface CustomConnection {
+  id: string;
+  name: string;
+  apiKey: string;
+  baseUrl: string;
+}
 import { PageHelp } from '../components/PageHelp';
 import { Select } from '../components/Select';
 import { useI18n } from '../i18n';
@@ -65,8 +72,7 @@ export function Settings() {
   const [openaiKey, setOpenaiKey] = useState('');
   const [openrouterKey, setOpenrouterKey] = useState('');
   const [ollamaUrl, setOllamaUrl] = useState('');
-  const [customApiKey, setCustomApiKey] = useState('');
-  const [customApiBaseUrl, setCustomApiBaseUrl] = useState('');
+  const [customConnections, setCustomConnections] = useState<CustomConnection[]>([]);
   const [defaultModel, setDefaultModel] = useState('openrouter/auto');
   const [orModels, setOrModels] = useState<{id: string; name: string}[]>([]);
   const [loadingOrModels, setLoadingOrModels] = useState(false);
@@ -136,8 +142,13 @@ export function Settings() {
         setOpenrouterKey(data.openrouter_api_key || '');
         setDefaultModel(data.openrouter_default_model || 'openrouter/auto');
         setOllamaUrl(data.ollama_base_url || '');
-        setCustomApiKey(data.custom_api_key || '');
-        setCustomApiBaseUrl(data.custom_api_base_url || '');
+        // Load custom connections — migrate from legacy single-connection fields if list is empty
+        let conns: CustomConnection[] = [];
+        try { conns = JSON.parse(data.custom_connections || '[]'); } catch {}
+        if (conns.length === 0 && data.custom_api_key) {
+          conns = [{ id: 'default', name: 'Custom', apiKey: data.custom_api_key, baseUrl: data.custom_api_base_url || '' }];
+        }
+        setCustomConnections(conns);
         setBudgetPauseThreshold(Number(data.budget_pause_threshold) || 95);
         setApprovalRequired(data.approval_required !== 'false');
         setStrategyApproval(data.strategy_approval !== 'false');
@@ -300,8 +311,7 @@ export function Settings() {
         ['openrouter_api_key', openrouterKey],
         ['openrouter_default_model', defaultModel],
         ['ollama_base_url', ollamaUrl],
-        ['custom_api_key', customApiKey],
-        ['custom_api_base_url', customApiBaseUrl],
+        ['custom_connections', JSON.stringify(customConnections)],
         ['budget_pause_threshold', String(budgetPauseThreshold)],
         ['approval_required', String(approvalRequired)],
         ['strategy_approval', String(strategyApproval)],
@@ -441,7 +451,7 @@ export function Settings() {
                   ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Speichern...</>
                   : saved
                     ? <><CheckCircle2 size={16} /> {i18n.t.einstellungen.saved}</>
-                    : <><Save size={16} /> {i18n.language === 'de' ? 'Alle speichern' : 'Save all'}</>
+                    : <><Save size={16} /> {i18n.t.einstellungen.saveAll}</>
                 }
               </button>
               {saveError && <span style={{ fontSize: '0.75rem', color: '#ef4444' }}>{saveError}</span>}
@@ -508,7 +518,7 @@ export function Settings() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   <Terminal size={18} style={{ color: '#23CDCB' }} />
-                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>{i18n.language === 'de' ? 'Claude Code (Pro/Max-Abo)' : 'Claude Code (Pro/Max plan)'}</h2>
+                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>{i18n.t.einstellungen.claudeCodeTitle}</h2>
                 </div>
                 <button
                   type="button"
@@ -522,13 +532,13 @@ export function Settings() {
                   }}
                 >
                   <RefreshCw size={13} style={{ animation: claudeStatus.loading ? 'spin 1s linear infinite' : 'none' }} />
-                  Aktualisieren
+                  {i18n.t.einstellungen.refresh}
                 </button>
               </div>
 
               {claudeStatus.loading ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#64748b', fontSize: '0.875rem' }}>
-                  <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Prüfe Status...
+                  <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> {i18n.t.einstellungen.checkingStatus}
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -697,8 +707,6 @@ export function Settings() {
                   { label: 'OpenAI API Key', placeholder: 'sk-proj-...', hint: i18n.t.einstellungen.openaiHint, type: 'password', value: openaiKey, onChange: setOpenaiKey },
                   { label: 'OpenRouter API Key', placeholder: 'sk-or-v1-...', hint: i18n.t.einstellungen.openrouterHint, type: 'password', value: openrouterKey, onChange: setOpenrouterKey },
                   { label: 'Ollama Base URL', placeholder: 'http://127.0.0.1:11434', hint: i18n.t.einstellungen.ollamaHint, type: 'text', value: ollamaUrl, onChange: setOllamaUrl },
-                  { label: 'Custom API Key', placeholder: 'sk-...', hint: 'API Key für beliebige OpenAI-kompatible Anbieter (Groq, Mistral, Together.ai, LM Studio, …)', type: 'password', value: customApiKey, onChange: setCustomApiKey },
-                  { label: 'Custom API Base URL', placeholder: 'https://api.groq.com/openai/v1', hint: 'Basis-URL des OpenAI-kompatiblen Endpunkts. Kann pro Agent in verbindungsConfig.baseUrl überschrieben werden.', type: 'text', value: customApiBaseUrl, onChange: setCustomApiBaseUrl },
                 ] as const).map(({ label, placeholder, hint, type, value, onChange }) => (
                   <div key={label}>
                     <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, color: '#d4d4d8', marginBottom: '0.5rem' }}>
@@ -725,6 +733,73 @@ export function Settings() {
                     <p style={{ fontSize: '0.75rem', color: '#71717a', marginTop: '0.375rem' }}>{hint}</p>
                   </div>
                 ))}
+
+                {/* Custom Connections — dynamic list */}
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                    <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#d4d4d8' }}>
+                      {i18n.t.einstellungen.customConnections}
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setCustomConnections(prev => [...prev, { id: crypto.randomUUID(), name: '', apiKey: '', baseUrl: '' }])}
+                      style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0.25rem 0.625rem', borderRadius: 8, border: '1px solid rgba(35,205,202,0.25)', background: 'rgba(35,205,202,0.06)', color: '#23CDCB', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      <Plus size={12} /> {i18n.t.einstellungen.addConnection}
+                    </button>
+                  </div>
+                  <p style={{ fontSize: '0.75rem', color: '#71717a', marginBottom: '0.75rem', marginTop: 0 }}>
+                    {i18n.t.einstellungen.connectionHint}
+                  </p>
+                  {customConnections.length === 0 && (
+                    <p style={{ fontSize: '0.8rem', color: '#52525b', fontStyle: 'italic' }}>{i18n.t.einstellungen.noConnections}</p>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {customConnections.map((conn, idx) => (
+                      <div key={conn.id} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '0.5rem', alignItems: 'end', padding: '0.75rem', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: '#71717a', marginBottom: '0.25rem' }}>{i18n.t.einstellungen.connectionName}</label>
+                          <input
+                            type="text"
+                            placeholder="Groq"
+                            value={conn.name}
+                            onChange={e => setCustomConnections(prev => prev.map((c, i) => i === idx ? { ...c, name: e.target.value } : c))}
+                            style={{ width: '100%', padding: '0.5rem 0.625rem', backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#fff', fontSize: '0.8125rem' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: '#71717a', marginBottom: '0.25rem' }}>{i18n.t.einstellungen.connectionApiKey}</label>
+                          <input
+                            type="password"
+                            placeholder="sk-..."
+                            value={conn.apiKey}
+                            autoComplete="new-password"
+                            onChange={e => setCustomConnections(prev => prev.map((c, i) => i === idx ? { ...c, apiKey: e.target.value } : c))}
+                            style={{ width: '100%', padding: '0.5rem 0.625rem', backgroundColor: 'rgba(255,255,255,0.05)', border: `1px solid ${conn.apiKey ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 8, color: '#fff', fontSize: '0.8125rem' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: '#71717a', marginBottom: '0.25rem' }}>{i18n.t.einstellungen.connectionBaseUrl}</label>
+                          <input
+                            type="text"
+                            placeholder="https://api.groq.com/openai/v1"
+                            value={conn.baseUrl}
+                            onChange={e => setCustomConnections(prev => prev.map((c, i) => i === idx ? { ...c, baseUrl: e.target.value } : c))}
+                            style={{ width: '100%', padding: '0.5rem 0.625rem', backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#fff', fontSize: '0.8125rem' }}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setCustomConnections(prev => prev.filter((_, i) => i !== idx))}
+                          style={{ padding: '0.5rem', borderRadius: 8, border: '1px solid rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.06)', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                          title="Remove"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
                 {/* Standard-Modell (OpenRouter) — nur anzeigen wenn Key gesetzt */}
                 {openrouterKey && (
@@ -774,8 +849,7 @@ export function Settings() {
                 ['openrouter_api_key', openrouterKey],
                 ['openrouter_default_model', defaultModel],
                 ['ollama_base_url', ollamaUrl],
-                ['custom_api_key', customApiKey],
-                ['custom_api_base_url', customApiBaseUrl],
+                ['custom_connections', JSON.stringify(customConnections)],
               ])} />
             </div>
 

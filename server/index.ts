@@ -2420,12 +2420,35 @@ app.post('/api/experten/:id/chat/direct', async (req: express.Request, res: expr
       // Agent-level baseUrl overrides default (e.g. Groq, Together, LM Studio)
       apiUrl = agentBaseUrl || 'https://api.openai.com/v1/chat/completions';
     } else if (provider === 'custom') {
-      // Custom OpenAI-compatible provider: key + base URL from global settings, overridable per agent
-      const keyRow = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'custom_api_key')).get();
-      if (keyRow) apiKey = decryptSetting('custom_api_key', keyRow.wert);
-      const urlRow = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'custom_api_base_url')).get();
-      const globalBaseUrl = urlRow?.wert || '';
-      apiUrl = (agentBaseUrl || globalBaseUrl || 'https://api.openai.com/v1') + '/chat/completions';
+      // Custom OpenAI-compatible provider: resolve named connection or fall back to global key
+      let resolvedKey = '';
+      let resolvedBaseUrl = agentBaseUrl; // per-agent override takes priority
+      const connId = (() => { try { return JSON.parse(expert.verbindungsConfig || '{}').connectionId || ''; } catch { return ''; } })();
+      if (connId) {
+        // Named connection: look up from custom_connections JSON
+        const connsRow = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'custom_connections')).get();
+        if (connsRow?.wert) {
+          try {
+            const conns: { id: string; name: string; apiKey: string; baseUrl: string }[] = JSON.parse(decryptSetting('custom_connections', connsRow.wert));
+            const match = conns.find(c => c.id === connId);
+            if (match) {
+              resolvedKey = match.apiKey;
+              if (!resolvedBaseUrl) resolvedBaseUrl = match.baseUrl;
+            }
+          } catch {}
+        }
+      }
+      if (!resolvedKey) {
+        // Fallback to global custom_api_key
+        const keyRow = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'custom_api_key')).get();
+        if (keyRow) resolvedKey = decryptSetting('custom_api_key', keyRow.wert);
+      }
+      if (!resolvedBaseUrl) {
+        const urlRow = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'custom_api_base_url')).get();
+        resolvedBaseUrl = urlRow?.wert || '';
+      }
+      apiKey = resolvedKey;
+      apiUrl = (resolvedBaseUrl || 'https://api.openai.com/v1') + '/chat/completions';
       provider = 'openai'; // treat as OpenAI-compatible for LLM call below
     } else {
       // Fallback: try anthropic key
