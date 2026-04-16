@@ -5,7 +5,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { appEvents } from '../events.js';
 import { db } from '../db/client.js';
-import { arbeitszyklen, agentWakeupRequests, experten, aufgaben, unternehmen, projekte, kostenbuchungen, kommentare, workProducts, chatNachrichten, aktivitaetslog, ziele, issueRelations, einstellungen, budgetPolicies, budgetIncidents, agentMeetings, genehmigungen, agentPermissions } from '../db/schema.js';
+import { arbeitszyklen, agentWakeupRequests, experten, aufgaben, unternehmen, projekte, kostenbuchungen, kommentare, workProducts, chatNachrichten, aktivitaetslog, ziele, issueRelations, einstellungen, budgetPolicies, budgetIncidents, agentMeetings, genehmigungen, agentPermissions, expertenSkills, skillsLibrary } from '../db/schema.js';
 import { eq, and, sql, inArray, or, isNull, asc, desc, gte } from 'drizzle-orm';
 import { pruefeUndEntblocke } from './issue-dependencies.js';
 import { wakeupService, type PendingWakeup } from './wakeup.js';
@@ -99,6 +99,11 @@ export interface HeartbeatOptions {
     issueId?: string;
     wakeReason?: string;
     wakeCommentId?: string;
+    [key: string]: unknown;
+  };
+  payload?: {
+    meetingId?: string;
+    thema?: string;
     [key: string]: unknown;
   };
 }
@@ -286,6 +291,7 @@ class HeartbeatServiceImpl implements HeartbeatService {
           invocationSource: wakeup.source,
           triggerDetail: wakeup.triggerDetail,
           contextSnapshot: wakeup.contextSnapshot,
+          payload: wakeup.payload,
         });
 
         // Mark wakeup as completed
@@ -337,6 +343,21 @@ class HeartbeatServiceImpl implements HeartbeatService {
           aktualisiertAm: now,
         })
         .where(eq(experten.id, expertId));
+
+      // ─── Meeting Handler ──────────────────────────────────────────────────────
+      // If this wakeup was triggered by a meeting invitation, handle it first.
+      const meetingPayload = options.payload?.meetingId ? options.payload : null;
+      if (meetingPayload?.meetingId) {
+        await this.handleMeetingWakeup(runId, expertId, unternehmenId, meetingPayload.meetingId as string);
+        // After handling the meeting, skip normal task processing for this run
+        await this.updateRunStatus(runId, 'succeeded', {
+          ausgabe: `Meeting beantwortet: ${meetingPayload.thema || meetingPayload.meetingId}`,
+          beendetAm: new Date().toISOString(),
+        });
+        await db.update(experten).set({ status: 'idle', aktualisiertAm: new Date().toISOString() }).where(eq(experten.id, expertId));
+        return;
+      }
+      // ─────────────────────────────────────────────────────────────────────────────
 
       // ─── Advisor Strategy Integration ──────────────────────────────────────────
       let advisorPlan: string | null = null;
@@ -833,6 +854,19 @@ class HeartbeatServiceImpl implements HeartbeatService {
           ...((taskFull as any).isMaximizerMode ? {
             maximizerMode: '⚡ MAXIMIZER MODE AKTIV: Arbeite schnellstmöglich. Erzeuge vollständigen, sofort nutzbaren Output. Keine Rückfragen, keine Platzhalter — liefere alles in einem Durchgang.',
           } : {}),
+          // Workspace context: show what files already exist so agents coordinate
+          ...(() => {
+            const wp = (taskFull as any).workspacePath;
+            if (!wp || !fs.existsSync(wp)) return {};
+            try {
+              const allFiles = fs.readdirSync(wp, { recursive: true } as any) as string[];
+              const files = allFiles
+                .filter((f: string) => !f.includes('node_modules') && !f.includes('.git'))
+                .slice(0, 60)
+                .join('\n');
+              return files ? { workspaceFiles: `## Bereits vorhandene Dateien im Workspace\n\`\`\`\n${files}\n\`\`\`\nBitte konsistenten Code-Stil verwenden und bestehende Dateien beachten.` } : {};
+            } catch { return {}; }
+          })(),
           ...(memoryContext ? { gedaechtnis: memoryContext } : {}),
           ...(blockerOutputs ? { vorgaengerOutputs: blockerOutputs } : {}),
           ...(advisorPlan ? { advisorPlan: `### 🧠 STRATEGISCHER PLAN DES ARCHITEKTEN/ADVISORS\n\n${advisorPlan}\n\n*Bitte befolge diesen Plan strikt bei der Ausführung der Aufgabe.*` } : {}),
@@ -1400,6 +1434,93 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
    * Creates a synthetic "planning" task so the CEO can evaluate goals and
    * create new tasks for the team autonomously.
    */
+  /**
+   * Handle a meeting wakeup: load meeting context, call LLM for response,
+   * save the answer into agentMeetings.antworten, mark meeting done if all responded.
+   */
+  private async handleMeetingWakeup(runId: string, expertId: string, unternehmenId: string, meetingId: string): Promise<void> {
+    try {
+      const meeting = db.select().from(agentMeetings).where(eq(agentMeetings.id, meetingId)).get() as any;
+      if (!meeting) { console.warn(`  ⚠️ Meeting ${meetingId} not found`); return; }
+
+      const expert = db.select({ name: experten.name, rolle: experten.rolle, faehigkeiten: experten.faehigkeiten })
+        .from(experten).where(eq(experten.id, expertId)).get() as any;
+
+      const existingAnswers: Record<string, string> = (() => {
+        try { return JSON.parse(meeting.antworten || '{}'); } catch { return {}; }
+      })();
+
+      const meetingPrompt = `Du nimmst an einem Team-Meeting teil.
+
+**Meeting-Thema:** ${meeting.titel}
+${meeting.agenda ? `**Agenda:** ${meeting.agenda}` : ''}
+
+**Bisherige Antworten der Teilnehmer:**
+${Object.entries(existingAnswers).map(([name, ans]) => `- ${name}: ${ans}`).join('\n') || '(noch keine)'}
+
+Bitte gib deine Meinung, deinen Input oder deine Empfehlung zum Thema in 2-4 Sätzen. Sei präzise und konstruktiv.`;
+
+      // Call LLM via custom API
+      const customKey  = db.select({ wert: einstellungen.wert }).from(einstellungen).where(eq(einstellungen.schluessel, 'custom_api_key')).get();
+      const customBase = db.select({ wert: einstellungen.wert }).from(einstellungen).where(eq(einstellungen.schluessel, 'custom_api_base_url')).get();
+
+      let response = `(${expert?.name || expertId} hat nicht geantwortet — kein LLM verfügbar)`;
+
+      if (customKey?.wert && customBase?.wert) {
+        const apiBase = customBase.wert.replace(/\/$/, '');
+        const res = await fetch(`${apiBase}/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${customKey.wert}` },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            max_tokens: 400,
+            messages: [
+              { role: 'system', content: `Du bist ${expert?.name || 'ein Agent'}, ${expert?.rolle || 'Teammitglied'}. ${expert?.faehigkeiten ? `Deine Skills: ${expert.faehigkeiten}.` : ''}` },
+              { role: 'user', content: meetingPrompt },
+            ],
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json() as any;
+          response = data.choices?.[0]?.message?.content || response;
+        }
+      }
+
+      // Save answer
+      existingAnswers[expert?.name || expertId] = response;
+      db.update(agentMeetings)
+        .set({ antworten: JSON.stringify(existingAnswers), aktualisiertAm: new Date().toISOString() })
+        .where(eq(agentMeetings.id, meetingId)).run();
+
+      // Check if all participants have answered → close meeting
+      const teilnehmerIds: string[] = (() => {
+        try { return JSON.parse(meeting.teilnehmerIds || '[]'); } catch { return []; }
+      })();
+      const allAnswered = teilnehmerIds.every(id => {
+        const name = db.select({ name: experten.name }).from(experten).where(eq(experten.id, id)).get()?.name || id;
+        return existingAnswers[name];
+      });
+
+      if (allAnswered) {
+        db.update(agentMeetings)
+          .set({ status: 'completed', aktualisiertAm: new Date().toISOString() })
+          .where(eq(agentMeetings.id, meetingId)).run();
+        console.log(`  ✅ Meeting "${meeting.titel}" — alle Antworten eingegangen, abgeschlossen`);
+        // Notify orchestrator
+        await wakeupService.wakeup(meeting.veranstalterExpertId, unternehmenId, {
+          source: 'automation',
+          triggerDetail: 'callback',
+          reason: `Meeting abgeschlossen: ${meeting.titel}. Antworten: ${Object.entries(existingAnswers).map(([n, a]) => `${n}: "${a.slice(0, 80)}"`).join(' | ')}`,
+        });
+      }
+
+      console.log(`  📋 Meeting "${meeting.titel}" — ${expert?.name} hat geantwortet`);
+      trace(expertId, unternehmenId, 'result', `Meeting-Antwort: ${meeting.titel}`, response.slice(0, 200), runId);
+    } catch (err: any) {
+      console.error(`  ❌ Meeting wakeup handler failed: ${err.message}`);
+    }
+  }
+
   private async runOrchestratorPlanning(
     runId: string,
     expertId: string,
@@ -1438,7 +1559,20 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
           .from(aufgaben)
           .where(and(eq(aufgaben.unternehmenId, unternehmenId), eq(aufgaben.zugewiesenAn, m.id), inArray(aufgaben.status, ['todo', 'in_progress', 'backlog'])))
           .then(r => (r[0]?.n ?? 0) as number);
-        return { name: m.name, faehigkeiten: m.faehigkeiten || '', openTasks: count };
+
+        // Load skills from skills library (structured skills)
+        const structuredSkills = await db.select({ skillName: skillsLibrary.name })
+          .from(expertenSkills)
+          .innerJoin(skillsLibrary, eq(expertenSkills.skillId, skillsLibrary.id))
+          .where(eq(expertenSkills.expertId, m.id));
+
+        const allSkills = [
+          ...structuredSkills.map(s => s.skillName),
+          ...(m.faehigkeiten ? m.faehigkeiten.split(',').map((s: string) => s.trim()).filter(Boolean) : []),
+        ];
+        const skillStr = [...new Set(allSkills)].join(', ') || 'keine';
+
+        return { name: m.name, skills: skillStr, openTasks: count };
       }));
 
       // Tasks older than 7 days still unfinished
@@ -1452,7 +1586,7 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
         ))
         .limit(5);
 
-      const workloadSummary = workloadPerAgent.map(m => `${m.name} (${m.openTasks} Tasks, Skills: ${m.faehigkeiten || 'keine'})`).join('; ');
+      const workloadSummary = workloadPerAgent.map(m => `${m.name} (${m.openTasks} offene Tasks | Skills: ${m.skills})`).join('; ');
       const hiringHint = workloadPerAgent.some(m => m.openTasks >= 5)
         ? '\nHINWEIS: Mindestens ein Agent hat ≥5 offene Tasks — erwäge ob ein zusätzlicher Agent eingestellt werden sollte (hire_agent).'
         : staleTasks.length >= 3
@@ -2098,16 +2232,46 @@ Kriterien:
 
 Sei nicht zu streng — wenn die Arbeit grundsätzlich passt, approve.`;
 
-    // Use available API key — prefer claude-code CLI (free), then Anthropic haiku (cheap), then OpenRouter with a cheap model
+    // Resolve the active LLM connection — same priority as the agent itself uses:
+    // 1. Custom API (Poe, LM Studio, etc.) — whatever is configured in Settings
+    // 2. claude-code CLI (if agent uses it)
+    // 3. Anthropic direct
+    // 4. OpenRouter
+    // 5. auto-approve (fail open, never block the system)
     const agentConn = db.select({ verbindungsTyp: experten.verbindungsTyp })
       .from(experten).where(eq(experten.id, expertId)).get() as any;
-    const orKey = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'openrouter_api_key')).get();
-    const anthropicKey = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'anthropic_api_key')).get();
+
+    const customKey  = db.select({ wert: einstellungen.wert }).from(einstellungen).where(eq(einstellungen.schluessel, 'custom_api_key')).get();
+    const customBase = db.select({ wert: einstellungen.wert }).from(einstellungen).where(eq(einstellungen.schluessel, 'custom_api_base_url')).get();
+    const anthropicKey = db.select({ wert: einstellungen.wert }).from(einstellungen).where(eq(einstellungen.schluessel, 'anthropic_api_key')).get();
+    const orKey      = db.select({ wert: einstellungen.wert }).from(einstellungen).where(eq(einstellungen.schluessel, 'openrouter_api_key')).get();
 
     try {
       let responseText = '';
 
-      // Option 1: agent uses claude-code CLI — run critic via CLI (free)
+      // Option 1: Custom API (Poe / any OpenAI-compatible endpoint) — primary for most setups
+      if (!responseText && customKey?.wert && customBase?.wert) {
+        try {
+          const apiBase = customBase.wert.replace(/\/$/, '');
+          // Use a fast/cheap model if available, fall back to gpt-4o-mini
+          const criticModel = 'gpt-4o-mini';
+          const res = await fetch(`${apiBase}/chat/completions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${customKey.wert}` },
+            body: JSON.stringify({
+              model: criticModel,
+              max_tokens: 300,
+              messages: [{ role: 'user', content: criticPrompt }],
+            }),
+          });
+          if (res.ok) {
+            const data = await res.json() as any;
+            responseText = data.choices?.[0]?.message?.content || '';
+          }
+        } catch { responseText = ''; }
+      }
+
+      // Option 2: claude-code CLI (free, if agent uses it)
       if (!responseText && agentConn?.verbindungsTyp === 'claude-code') {
         try {
           const { runClaudeDirectChat } = await import('../adapters/claude-code.js');
@@ -2115,17 +2279,13 @@ Sei nicht zu streng — wenn die Arbeit grundsätzlich passt, approve.`;
         } catch { responseText = ''; }
       }
 
-      // Option 2: Anthropic Haiku (very cheap)
+      // Option 3: Anthropic direct
       if (!responseText && anthropicKey?.wert) {
         const key = decryptSetting('anthropic_api_key', anthropicKey.wert);
         const res = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-          body: JSON.stringify({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 300,
-            messages: [{ role: 'user', content: criticPrompt }],
-          }),
+          body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 300, messages: [{ role: 'user', content: criticPrompt }] }),
         });
         if (res.ok) {
           const data = await res.json() as any;
@@ -2133,17 +2293,13 @@ Sei nicht zu streng — wenn die Arbeit grundsätzlich passt, approve.`;
         }
       }
 
-      // Option 3: OpenRouter with an explicit cheap model (never openrouter/auto — too expensive)
+      // Option 4: OpenRouter
       if (!responseText && orKey?.wert) {
         const key = decryptSetting('openrouter_api_key', orKey.wert);
         const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}`, 'HTTP-Referer': 'http://localhost:3200', 'X-Title': 'OpenCognit Critic' },
-          body: JSON.stringify({
-            model: 'mistralai/mistral-7b-instruct:free',
-            max_tokens: 300,
-            messages: [{ role: 'user', content: criticPrompt }],
-          }),
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}`, 'HTTP-Referer': 'http://localhost:3200' },
+          body: JSON.stringify({ model: 'mistralai/mistral-7b-instruct:free', max_tokens: 300, messages: [{ role: 'user', content: criticPrompt }] }),
         });
         if (res.ok) {
           const data = await res.json() as any;
