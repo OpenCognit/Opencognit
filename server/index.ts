@@ -101,6 +101,10 @@ wss.on('connection', (ws) => {
 
 app.use(cors());
 app.use(express.json());
+
+// Silence Chrome DevTools probe — harmless 404 spam in dev
+app.get('/.well-known/appspecific/com.chrome.devtools.json', (_req: any, res: any) => res.json({}));
+
 app.use('/api/webhooks', webhooksRouter);
 
 // ── Simple in-memory rate limiter for auth endpoints ────────────────────────
