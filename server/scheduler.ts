@@ -73,6 +73,26 @@ function sanitizeForPrompt(text: string, maxLen = 200): string {
     .slice(0, maxLen);
 }
 
+/**
+ * Computes a priority score for a task. Higher = should be shown to the agent first.
+ * Used to sort task lists before building LLM context strings.
+ */
+function taskPriorityScore(a: any): number {
+  const prio = a.prioritaet === 'critical' ? 100 : a.prioritaet === 'high' ? 70 : a.prioritaet === 'medium' ? 40 : 10;
+  // In-progress tasks surface above backlog; blocked tasks go to the bottom
+  const statusBonus = a.status === 'in_progress' ? 25 : a.status === 'blocked' ? -40 : 0;
+  // Age bonus: +2 points per day waiting, capped at 30 — prevents starvation
+  const daysSinceCreated = a.erstelltAm
+    ? Math.min(15, (Date.now() - new Date(a.erstelltAm).getTime()) / 86_400_000)
+    : 0;
+  const ageBonus = Math.round(daysSinceCreated * 2);
+  // Goal-aligned tasks get a relevance boost
+  const goalBonus = a.zielId ? 15 : 0;
+  // Maximizer tasks always float to top
+  const maximizerBonus = a.isMaximizerMode ? 200 : 0;
+  return prio + statusBonus + ageBonus + goalBonus + maximizerBonus;
+}
+
 export class Scheduler {
   private timer: NodeJS.Timeout | null = null;
   private isRunning = false;
@@ -184,24 +204,55 @@ export class Scheduler {
       for (const a of activeExperts) {
         if (!a.zyklusAktiv || !a.zyklusIntervallSek) continue;
 
+        // ── Load open tasks to drive adaptive interval and budget decisions ──
+        const agentTasks = db.select({
+          prioritaet: aufgaben.prioritaet,
+          status: aufgaben.status,
+          isMaximizerMode: (aufgaben as any).isMaximizerMode,
+        }).from(aufgaben)
+          .where(and(eq(aufgaben.zugewiesenAn, a.id), inArray(aufgaben.status, ['todo', 'in_progress', 'blocked'])))
+          .all();
+
+        // ── Adaptive interval: speed up for urgent work, stick to base otherwise ──
+        const hasCritical = agentTasks.some((t: any) => t.prioritaet === 'critical');
+        const hasHigh = agentTasks.some((t: any) => t.prioritaet === 'high');
+        const hasMaximizer = agentTasks.some((t: any) => t.isMaximizerMode);
+        const effectiveIntervalSek = hasMaximizer || hasCritical
+          ? Math.max(60, Math.floor(a.zyklusIntervallSek / 3))   // 3× faster for critical/maximizer
+          : hasHigh
+          ? Math.max(90, Math.floor(a.zyklusIntervallSek / 2))   // 2× faster for high priority
+          : a.zyklusIntervallSek;                                  // normal otherwise
+
         let needsZyklus = false;
         if (!a.letzterZyklus) {
           needsZyklus = true;
         } else {
           const lastTime = new Date(a.letzterZyklus).getTime();
-          if (currentTime - lastTime > a.zyklusIntervallSek * 1000) {
+          if (currentTime - lastTime > effectiveIntervalSek * 1000) {
             needsZyklus = true;
           }
         }
 
-        // budget=0 means "unlimited" — only block when budget is set AND exceeded
-        const budgetOk = a.budgetMonatCent === 0 || a.budgetMonatCent > a.verbrauchtMonatCent;
-        if (needsZyklus && budgetOk) {
-          // Fire and forget, damit der Scheduler nicht blockiert wird
-          this.triggerZyklus(a.id, a.unternehmenId, 'scheduler').catch(e => {
-            console.error(`Fehler bei Arbeitszyklus für ${a.id}:`, e);
-          });
+        if (!needsZyklus) continue;
+
+        // ── Predictive budget guard ───────────────────────────────────────────
+        // budget=0 means unlimited. Only block when set AND exceeded.
+        if (a.budgetMonatCent > 0 && a.verbrauchtMonatCent >= a.budgetMonatCent) continue;
+
+        // At 95%+ budget: skip non-urgent cycles to preserve headroom
+        if (a.budgetMonatCent > 0 && !hasMaximizer) {
+          const usedPct = a.verbrauchtMonatCent / a.budgetMonatCent;
+          if (usedPct >= 0.95 && !hasCritical) {
+            trace(a.id, a.unternehmenId, 'warning', '⚠️ Budget fast erschöpft',
+              `${Math.round(usedPct * 100)}% verbraucht — Zyklus übersprungen (kein critical/maximizer Task). Nur kritische Aufgaben werden noch ausgeführt.`);
+            continue;
+          }
         }
+
+        // Fire and forget — Scheduler darf nicht blockieren
+        this.triggerZyklus(a.id, a.unternehmenId, 'scheduler').catch(e => {
+          console.error(`Fehler bei Arbeitszyklus für ${a.id}:`, e);
+        });
       }
 
       // CEO auto-wakeup: wenn unzugewiesene Tasks existieren, CEO triggern
@@ -342,7 +393,7 @@ export class Scheduler {
     trace(expertId, unternehmenId, 'info', `Arbeitszyklus gestartet`, `Quelle: ${quelle} · Adapter: ${expert.verbindungsTyp}`, laufId);
 
     // Kontext sammeln
-    // Load todo + in_progress tasks (so agent knows what to work on next)
+    // Load todo + in_progress + blocked tasks (so agent knows what to work on next)
     const expertAufgaben = db.select().from(aufgaben)
       .where(and(
         eq(aufgaben.zugewiesenAn, expertId),
@@ -352,7 +403,10 @@ export class Scheduler {
     // Maximizer Mode: Wenn mindestens eine zugewiesene Aufgabe isMaximizerMode hat, gelten keine Limits
     const isMaximizerActive = expertAufgaben.some((a: any) => a.isMaximizerMode);
 
-    const tasksStrings = expertAufgaben.map((a: any) => `[${a.id.slice(0,8)}] ${sanitizeForPrompt(a.titel, 120)} (${a.status}${(a as any).isMaximizerMode ? ' MAXIMIZER' : ''}${a.beschreibung ? ': ' + sanitizeForPrompt(a.beschreibung, 80) : ''})`);
+    // Sort by priority score so the agent sees the most urgent tasks first
+    const sortedAufgaben = [...expertAufgaben].sort((a, b) => taskPriorityScore(b) - taskPriorityScore(a));
+
+    const tasksStrings = sortedAufgaben.map((a: any) => `[${a.id.slice(0,8)}] ${sanitizeForPrompt(a.titel, 120)} (${a.status}${(a as any).isMaximizerMode ? ' MAXIMIZER' : ''}${a.beschreibung ? ': ' + sanitizeForPrompt(a.beschreibung, 80) : ''})`);
     if (tasksStrings.length > 0) {
       trace(expertId, unternehmenId, 'thinking', `Aufgaben laden`, `${tasksStrings.length} aktive Aufgabe(n): ${tasksStrings.slice(0, 3).join(', ')}${tasksStrings.length > 3 ? '…' : ''}`, laufId);
     }
@@ -835,9 +889,71 @@ ${systemObservations.length > 0 ? `\nLetzte Aktionsergebnisse:\n${systemObservat
         ? `\n\n📋 UNDELEGIERTE AUFGABEN (${unassigned.length}):\n${unassigned.map(t => `  • [${t.prioritaet.toUpperCase()}] ${t.titel} (ID: ${t.id})${t.zielId ? ' 🎯' : ''}`).join('\n')}`
         : '';
 
+      // ── Risk Signals: computed situation awareness for the CEO ─────────────
+      // Surfaces actionable problems the CEO should address this cycle.
+      let riskSection = '';
+      try {
+        const risks: string[] = [];
+        const now_ts = Date.now();
+
+        // 1. Stale in-progress tasks (>24h without update → agent might be stuck)
+        const staleThreshold = now_ts - 24 * 60 * 60 * 1000;
+        const staleTasks = db.select({
+          id: aufgaben.id, titel: aufgaben.titel, zugewiesenAn: aufgaben.zugewiesenAn, aktualisiertAm: aufgaben.aktualisiertAm,
+        }).from(aufgaben)
+          .where(and(eq(aufgaben.unternehmenId, unternehmenId), eq(aufgaben.status, 'in_progress')))
+          .all()
+          .filter((t: any) => t.aktualisiertAm && new Date(t.aktualisiertAm).getTime() < staleThreshold);
+
+        if (staleTasks.length > 0) {
+          const staleLines = staleTasks.slice(0, 3).map((t: any) => {
+            const agent = alleExperten.find((e: any) => e.id === t.zugewiesenAn);
+            const hoursAgo = Math.round((now_ts - new Date(t.aktualisiertAm).getTime()) / 3_600_000);
+            return `  ⚠️ "${sanitizeForPrompt(t.titel, 60)}" → ${agent?.name || '?'} (${hoursAgo}h ohne Update)`;
+          }).join('\n');
+          risks.push(`STALE TASKS (${staleTasks.length}):\n${staleLines}`);
+        }
+
+        // 2. Budget-critical agents with open work
+        const budgetCritical = db.select({
+          id: experten.id, name: experten.name, budgetMonatCent: experten.budgetMonatCent, verbrauchtMonatCent: experten.verbrauchtMonatCent,
+        }).from(experten)
+          .where(and(eq(experten.unternehmenId, unternehmenId), ne(experten.budgetMonatCent, 0)))
+          .all()
+          .filter((a: any) => a.budgetMonatCent > 0 && a.verbrauchtMonatCent / a.budgetMonatCent >= 0.85);
+
+        if (budgetCritical.length > 0) {
+          const budgetLines = budgetCritical.map((a: any) =>
+            `  💸 ${a.name}: ${Math.round(a.verbrauchtMonatCent / a.budgetMonatCent * 100)}% Budget verbraucht`
+          ).join('\n');
+          risks.push(`BUDGET-WARNUNG:\n${budgetLines}`);
+        }
+
+        // 3. Goals with 0 progress and no assigned tasks (gap in planning)
+        const goalsWithNoWork = db.select({ id: ziele.id, titel: ziele.titel }).from(ziele)
+          .where(and(eq(ziele.unternehmenId, unternehmenId), eq(ziele.status, 'active')))
+          .all()
+          .filter((g: any) => {
+            const linked = db.select({ status: aufgaben.status }).from(aufgaben)
+              .where(and(eq(aufgaben.zielId, g.id), inArray(aufgaben.status, ['todo', 'in_progress']))).all();
+            return linked.length === 0;
+          });
+
+        if (goalsWithNoWork.length > 0) {
+          const goalLines = goalsWithNoWork.slice(0, 3).map((g: any) => `  🎯 "${sanitizeForPrompt(g.titel, 60)}" — keine aktiven Tasks!`).join('\n');
+          risks.push(`ZIELE OHNE AKTIVE TASKS:\n${goalLines}`);
+        }
+
+        if (risks.length > 0) {
+          riskSection = uiLang === 'en'
+            ? `\n\n🚨 SITUATION RISKS (address these this cycle):\n${risks.join('\n\n')}`
+            : `\n\n🚨 RISIKO-SIGNALE (in diesem Zyklus angehen):\n${risks.join('\n\n')}`;
+        }
+      } catch { /* non-critical — risk analysis must not break the orchestrator */ }
+
       basePrompt = uiLang === 'en'
         ? `You are ${expert.name}, Orchestrator and strategic manager of your team.
-Your primary task is coordination and delegation — NOT technical execution yourself.${goalsSection}${boardSection}${obsSection}${ownTaskSection}${unassignedSection}
+Your primary task is coordination and delegation — NOT technical execution yourself.${goalsSection}${riskSection}${boardSection}${obsSection}${ownTaskSection}${unassignedSection}
 
 YOUR TASKS AS ORCHESTRATOR:
 1. 🎯 GOAL ALIGNMENT: Prioritize tasks that advance active goals
@@ -856,7 +972,7 @@ ${li}
 Respond with a brief strategic situation analysis (2-3 sentences) and concrete JSON actions.
 If everything runs optimally: short status text without JSON.`
         : `Du bist ${expert.name}, Orchestrator und strategischer Manager deines Teams.
-Deine Hauptaufgabe ist Koordination und Delegation — NICHT die eigene technische Ausführung.${goalsSection}${boardSection}${obsSection}${ownTaskSection}${unassignedSection}
+Deine Hauptaufgabe ist Koordination und Delegation — NICHT die eigene technische Ausführung.${goalsSection}${riskSection}${boardSection}${obsSection}${ownTaskSection}${unassignedSection}
 
 DEINE AUFGABEN ALS ORCHESTRATOR:
 1. 🎯 ZIEL-AUSRICHTUNG: Priorisiere Aufgaben die aktive Ziele voranbringen
