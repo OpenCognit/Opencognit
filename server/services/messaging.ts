@@ -135,6 +135,7 @@ export function executeConfigAction(action: any, unternehmenId: string): string 
 
 export function getUiLanguage(unternehmenId: string): 'de' | 'en' {
   try {
+    // Company-specific first, then global (''), then fallback
     const row = db.select({ wert: einstellungen.wert })
       .from(einstellungen)
       .where(and(eq(einstellungen.schluessel, 'ui_language'), eq(einstellungen.unternehmenId, unternehmenId)))
@@ -148,7 +149,8 @@ export function getUiLanguage(unternehmenId: string): 'de' | 'en' {
       if (lang === 'en' || lang === 'de') return lang;
     }
   } catch {}
-  return 'de';
+  // No setting saved yet — default to English (matches frontend browser-detection default)
+  return 'en';
 }
 
 export function langLine(lang: 'de' | 'en'): string {
