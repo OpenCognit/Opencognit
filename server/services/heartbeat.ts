@@ -1428,15 +1428,48 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
         return;
       }
 
+      // Compute team workload and skill gaps for hiring decisions
+      const teamForPlanning = await db.select({ id: experten.id, name: experten.name, faehigkeiten: experten.faehigkeiten })
+        .from(experten)
+        .where(and(eq(experten.unternehmenId, unternehmenId), eq(experten.isOrchestrator, false)));
+
+      const workloadPerAgent = await Promise.all(teamForPlanning.map(async (m) => {
+        const count = await db.select({ n: sql<number>`COUNT(*)` })
+          .from(aufgaben)
+          .where(and(eq(aufgaben.unternehmenId, unternehmenId), eq(aufgaben.zugewiesenAn, m.id), inArray(aufgaben.status, ['todo', 'in_progress', 'backlog'])))
+          .then(r => (r[0]?.n ?? 0) as number);
+        return { name: m.name, faehigkeiten: m.faehigkeiten || '', openTasks: count };
+      }));
+
+      // Tasks older than 7 days still unfinished
+      const staleDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const staleTasks = await db.select({ titel: aufgaben.titel, prioritaet: aufgaben.prioritaet })
+        .from(aufgaben)
+        .where(and(
+          eq(aufgaben.unternehmenId, unternehmenId),
+          inArray(aufgaben.status, ['todo', 'in_progress', 'backlog']),
+          sql`${aufgaben.erstelltAm} < ${staleDate}`,
+        ))
+        .limit(5);
+
+      const workloadSummary = workloadPerAgent.map(m => `${m.name} (${m.openTasks} Tasks, Skills: ${m.faehigkeiten || 'keine'})`).join('; ');
+      const hiringHint = workloadPerAgent.some(m => m.openTasks >= 5)
+        ? '\nHINWEIS: Mindestens ein Agent hat ≥5 offene Tasks — erwäge ob ein zusätzlicher Agent eingestellt werden sollte (hire_agent).'
+        : staleTasks.length >= 3
+          ? '\nHINWEIS: Mehrere Tasks sind seit >7 Tagen offen — erwäge ob das Team Verstärkung braucht (hire_agent).'
+          : '';
+
       // Build planning context — goals take priority, tasks are the fallback
       let planningContext: string;
       if (activeGoals.length > 0) {
         planningContext =
           `Aktive Ziele: ${activeGoals.map(g => `"${g.titel}" (${g.fortschritt}%)`).join(', ')}. ` +
+          `Team-Auslastung: ${workloadSummary}.${hiringHint} ` +
           `Analysiere was als nächstes getan werden muss und weise Aufgaben den passenden Team-Mitgliedern zu.`;
       } else {
         planningContext =
           `Keine übergeordneten Ziele gesetzt. Offene Aufgaben im Backlog: ${backlogTasks.map(t => `"${t.titel}" [${t.prioritaet}]`).join(', ')}. ` +
+          `Team-Auslastung: ${workloadSummary}.${hiringHint} ` +
           `Priorisiere und weise diese Aufgaben den passenden Team-Mitgliedern zu. Erstelle bei Bedarf Unter-Tasks.`;
       }
 
