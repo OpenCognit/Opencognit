@@ -391,13 +391,20 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
   const [skillsLibrary, setSkillsLibrary] = useState<any[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [allExperts, setAllExperts] = useState<Experte[]>([]);
-  
+  const [globalCustomBaseUrl, setGlobalCustomBaseUrl] = useState('');
+
   useEffect(() => {
     if (!expert.id) return;
-    
+
     // Fetch all experts for dropdowns
     apiExperten.liste(expert.unternehmenId)
       .then(list => setAllExperts(list))
+      .catch(() => {});
+
+    // Fetch global custom API base URL as hint for the per-agent field
+    authFetch(`/api/einstellungen?unternehmenId=${expert.unternehmenId}`)
+      .then(r => r.json())
+      .then((data: Record<string, string>) => setGlobalCustomBaseUrl(data.custom_api_base_url || ''))
       .catch(() => {});
 
     // Fetch permissions
@@ -428,6 +435,10 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
 
   // Sync editForm when expert changes
   useEffect(() => {
+    // Don't reset the form while user is actively editing settings — it would discard unsaved changes.
+    // Only sync when a different expert is opened (id change) or after the user saves (aktualisiertAm
+    // changes while NOT on the settings tab).
+    if (activeTab === 'einstellungen') return;
     setEditForm({
       name: expert.name,
       rolle: expert.rolle,
@@ -451,14 +462,13 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
           return config.isOrchestrator === true || expert.verbindungsTyp === 'ceo';
         } catch { return false; }
       })(),
-      // Keep permissions as they are fetched separately
       permAufgabenErstellen: editForm.permAufgabenErstellen,
       permAufgabenZuweisen: editForm.permAufgabenZuweisen,
       permGenehmigungAnfordern: editForm.permGenehmigungAnfordern,
       permGenehmigungEntscheiden: editForm.permGenehmigungEntscheiden,
       permExpertenAnwerben: editForm.permExpertenAnwerben,
     });
-  }, [expert.id, expert.aktualisiertAm]); // Added updatedAt if available to sync
+  }, [expert.id, expert.aktualisiertAm]); // sync on expert switch or after save
 
   useEffect(() => {
     setLoadingStats(true);
@@ -1695,13 +1705,15 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                         <input
                           className="input"
                           style={{ width: '100%' }}
-                          placeholder={editForm.verbindungsTyp === 'custom' ? 'https://api.groq.com/openai/v1' : editForm.verbindungsTyp === 'openai' ? 'z.B. https://api.groq.com/openai/v1' : 'z.B. http://1.2.3.4:11434'}
+                          placeholder={editForm.verbindungsTyp === 'custom' ? (globalCustomBaseUrl ? `${globalCustomBaseUrl} (Global)` : 'https://api.groq.com/openai/v1') : editForm.verbindungsTyp === 'openai' ? 'z.B. https://api.groq.com/openai/v1' : 'z.B. http://1.2.3.4:11434'}
                           value={editForm.baseUrl}
                           onChange={e => setEditForm(f => ({ ...f, baseUrl: e.target.value }))}
                         />
                         <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 6 }}>
                           {editForm.verbindungsTyp === 'custom'
-                            ? (de ? 'OpenAI-kompatibler Endpunkt. Leer = Wert aus den globalen Einstellungen.' : 'OpenAI-compatible endpoint. Empty = value from global Settings.')
+                            ? (globalCustomBaseUrl && !editForm.baseUrl
+                                ? <span style={{ color: '#23CDCB' }}>{de ? `Globale URL aktiv: ${globalCustomBaseUrl}` : `Using global URL: ${globalCustomBaseUrl}`}</span>
+                                : (de ? 'OpenAI-kompatibler Endpunkt. Leer = Wert aus den globalen Einstellungen.' : 'OpenAI-compatible endpoint. Empty = value from global Settings.'))
                             : (de ? 'Leer lassen, um den Standard-Endpoint zu nutzen.' : 'Leave empty to use the default endpoint.')}
                         </div>
                       </div>

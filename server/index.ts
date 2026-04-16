@@ -2402,6 +2402,10 @@ app.post('/api/experten/:id/chat/direct', async (req: express.Request, res: expr
     if (cfg.model) modelId = cfg.model;
   } catch {}
 
+  // Also read per-agent baseUrl from verbindungsConfig (can override global setting)
+  let agentBaseUrl = '';
+  try { agentBaseUrl = JSON.parse(expert.verbindungsConfig || '{}').baseUrl || ''; } catch {}
+
   if (!isCliProvider) {
     if (provider === 'anthropic' || provider === 'claude') {
       const row = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'anthropic_api_key')).get();
@@ -2413,7 +2417,16 @@ app.post('/api/experten/:id/chat/direct', async (req: express.Request, res: expr
     } else if (provider === 'openai') {
       const row = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'openai_api_key')).get();
       if (row) apiKey = decryptSetting('openai_api_key', row.wert);
-      apiUrl = 'https://api.openai.com/v1/chat/completions';
+      // Agent-level baseUrl overrides default (e.g. Groq, Together, LM Studio)
+      apiUrl = agentBaseUrl || 'https://api.openai.com/v1/chat/completions';
+    } else if (provider === 'custom') {
+      // Custom OpenAI-compatible provider: key + base URL from global settings, overridable per agent
+      const keyRow = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'custom_api_key')).get();
+      if (keyRow) apiKey = decryptSetting('custom_api_key', keyRow.wert);
+      const urlRow = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'custom_api_base_url')).get();
+      const globalBaseUrl = urlRow?.wert || '';
+      apiUrl = (agentBaseUrl || globalBaseUrl || 'https://api.openai.com/v1') + '/chat/completions';
+      provider = 'openai'; // treat as OpenAI-compatible for LLM call below
     } else {
       // Fallback: try anthropic key
       const row = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'anthropic_api_key')).get();

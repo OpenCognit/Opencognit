@@ -74,16 +74,18 @@ export function Experts() {
 
   if (!aktivesUnternehmen) return null;
 
-  if (loading || !alleExperten) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' }}>
-        <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#23CDCB' }} />
-      </div>
-    );
-  }
-
   return (
     <>
+      {/* Drawer is OUTSIDE the loading guard so it stays mounted during reload() */}
+      {(activeChatExpert || editingExpert) && (
+        <ExpertChatDrawer
+          expert={(activeChatExpert || editingExpert)!}
+          initialTab={editingExpert ? 'einstellungen' : 'überblick'}
+          onClose={() => { setActiveChatExpert(null); setEditingExpert(null); }}
+          onDeleted={() => { setActiveChatExpert(null); setEditingExpert(null); reload(); }}
+          onUpdated={() => reload()}
+        />
+      )}
       <div>
           {/* Header */}
           <div style={{
@@ -135,12 +137,18 @@ export function Experts() {
           <PageHelp id="agents" lang={i18n.language} />
 
           {/* Grid */}
+          {(loading || !alleExperten) ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' }}>
+              <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#23CDCB' }} />
+            </div>
+          ) : null}
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
             gap: '1.25rem',
+            display: (loading || !alleExperten) ? 'none' : 'grid',
           }}>
-            {alleExperten.map((m, i) => {
+            {(alleExperten || []).map((m, i) => {
               const budget = m.budgetMonatCent > 0 ? Math.round((m.verbrauchtMonatCent / m.budgetMonatCent) * 100) : 0;
               const manager = m.reportsTo ? alleExperten.find(x => x.id === m.reportsTo) : null;
               let modell = '';
@@ -508,22 +516,6 @@ export function Experts() {
           }}
         />
 
-        {(activeChatExpert || editingExpert) && (
-          <ExpertChatDrawer
-            expert={(activeChatExpert || editingExpert)!}
-            initialTab={editingExpert ? 'einstellungen' : 'überblick'}
-            onClose={() => {
-              setActiveChatExpert(null);
-              setEditingExpert(null);
-            }}
-            onDeleted={() => { 
-              setActiveChatExpert(null); 
-              setEditingExpert(null);
-              reload(); 
-            }}
-            onUpdated={() => reload()}
-          />
-        )}
 
       </div>
     </>
