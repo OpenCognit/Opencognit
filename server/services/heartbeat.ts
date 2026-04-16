@@ -1126,8 +1126,10 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
           }
           // ──────────────────────────────────────────────────────────────────
 
-          // For orchestrators: if mark_done was called for this task, use 'done'; otherwise preserve original status
-          const finalStatus = isOrchestrator && !orchestratorMarkedCurrentTaskDone ? taskFull.status : 'done';
+          // Always mark done after successful execution.
+          // For orchestrators: processOrchestratorActions handles OTHER tasks (create/assign/mark_done).
+          // The current task is always completed after a successful run.
+          const finalStatus = 'done';
           const finalAbgeschlossenAm = finalStatus === 'done' ? new Date().toISOString() : taskFull.abgeschlossenAm;
           await db.update(aufgaben)
             .set({

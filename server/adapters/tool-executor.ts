@@ -2,6 +2,7 @@
 
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { resolveAgentWorkdir } from './workspace-guard.js';
 
 const execAsync = promisify(exec);
 
@@ -49,8 +50,9 @@ export async function executeBashCommand(
   }
 
   try {
+    const safeWorkdir = resolveAgentWorkdir(workspacePath);
     const { stdout, stderr } = await execAsync(command, {
-      cwd: workspacePath || process.cwd(),
+      cwd: safeWorkdir,
       timeout: timeoutMs,
       env: { ...process.env },
     });
