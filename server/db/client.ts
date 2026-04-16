@@ -28,6 +28,7 @@ if (!isPg) {
   sqlite.pragma('synchronous = NORMAL');  // Faster writes, still crash-safe with WAL
   sqlite.pragma('cache_size = -32000');   // 32MB page cache for better read performance
   sqlite.pragma('temp_store = memory');   // Temp tables in memory
+  sqlite.pragma('busy_timeout = 5000');   // Wait up to 5s on SQLITE_BUSY instead of crashing
 
   db = drizzle(sqlite, { schema });
   console.log('🗄️  SQLite Datenbank:', DB_PATH);

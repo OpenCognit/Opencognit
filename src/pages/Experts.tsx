@@ -905,8 +905,8 @@ export function Experts() {
                   {qualitaet.map(q => {
                     const score = q.halluzinationsScore;
                     const scoreColor = score >= 70 ? '#ef4444' : score >= 40 ? '#eab308' : '#22c55e';
-                    const labelColor = q.qualityLabel === 'critical' ? '#ef4444' : q.qualityLabel === 'low' ? '#f97316' : q.qualityLabel === 'moderate' ? '#eab308' : '#22c55e';
-                    const labelText = q.qualityLabel === 'critical' ? (de ? 'Kritisch' : 'Critical') : q.qualityLabel === 'low' ? (de ? 'Niedrig' : 'Low') : q.qualityLabel === 'moderate' ? (de ? 'Mittel' : 'Moderate') : (de ? 'Gut' : 'Good');
+                    const labelColor = q.qualityLabel === 'Kritisch' ? '#ef4444' : q.qualityLabel === 'Mittel' ? '#eab308' : q.qualityLabel === 'Gut' ? '#f97316' : '#22c55e';
+                    const labelText = q.qualityLabel === 'Kritisch' ? (de ? 'Kritisch' : 'Critical') : q.qualityLabel === 'Mittel' ? (de ? 'Mittel' : 'Moderate') : q.qualityLabel === 'Gut' ? (de ? 'Gut' : 'Good') : (de ? 'Exzellent' : 'Excellent');
                     return (
                       <div key={q.expertId} style={{ padding: '1.25rem', borderRadius: '16px', backgroundColor: 'rgba(255,255,255,0.03)', border: `1px solid ${score >= 70 ? 'rgba(239,68,68,0.2)' : score >= 40 ? 'rgba(234,179,8,0.15)' : 'rgba(34,197,94,0.15)'}`, backdropFilter: 'blur(8px)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
