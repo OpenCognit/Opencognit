@@ -559,12 +559,12 @@ function PulseEntry({ ev, isNew, de }: { ev: TraceEvent & { expertName?: string 
         animation: isNew ? 'fadeInUp 0.25s ease-out' : 'none',
         cursor: hasDetails ? 'pointer' : 'default',
         transition: 'background 0.15s ease',
-        overflow: 'hidden',
+        flexShrink: 0, // prevent item from being squished in flex parent
       }}
     >
       {/* Main row */}
-      <div style={{ padding: '7px 10px', display: 'flex', alignItems: 'center', gap: 7 }}>
-        <span style={{ fontSize: 12, flexShrink: 0 }}>{tc.symbol}</span>
+      <div style={{ padding: '6px 10px', display: 'flex', alignItems: 'flex-start', gap: 7 }}>
+        <span style={{ fontSize: 11, flexShrink: 0, paddingTop: 1 }}>{tc.symbol}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           {ev.expertName && (
             <div style={{ fontSize: 9, fontWeight: 700, color: tc.color, marginBottom: 1, letterSpacing: '0.04em' }}>
@@ -574,13 +574,13 @@ function PulseEntry({ ev, isNew, de }: { ev: TraceEvent & { expertName?: string 
           <div style={{
             fontSize: 11, color: isNew ? '#cbd5e1' : '#64748b', lineHeight: 1.35,
             overflow: 'hidden', display: '-webkit-box',
-            WebkitLineClamp: open ? 99 : 2, WebkitBoxOrient: 'vertical',
+            WebkitLineClamp: open ? 99 : 1, WebkitBoxOrient: 'vertical',
           }}>
             {ev.titel}
           </div>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
-          <span style={{ fontSize: 9, color: '#334155' }}>{timeAgo(ev.erstelltAm, de)}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
+          <span style={{ fontSize: 9, color: '#334155', whiteSpace: 'nowrap' }}>{timeAgo(ev.erstelltAm, de)}</span>
           {hasDetails && (
             <span style={{ fontSize: 8, color: tc.color + '80' }}>{open ? '▲' : '▼'}</span>
           )}
@@ -593,8 +593,8 @@ function PulseEntry({ ev, isNew, de }: { ev: TraceEvent & { expertName?: string 
           <pre style={{
             fontSize: 10, color: '#64748b', fontFamily: 'monospace',
             whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5,
-            maxHeight: 200, overflowY: 'auto',
-            background: 'rgba(0,0,0,0.3)', borderRadius: 6, padding: '7px 9px',
+            maxHeight: 180, overflowY: 'auto',
+            background: 'rgba(0,0,0,0.3)', borderRadius: 6, padding: '6px 9px',
             margin: 0,
           }}>
             {ev.details}
@@ -717,7 +717,6 @@ export function WarRoom() {
               ? { ...a, status: 'running', currentTask: { id: msg.taskId || '', titel: msg.taskTitel || '', status: 'in_progress' } }
               : a
           ));
-          // Also inject into global feed so it's visible in the live log
           const agentName = agents.find(a => a.id === msg.agentId)?.name || msg.agentName;
           const taskEvent: TraceEvent & { expertName?: string } = {
             id: crypto.randomUUID(),
@@ -727,7 +726,7 @@ export function WarRoom() {
             titel: msg.taskTitel || 'Task gestartet',
             erstelltAm: new Date().toISOString(),
           };
-          setFeed(prev => [taskEvent, ...prev].slice(0, 40));
+          setFeed(prev => [...prev, taskEvent].slice(-80));
         }
 
         if (msg.type === 'task_completed' && msg.agentId) {
@@ -743,7 +742,7 @@ export function WarRoom() {
             titel: msg.taskTitel || 'Task abgeschlossen',
             erstelltAm: new Date().toISOString(),
           };
-          setFeed(prev => [doneEvent, ...prev].slice(0, 40));
+          setFeed(prev => [...prev, doneEvent].slice(-80));
           setTimeout(load, 2000);
         }
       } catch {}
@@ -1011,14 +1010,18 @@ export function WarRoom() {
                     : pulseFilter === 'action' ? (ev.typ === 'action' || ev.typ === 'task_started' || ev.typ === 'task_completed' || ev.typ === 'tool_call')
                     : /* thinking */ (ev.typ === 'thinking' || ev.typ === 'planning' || ev.typ === 'info')
                   );
-              return filtered.map((ev, i) => (
-                <PulseEntry
-                  key={ev.id || i}
-                  ev={ev}
-                  isNew={i === filtered.length - 1} // newest is last (bottom)
-                  de={de}
-                />
-              ));
+              const now = Date.now();
+              return filtered.map((ev, i) => {
+                const ageMs = now - new Date(ev.erstelltAm).getTime();
+                return (
+                  <PulseEntry
+                    key={ev.id || i}
+                    ev={ev}
+                    isNew={ageMs < 8000} // highlight events younger than 8s
+                    de={de}
+                  />
+                );
+              });
             })()}
             {/* Invisible anchor for scroll measurement */}
             <div style={{ height: 1, flexShrink: 0 }} />
