@@ -6,6 +6,7 @@ import { useI18n } from '../i18n';
 import { useCompany } from '../hooks/useCompany';
 import { useApi } from '../hooks/useApi';
 import { authFetch } from '../utils/api';
+import { GlassCard } from '../components/GlassCard';
 
 interface Ziel {
   id: string;
@@ -162,25 +163,11 @@ function GoalRow({
 
   return (
     <div style={{ marginLeft: indent }}>
-      <div style={{
-        display: 'flex', alignItems: 'flex-start', gap: '0.875rem',
-        padding: '0.875rem 1rem', borderRadius: '16px',
-        background: goal.status === 'achieved'
-          ? 'rgba(35,205,202,0.05)'
-          : 'rgba(255,255,255,0.04)',
-        border: `1px solid ${goal.status === 'active'
-          ? 'rgba(34,197,94,0.2)'
-          : goal.status === 'achieved'
-            ? 'rgba(35,205,202,0.2)'
-            : 'rgba(255,255,255,0.09)'}`,
-        backdropFilter: 'blur(24px) saturate(160%)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
-        transition: 'all 0.25s ease', marginBottom: '0.375rem',
-        opacity: goal.status === 'cancelled' ? 0.5 : 1,
-      }}
-        onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.transform = 'translateY(-1px)'; el.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.18), 0 8px 28px rgba(0,0,0,0.3)'; el.style.borderColor = goal.status === 'active' ? 'rgba(34,197,94,0.35)' : goal.status === 'achieved' ? 'rgba(35,205,202,0.35)' : 'rgba(255,255,255,0.15)'; }}
-        onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.transform = 'none'; el.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)'; el.style.borderColor = goal.status === 'active' ? 'rgba(34,197,94,0.2)' : goal.status === 'achieved' ? 'rgba(35,205,202,0.2)' : 'rgba(255,255,255,0.09)'; }}
+      <GlassCard
+        style={{ padding: '0.875rem 1rem', borderRadius: '16px', marginBottom: '0.375rem', opacity: goal.status === 'cancelled' ? 0.5 : 1 }}
+        accent={goal.status === 'active' ? '#22c55e' : goal.status === 'achieved' ? '#23CDCB' : '#94a3b8'}
       >
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.875rem' }}>
         {/* Expand/collapse toggle */}
         <button
           onClick={() => hasChildren && setExpanded(v => !v)}
@@ -269,6 +256,7 @@ function GoalRow({
           </button>
         </div>
       </div>
+      </GlassCard>
 
       {/* Children */}
       {hasChildren && expanded && children}
@@ -512,26 +500,15 @@ export function Goals() {
             { label: de ? 'Aktiv'    : 'Active',   value: stats.active,      color: '#22c55e' },
             { label: de ? 'Erreicht' : 'Achieved', value: stats.achieved,    color: '#23CDCB' },
           ].map(s => (
-            <div key={s.label} style={{
-              padding: '0.875rem 1.25rem', borderRadius: '16px', textAlign: 'center',
-              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
-              backdropFilter: 'blur(24px) saturate(160%)',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
-            }}>
+            <GlassCard key={s.label} style={{ padding: '0.875rem 1.25rem', borderRadius: '16px', textAlign: 'center' }} accent={s.color}>
               <div style={{ fontSize: '1.5rem', fontWeight: 800, color: s.color }}>{s.value}</div>
               <div style={{ fontSize: '0.6875rem', color: '#475569', fontWeight: 500 }}>{s.label}</div>
-            </div>
+            </GlassCard>
           ))}
 
           {/* Average progress card */}
           {stats.active > 0 && (
-            <div style={{
-              padding: '0.875rem 1.25rem', borderRadius: '16px', textAlign: 'center',
-              background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.18)',
-              backdropFilter: 'blur(24px) saturate(160%)',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
-              minWidth: 100,
-            }}>
+            <GlassCard style={{ padding: '0.875rem 1.25rem', borderRadius: '16px', textAlign: 'center', minWidth: 100 }} accent="#22c55e">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', marginBottom: '0.25rem' }}>
                 <TrendingUp size={12} style={{ color: progressColor(stats.avgProgress) }} />
                 <span style={{ fontSize: '1.5rem', fontWeight: 800, color: progressColor(stats.avgProgress) }}>
@@ -541,7 +518,7 @@ export function Goals() {
               <div style={{ fontSize: '0.6875rem', color: '#475569', fontWeight: 500 }}>
                 {de ? 'Ø Fortschritt' : 'Avg Progress'}
               </div>
-            </div>
+            </GlassCard>
           )}
         </div>
       </div>
@@ -550,29 +527,25 @@ export function Goals() {
 
       {/* Progress overview bar (only when there are active goals with progress) */}
       {stats.active > 0 && stats.avgProgress > 0 && (
-        <div style={{
-          padding: '1rem 1.25rem', borderRadius: '20px', marginBottom: '1.5rem',
-          background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
-          backdropFilter: 'blur(24px) saturate(160%)',
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
-          display: 'flex', alignItems: 'center', gap: '1rem',
-        }}>
-          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569', flexShrink: 0 }}>
-            {de ? 'Gesamtfortschritt' : 'Overall Progress'}
+        <GlassCard style={{ padding: '1rem 1.25rem', marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569', flexShrink: 0 }}>
+              {de ? 'Gesamtfortschritt' : 'Overall Progress'}
+            </div>
+            <div style={{ flex: 1, height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+              <div style={{
+                height: '100%', borderRadius: 4,
+                width: `${stats.avgProgress}%`,
+                background: `linear-gradient(90deg, #22c55e, #23CDCB)`,
+                transition: 'width 0.8s ease',
+                boxShadow: '0 0 10px rgba(35,205,202,0.4)',
+              }} />
+            </div>
+            <div style={{ fontSize: '0.875rem', fontWeight: 800, color: '#23CDCB', flexShrink: 0 }}>
+              {stats.avgProgress}%
+            </div>
           </div>
-          <div style={{ flex: 1, height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
-            <div style={{
-              height: '100%', borderRadius: 4,
-              width: `${stats.avgProgress}%`,
-              background: `linear-gradient(90deg, #22c55e, #23CDCB)`,
-              transition: 'width 0.8s ease',
-              boxShadow: '0 0 10px rgba(35,205,202,0.4)',
-            }} />
-          </div>
-          <div style={{ fontSize: '0.875rem', fontWeight: 800, color: '#23CDCB', flexShrink: 0 }}>
-            {stats.avgProgress}%
-          </div>
-        </div>
+        </GlassCard>
       )}
 
       {/* Filter bar */}
@@ -597,12 +570,7 @@ export function Goals() {
       </div>
 
       {/* Goals tree */}
-      <div style={{
-        background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
-        backdropFilter: 'blur(24px) saturate(160%)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
-        borderRadius: '20px', padding: '1.5rem',
-      }}>
+      <GlassCard style={{ padding: '1.5rem' }}>
         {filteredRoots.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
             <Target size={40} style={{ opacity: 0.15, marginBottom: '1rem', color: '#22c55e' }} />
@@ -620,7 +588,7 @@ export function Goals() {
         )}
 
         <CreateGoalForm unternehmenId={aktivesUnternehmen.id} onCreated={reload} de={de} />
-      </div>
+      </GlassCard>
     </div>
   );
 }

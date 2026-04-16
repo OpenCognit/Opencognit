@@ -7,6 +7,7 @@ import { zeitRelativ } from '../utils/i18n';
 import { useCompany } from '../hooks/useCompany';
 import { useApi } from '../hooks/useApi';
 import { apiAktivitaet, type Aktivitaet as AktivitaetType } from '../api/client';
+import { GlassCard } from '../components/GlassCard';
 
 const typFarben: Record<string, string> = {
   aufgabe: '#3b82f6', experte: '#23CDCB', kosten: '#22c55e',
@@ -75,13 +76,7 @@ function ActivityHeatmap({ data, de }: { data: AktivitaetType[]; de: boolean }) 
   const peakDay = [...countsByDay.entries()].sort((a, b) => b[1] - a[1])[0];
 
   return (
-    <div style={{
-      padding: '1.25rem 1.5rem', borderRadius: '20px',
-      background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
-      backdropFilter: 'blur(24px) saturate(160%)',
-      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
-      marginBottom: '1.5rem',
-    }}>
+    <GlassCard style={{ padding: '1.25rem 1.5rem', marginBottom: '1.5rem' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
           <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '0.2rem' }}>
@@ -174,7 +169,7 @@ function ActivityHeatmap({ data, de }: { data: AktivitaetType[]; de: boolean }) 
           );
         })}
       </div>
-    </div>
+    </GlassCard>
   );
 }
 
@@ -285,14 +280,8 @@ export function Activity() {
       <ActivityHeatmap data={data} de={de} />
 
       {/* Filter Bar */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap',
-        marginBottom: '1.5rem', padding: '0.75rem 1rem',
-        background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
-        backdropFilter: 'blur(24px) saturate(160%)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)',
-        borderRadius: '14px',
-      }}>
+      <GlassCard style={{ padding: '0.75rem 1rem', marginBottom: '1.5rem', borderRadius: '14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
         <Filter size={13} style={{ color: '#52525b', flexShrink: 0 }} />
         <span style={{ fontSize: '0.6875rem', color: '#52525b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 }}>
           {de ? 'Filter' : 'Filter'}
@@ -341,14 +330,10 @@ export function Activity() {
           {gefiltert.length} {de ? 'Ereignisse' : 'events'}
         </span>
       </div>
+      </GlassCard>
 
       {/* Activity Feed — grouped by date */}
-      <div style={{
-        background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
-        backdropFilter: 'blur(24px) saturate(160%)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
-        borderRadius: '20px', overflow: 'hidden',
-      }}>
+      <GlassCard>
         {grouped.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
             <ActivityIcon size={32} style={{ color: '#23CDCB', opacity: 0.2, margin: '0 auto 1rem', display: 'block' }} />
@@ -421,7 +406,7 @@ export function Activity() {
             </div>
           ))
         )}
-      </div>
+      </GlassCard>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { useI18n } from '../i18n';
 import { useCompany } from '../hooks/useCompany';
 import { useApi } from '../hooks/useApi';
 import { apiKosten, apiBudget, apiExperten, type KostenZusammenfassung, type ProviderKosten, type TimelineTag, type BudgetPolicy, type BudgetIncident, type Experte } from '../api/client';
+import { GlassCard } from '../components/GlassCard';
 
 function centZuEuro(cent: number, currency: 'EUR' | 'USD' = 'EUR'): string {
   const locale = currency === 'USD' ? 'en-US' : 'de-DE';
@@ -99,12 +100,8 @@ export function Costs() {
               { label: i18n.t.kosten.verbraucht, value: centZuEuro(data.gesamtVerbraucht), color: '#eab308', pct: data.gesamtBudget > 0 ? data.gesamtProzent : undefined, sub: de ? '≈ USD: ' + centZuEuro(data.gesamtVerbraucht, 'USD') : '≈ EUR: ' + centZuEuro(data.gesamtVerbraucht) },
               { label: i18n.t.kosten.verbleibend, value: data.gesamtBudget === 0 ? '∞' : centZuEuro(data.gesamtBudget - data.gesamtVerbraucht), color: '#22c55e', sub: data.gesamtBudget === 0 ? (de ? 'Unbegrenzt' : 'Unlimited') : undefined },
             ].map((card, i) => (
-              <div key={i} style={{
+              <GlassCard key={i} accent={card.color} style={{
                 padding: '1.5rem',
-                background: 'rgba(255,255,255,0.04)',
-                backdropFilter: 'blur(24px) saturate(160%)', borderRadius: '20px',
-                border: '1px solid rgba(255,255,255,0.09)',
-                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
                 animation: `fadeInUp 0.5s ease-out ${i * 0.1}s both`,
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
@@ -124,7 +121,7 @@ export function Costs() {
                 {(card as any).sub && (
                   <div style={{ fontSize: '0.75rem', color: '#52525b', marginTop: '0.5rem' }}>{(card as any).sub}</div>
                 )}
-              </div>
+              </GlassCard>
             ))}
           </div>
 
@@ -151,12 +148,7 @@ export function Costs() {
 
           {/* Agent Tab (existierend) */}
           {tab === 'agent' && (
-            <div style={{
-              background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(24px) saturate(160%)',
-              borderRadius: '20px', border: '1px solid rgba(255,255,255,0.09)', overflow: 'hidden',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
-              animation: 'fadeInUp 0.3s ease-out',
-            }}>
+            <GlassCard style={{ animation: 'fadeInUp 0.3s ease-out' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
@@ -201,17 +193,12 @@ export function Costs() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </GlassCard>
           )}
 
           {/* Provider Tab */}
           {tab === 'provider' && providerData && (
-            <div style={{
-              background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(24px) saturate(160%)',
-              borderRadius: '20px', border: '1px solid rgba(255,255,255,0.09)',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
-              padding: '1.5rem', animation: 'fadeInUp 0.3s ease-out',
-            }}>
+            <GlassCard style={{ padding: '1.5rem', animation: 'fadeInUp 0.3s ease-out' }}>
               {providerData.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '3rem', color: '#52525b' }}>
                   {de ? 'Keine Kostendaten vorhanden' : 'No cost data available'}
@@ -254,17 +241,12 @@ export function Costs() {
                   })}
                 </div>
               )}
-            </div>
+            </GlassCard>
           )}
 
           {/* Timeline Tab */}
           {tab === 'timeline' && timelineData && (
-            <div style={{
-              background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(24px) saturate(160%)',
-              borderRadius: '20px', border: '1px solid rgba(255,255,255,0.09)',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
-              padding: '1.5rem', animation: 'fadeInUp 0.3s ease-out',
-            }}>
+            <GlassCard style={{ padding: '1.5rem', animation: 'fadeInUp 0.3s ease-out' }}>
               <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#d4d4d8', marginBottom: '1rem' }}>
                 {de ? 'Tageskosten der letzten 14 Tage' : 'Daily costs — last 14 days'}
               </div>
@@ -297,17 +279,12 @@ export function Costs() {
                   );
                 })}
               </div>
-            </div>
+            </GlassCard>
           )}
 
           {/* Policies Tab */}
           {tab === 'policies' && (
-            <div style={{
-              background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(24px) saturate(160%)',
-              borderRadius: '20px', border: '1px solid rgba(255,255,255,0.09)',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
-              padding: '1.5rem', animation: 'fadeInUp 0.3s ease-out',
-            }}>
+            <GlassCard style={{ padding: '1.5rem', animation: 'fadeInUp 0.3s ease-out' }}>
               {/* Header + Neu-Button */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <span style={{ fontWeight: 600, color: '#d4d4d8' }}>{de ? 'Budget-Policies' : 'Budget Policies'}</span>
@@ -438,7 +415,7 @@ export function Costs() {
                   ))}
                 </div>
               )}
-            </div>
+            </GlassCard>
           )}
       </div>
     </>

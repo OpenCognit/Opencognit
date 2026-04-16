@@ -14,6 +14,7 @@ import { TaskDetailDrawer } from '../components/TaskDetailDrawer';
 import { TimelineView } from '../components/TaskTimeline';
 import { WorkflowLaunchModal } from '../components/WorkflowLaunchModal';
 import { authFetch } from '../utils/api';
+import { GlassCard } from '../components/GlassCard';
 
 export function Tasks() {
   const i18n = useI18n();
@@ -593,22 +594,14 @@ export function Tasks() {
                 const spaltenAufgaben = filteredAufgaben.filter(a => a.status === spalte.key);
                 const isDragTarget = dragOverCol === spalte.key;
                 return (
-                  <div
+                  <GlassCard
                     key={spalte.key}
                     onDragOver={e => { e.preventDefault(); setDragOverCol(spalte.key); }}
                     onDragLeave={() => setDragOverCol(null)}
                     onDrop={() => handleDrop(spalte.key)}
-                    style={{
-                      padding: '1rem',
-                      background: isDragTarget ? `rgba(35,205,202,0.06)` : 'rgba(255,255,255,0.04)',
-                      backdropFilter: 'blur(24px) saturate(160%)',
-                      borderRadius: '20px',
-                      border: isDragTarget ? `2px solid ${spalte.color}55` : '1px solid rgba(255,255,255,0.09)',
-                      transition: 'all 0.15s',
-                      boxShadow: isDragTarget
-                        ? `inset 0 1px 0 rgba(255,255,255,0.12), 0 0 20px ${spalte.color}18`
-                        : 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
-                    }}
+                    active={isDragTarget}
+                    accent={spalte.color}
+                    style={{ padding: '1rem' }}
                   >
                     <div style={{
                       display: 'flex',
@@ -643,41 +636,20 @@ export function Tasks() {
                         const isBeingDragged = draggedId === a.id;
                         const isChecked = selectedIds.has(a.id);
                         return (
-                          <div
+                          <GlassCard
                             key={a.id}
                             className="kanban-card"
                             draggable
                             onDragStart={e => { setDraggedId(a.id); e.dataTransfer.effectAllowed = 'move'; }}
                             onDragEnd={() => { setDraggedId(null); setDragOverCol(null); }}
                             onClick={() => !draggedId && selectedIds.size === 0 && setSelectedAufgabeId(a.id)}
+                            active={isChecked || isBeingDragged}
                             style={{
-                              position: 'relative',
                               padding: '0.875rem',
-                              background: isChecked ? 'rgba(35,205,202,0.07)' : isBeingDragged ? 'rgba(35,205,202,0.07)' : 'rgba(255,255,255,0.04)',
-                              backdropFilter: 'blur(16px)',
                               borderRadius: '14px',
-                              border: isChecked ? '1px solid rgba(35,205,202,0.35)' : isBeingDragged ? '1px solid rgba(35,205,202,0.4)' : '1px solid rgba(255,255,255,0.09)',
-                              boxShadow: isChecked
-                                ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 0 0 1px rgba(35,205,202,0.15)'
-                                : 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.15)',
                               cursor: 'grab',
-                              transition: 'all 0.2s',
                               opacity: isBeingDragged ? 0.5 : 1,
                               userSelect: 'none',
-                            }}
-                            onMouseEnter={(e) => {
-                              if (!isBeingDragged) {
-                                e.currentTarget.style.borderColor = 'rgba(35,205,202,0.3)';
-                                e.currentTarget.style.transform = 'translateY(-2px)';
-                                e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.12), 0 8px 24px rgba(0,0,0,0.3), 0 0 0 1px rgba(35,205,202,0.15)';
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.borderColor = isChecked ? 'rgba(35,205,202,0.35)' : isBeingDragged ? 'rgba(35,205,202,0.4)' : 'rgba(255,255,255,0.09)';
-                              e.currentTarget.style.transform = 'translateY(0)';
-                              e.currentTarget.style.boxShadow = isChecked
-                                ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 0 0 1px rgba(35,205,202,0.15)'
-                                : 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.15)';
                             }}
                           >
                             {/* Checkbox overlay */}
@@ -777,22 +749,17 @@ export function Tasks() {
                                 <Trash2 size={11} />
                               </button>
                             </div>
-                          </div>
+                          </GlassCard>
                         );
                       })}
                     </div>
-                  </div>
+                  </GlassCard>
                 );
               })}
             </div>
           ) : ansicht === 'liste' ? (
             /* List View */
-            <div style={{
-              background: 'rgba(255,255,255,0.04)',
-              backdropFilter: 'blur(24px) saturate(160%)',
-              borderRadius: '20px',
-              border: '1px solid rgba(255,255,255,0.09)',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
+            <GlassCard style={{
               overflow: 'hidden',
               animation: 'fadeInUp 0.5s ease-out',
             }}>
@@ -921,7 +888,7 @@ export function Tasks() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </GlassCard>
           ) : (
             /* Timeline / Gantt View */
             <TimelineView

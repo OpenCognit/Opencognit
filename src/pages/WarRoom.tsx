@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { useCompany } from '../hooks/useCompany';
 import { useI18n } from '../i18n';
 import { apiDashboard, type DashboardData } from '../api/client';
+import { GlassCard } from '../components/GlassCard';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -338,19 +339,7 @@ function AgentCard({ agent, traces, onWakeup, waking, language, onOpenLog }: {
   const visibleTraces = traces.slice(0, expanded ? 8 : 4);
 
   return (
-    <div style={{
-      borderRadius: 20,
-      background: isRunning
-        ? 'rgba(35,205,202,0.06)'
-        : 'rgba(255,255,255,0.04)',
-      backdropFilter: 'blur(24px) saturate(160%)',
-      border: `1px solid ${isRunning ? 'rgba(35,205,202,0.3)' : 'rgba(255,255,255,0.09)'}`,
-      boxShadow: isRunning
-        ? `inset 0 1px 0 rgba(255,255,255,0.12), ${cfg.glow}`
-        : 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
-      transition: 'all 0.4s ease',
-      overflow: 'hidden',
-    }}>
+    <GlassCard active={isRunning} accent={cfg.color} style={{ overflow: 'hidden' }}>
       {/* ── Header ── */}
       <div style={{ padding: '13px 14px 10px', display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ position: 'relative', flexShrink: 0 }}>
@@ -549,7 +538,7 @@ function AgentCard({ agent, traces, onWakeup, waking, language, onOpenLog }: {
           </button>
         </div>
       </div>
-    </div>
+    </GlassCard>
   );
 }
 
@@ -874,7 +863,7 @@ export function WarRoom() {
               { icon: <Target size={14} style={{ color: '#a855f7' }} />, label: de ? 'OFFEN' : 'OPEN', value: data?.aufgaben.offen || 0, sub: `${data?.aufgaben.blockiert || 0} ${de ? 'blockiert' : 'blocked'}`, color: data?.aufgaben.blockiert ? '#f59e0b' : '#a855f7' },
               { icon: <Wallet size={14} style={{ color: '#f59e0b' }} />, label: 'BUDGET', value: `${data?.kosten.prozent || 0}%`, sub: formatCost(data?.kosten.gesamtVerbraucht || 0, language), color: (data?.kosten.prozent || 0) > 80 ? '#ef4444' : '#f59e0b' },
             ].map((m, i) => (
-              <div key={i} style={{ padding: '11px 12px', borderRadius: 12, background: `${m.color}08`, border: `1px solid ${m.color}25`, backdropFilter: 'blur(24px) saturate(160%)', boxShadow: `inset 0 1px 0 rgba(255,255,255,0.06)` }}>
+              <GlassCard key={i} accent={m.color} style={{ padding: '11px 12px', borderRadius: '12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                   {m.icon}
                   <span style={{ fontSize: 8, fontWeight: 800, color: '#475569', letterSpacing: '0.12em', textTransform: 'uppercase' }}>{m.label}</span>
@@ -883,7 +872,7 @@ export function WarRoom() {
                   {typeof m.value === 'number' ? <AnimatedNum value={m.value} /> : m.value}
                 </div>
                 <div style={{ fontSize: 9, color: '#475569' }}>{m.sub}</div>
-              </div>
+              </GlassCard>
             ))}
           </div>
 

@@ -4,6 +4,7 @@ import {
   Calendar, User, BarChart2, AlertCircle, Layout,
 } from 'lucide-react';
 import { WhiteboardPanel } from '../components/WhiteboardPanel';
+import { GlassCard } from '../components/GlassCard';
 import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 import { StatusBadge } from '../components/StatusBadge';
 import { Select } from '../components/Select';
@@ -407,15 +408,10 @@ export function Projects() {
               { label: i18n.t.projekte.statusAbgeschlossen, value: projekte.filter(p => p.status === 'abgeschlossen').length, color: '#23CDCB' },
               { label: i18n.t.projekte.aufgaben, value: alleAufgaben.length, color: '#3b82f6' },
             ].map(stat => (
-              <div key={stat.label} style={{
-                padding: '1rem 1.25rem', borderRadius: '16px',
-                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
-                backdropFilter: 'blur(24px) saturate(160%)',
-                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
-              }}>
+              <GlassCard key={stat.label} style={{ padding: '1rem 1.25rem', borderRadius: '16px' }} accent={stat.color}>
                 <div style={{ fontSize: '1.75rem', fontWeight: 700, color: stat.color }}>{stat.value}</div>
                 <div style={{ fontSize: '0.75rem', color: '#71717a', marginTop: '0.25rem' }}>{stat.label}</div>
-              </div>
+              </GlassCard>
             ))}
           </div>
 
@@ -443,18 +439,7 @@ export function Projects() {
                 const eigentuemer = findExperte(projekt.eigentuemerId);
 
                 return (
-                  <div key={projekt.id} style={{
-                    borderRadius: '20px',
-                    background: 'rgba(255,255,255,0.04)',
-                    border: `1px solid ${projekt.farbe}30`,
-                    backdropFilter: 'blur(24px) saturate(160%)',
-                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
-                    overflow: 'hidden',
-                    transition: 'all 0.25s ease',
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = `${projekt.farbe}55`; e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.18), 0 12px 40px rgba(0,0,0,0.35), 0 0 0 1px ${projekt.farbe}18`; e.currentTarget.style.transform = 'translateY(-2px)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = `${projekt.farbe}30`; e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)'; e.currentTarget.style.transform = 'none'; }}
-                  >
+                  <GlassCard key={projekt.id} accent={projekt.farbe}>
                     {/* Projekt Header */}
                     <div
                       style={{
@@ -608,20 +593,13 @@ export function Projects() {
                         )}
                       </div>
                     )}
-                  </div>
+                  </GlassCard>
                 );
               })}
 
               {/* Aufgaben ohne Projekt */}
               {aufgabenOhneProjekt.length > 0 && (
-                <div style={{
-                  borderRadius: '20px',
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.09)',
-                  backdropFilter: 'blur(24px) saturate(160%)',
-                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
-                  overflow: 'hidden',
-                }}>
+                <GlassCard>
                   <div
                     style={{
                       display: 'flex', alignItems: 'center', gap: '0.75rem',
@@ -684,7 +662,7 @@ export function Projects() {
                       })}
                     </div>
                   )}
-                </div>
+                </GlassCard>
               )}
             </div>
           )}

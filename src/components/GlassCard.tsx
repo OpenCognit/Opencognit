@@ -1,24 +1,32 @@
 import { useState } from 'react';
 
-interface GlassCardProps {
-  children: React.ReactNode;
-  style?: React.CSSProperties;
+interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {
   accent?: string;
-  onClick?: () => void;
   /** Persistent hover (always show glow) */
   active?: boolean;
-  className?: string;
 }
 
-export function GlassCard({ children, style = {}, accent = '#23CDCB', onClick, active = false }: GlassCardProps) {
+export function GlassCard({
+  children,
+  style = {},
+  accent = '#23CDCB',
+  onClick,
+  active = false,
+  className,
+  onMouseEnter,
+  onMouseLeave,
+  ...rest
+}: GlassCardProps) {
   const [hovered, setHovered] = useState(false);
   const on = hovered || active;
 
   return (
     <div
+      {...rest}
+      className={className}
       onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={e => { setHovered(true); onMouseEnter?.(e); }}
+      onMouseLeave={e => { setHovered(false); onMouseLeave?.(e); }}
       style={{
         position: 'relative',
         overflow: 'hidden',

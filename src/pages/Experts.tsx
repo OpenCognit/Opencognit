@@ -12,6 +12,7 @@ import { apiExperten, type Experte as ExperteType } from '../api/client';
 import { ExpertModal } from '../components/ExpertModal';
 import { ExpertChatDrawer } from '../components/ExpertChatDrawer';
 import { useToast } from '../components/ToastProvider';
+import { GlassCard } from '../components/GlassCard';
 
 const CLI_ADAPTERS = ['codex-cli', 'gemini-cli', 'claude-code'];
 
@@ -158,46 +159,23 @@ export function Experts() {
               })();
 
               return (
-                <div
+                <GlassCard
                   key={m.id}
                   onClick={() => setActiveChatExpert(m)}
+                  accent={isCEO ? '#FFD700' : '#23CDCB'}
                   style={{
                     padding: '1.5rem',
-                    background: isCEO ? 'rgba(255,215,0,0.04)' : 'rgba(255,255,255,0.04)',
-                    backdropFilter: 'blur(24px) saturate(160%)',
                     borderRadius: '24px',
-                    border: `1px solid ${isCEO ? 'rgba(255, 215, 0, 0.3)' : 'rgba(255, 255, 255, 0.09)'}`,
-                    boxShadow: isCEO
-                      ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 4px 16px rgba(0,0,0,0.2), 0 0 20px rgba(255,215,0,0.06)'
-                      : 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                    position: 'relative',
-                    overflow: 'hidden',
                     animation: `fadeInUp 0.5s ease-out ${Math.min(i, 4) * 0.1}s both`,
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-4px)';
-                    e.currentTarget.style.boxShadow = isCEO
-                      ? 'inset 0 1px 0 rgba(255,255,255,0.18), 0 20px 50px rgba(0,0,0,0.35), 0 0 30px rgba(255,215,0,0.15)'
-                      : 'inset 0 1px 0 rgba(255,255,255,0.18), 0 20px 40px rgba(0,0,0,0.35), 0 0 0 1px rgba(35,205,202,0.15)';
-                    e.currentTarget.style.borderColor = isCEO ? 'rgba(255, 215, 0, 0.6)' : 'rgba(35, 205, 202, 0.3)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.borderColor = isCEO ? 'rgba(255, 215, 0, 0.3)' : 'rgba(255, 255, 255, 0.09)';
-                    e.currentTarget.style.boxShadow = isCEO
-                      ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 4px 16px rgba(0,0,0,0.2), 0 0 20px rgba(255,215,0,0.06)'
-                      : 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)';
                   }}
                 >
                   {isCEO && (
                     <div style={{
                       position: 'absolute',
                       top: 0,
+                      bottom: 0,
                       left: 0,
                       width: '4px',
-                      height: '100%',
                       background: 'linear-gradient(to bottom, #FFD700, #FFA500)'
                     }} />
                   )}
@@ -516,7 +494,7 @@ export function Experts() {
                       </button>
                     </div>
                   </div>
-                </div>
+                </GlassCard>
               );
             })}
           </div>

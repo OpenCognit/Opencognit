@@ -6,6 +6,7 @@ import { zeitRelativ } from '../utils/i18n';
 import { useCompany } from '../hooks/useCompany';
 import { useApi } from '../hooks/useApi';
 import { apiGenehmigungen, apiExperten, type Genehmigung, type Experte } from '../api/client';
+import { GlassCard } from '../components/GlassCard';
 
 export function Approvals() {
   const i18n = useI18n();
@@ -118,16 +119,12 @@ export function Approvals() {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {pending.map((g, i) => (
-                  <div
+                  <GlassCard
                     key={g.id}
+                    accent="#eab308"
                     style={{
                       padding: '1.5rem',
-                      background: 'rgba(255,255,255,0.04)',
-                      backdropFilter: 'blur(24px) saturate(160%)',
-                      borderRadius: '20px',
-                      border: '1px solid rgba(234, 179, 8, 0.3)',
                       borderLeft: '3px solid #eab308',
-                      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
                       animation: `fadeInUp 0.5s ease-out ${Math.min(i, 4) * 0.1}s both`,
                     }}
                   >
@@ -238,7 +235,7 @@ export function Approvals() {
                         <X size={16} /> {i18n.t.actions.ablehnen}
                       </button>
                     </div>
-                  </div>
+                  </GlassCard>
                 ))}
               </div>
             </div>
@@ -260,16 +257,13 @@ export function Approvals() {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {erledigt.map((g) => (
-                  <div
+                  <GlassCard
                     key={g.id}
+                    accent={g.status === 'approved' ? '#22c55e' : '#ef4444'}
                     style={{
                       padding: '1rem 1.25rem',
-                      background: 'rgba(255,255,255,0.03)',
-                      backdropFilter: 'blur(24px) saturate(160%)',
                       borderRadius: '16px',
-                      border: '1px solid rgba(255,255,255,0.08)',
                       borderLeft: `3px solid ${g.status === 'approved' ? '#22c55e' : '#ef4444'}`,
-                      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.15)',
                       opacity: 0.7,
                     }}
                   >
@@ -282,22 +276,14 @@ export function Approvals() {
                       <span style={{ fontSize: '0.875rem', fontWeight: 500, color: '#ffffff' }}>{g.titel}</span>
                       <span style={{ fontSize: '0.8125rem', color: '#71717a' }}>· {zeitRelativ(g.erstelltAm, i18n.t)}</span>
                     </div>
-                  </div>
+                  </GlassCard>
                 ))}
               </div>
             </div>
           )}
 
           {pending.length === 0 && erledigt.length === 0 && (
-            <div style={{
-              padding: '4rem 2rem',
-              textAlign: 'center',
-              background: 'rgba(255,255,255,0.04)',
-              backdropFilter: 'blur(24px) saturate(160%)',
-              borderRadius: '20px',
-              border: '1px solid rgba(255,255,255,0.09)',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
-            }}>
+            <GlassCard style={{ padding: '4rem 2rem', textAlign: 'center' }}>
               <div style={{
                 width: '64px',
                 height: '64px',
@@ -313,7 +299,7 @@ export function Approvals() {
               </div>
               <p style={{ fontSize: '1rem', fontWeight: 500, color: '#ffffff', marginBottom: '0.25rem' }}>{i18n.t.genehmigungen.noApprovals}</p>
               <p style={{ fontSize: '0.875rem', color: '#71717a' }}>{i18n.t.genehmigungen.noApprovalsHint}</p>
-            </div>
+            </GlassCard>
           )}
 
 
