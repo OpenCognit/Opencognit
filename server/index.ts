@@ -1600,6 +1600,7 @@ app.get('/api/unternehmen/:unternehmenId/dashboard', (req, res) => {
         offen: offeneAufgaben,
         inBearbeitung,
         erledigt: tasks.filter((t: any) => t.status === 'done').length,
+        fehlgeschlagen: tasks.filter((t: any) => t.status === 'failed').length,
         blockiert: tasks.filter((t: any) => t.status === 'blocked').length,
         completedPerDay: (() => {
           const days: string[] = [];
@@ -1621,6 +1622,22 @@ app.get('/api/unternehmen/:unternehmenId/dashboard', (req, res) => {
         gesamtBudget,
         prozent: gesamtBudget > 0 ? Math.round((gesamtVerbraucht / gesamtBudget) * 100) : 0,
       },
+      zyklen: (() => {
+        const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        const recentZyklen = db.select({ status: arbeitszyklen.status })
+          .from(arbeitszyklen)
+          .where(and(eq(arbeitszyklen.unternehmenId, unternehmenId), sql`${arbeitszyklen.erstelltAm} >= ${cutoff}`))
+          .all();
+        return {
+          total: recentZyklen.length,
+          succeeded: recentZyklen.filter((z: any) => z.status === 'succeeded').length,
+          failed: recentZyklen.filter((z: any) => z.status === 'failed').length,
+        };
+      })(),
+      recentActivityCount: (() => {
+        const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        return agenten.filter((a: any) => a.letzterZyklus && a.letzterZyklus >= cutoff24h).length;
+      })(),
       pendingApprovals: pendingApprovals.length,
       topExperten: agenten.slice(0, 5),
       alleExperten: enrichedAgenten,

@@ -746,51 +746,116 @@ function SystemPulse({ unternehmenId, initialTrace, lang }: { unternehmenId: str
 
 function computeHealthScore(
   experten: { gesamt: number; aktiv: number; running: number; error: number },
-  aufgaben: { gesamt: number; erledigt: number; blockiert: number; inBearbeitung: number },
+  aufgaben: { gesamt: number; erledigt: number; fehlgeschlagen?: number; blockiert: number; inBearbeitung: number },
   kosten: { prozent: number },
   pendingApprovals: number,
+  zyklen?: { total: number; succeeded: number; failed: number },
+  recentActivityCount?: number,
+  lang = 'en',
 ): { score: number; grade: string; gradeColor: string; factors: Array<{ label: string; delta: number; color: string }> } {
-  let score = 100;
+  const de = lang === 'de';
+  let score = 60; // base — agents must earn the rest
   const factors: Array<{ label: string; delta: number; color: string }> = [];
 
-  // Budget health (max penalty -30)
-  if (kosten.prozent >= 100) {
-    score -= 30; factors.push({ label: 'Budget überschritten', delta: -30, color: '#ef4444' });
-  } else if (kosten.prozent >= 90) {
-    score -= 20; factors.push({ label: 'Budget kritisch', delta: -20, color: '#ef4444' });
-  } else if (kosten.prozent >= 75) {
-    score -= 10; factors.push({ label: 'Budget knapp', delta: -10, color: '#f59e0b' });
+  // ── Bonuses (up to +40) ──────────────────────────────────────────────────
+
+  // Task success rate (max +20)
+  const erledigt = aufgaben.erledigt || 0;
+  const fehlgeschlagen = aufgaben.fehlgeschlagen || 0;
+  const taskTotal = erledigt + fehlgeschlagen;
+  if (taskTotal > 0) {
+    const rate = erledigt / taskTotal;
+    const bonus = Math.round(rate * 20);
+    score += bonus;
+    const pct = Math.round(rate * 100);
+    factors.push({
+      label: de ? `Task-Erfolgsrate ${pct}%` : `Task success rate ${pct}%`,
+      delta: bonus,
+      color: rate >= 0.8 ? '#22c55e' : rate >= 0.5 ? '#f59e0b' : '#ef4444',
+    });
+  } else if (erledigt > 0) {
+    // Only completed tasks, zero failures — full bonus
+    score += 20;
+    factors.push({ label: de ? `${erledigt} Tasks erledigt` : `${erledigt} tasks completed`, delta: 20, color: '#22c55e' });
   }
 
-  // Agent errors (max penalty -20)
+  // Cycle reliability (max +15)
+  if (zyklen && zyklen.total > 0) {
+    const cycleRate = zyklen.succeeded / zyklen.total;
+    const bonus = Math.round(cycleRate * 15);
+    score += bonus;
+    const pct = Math.round(cycleRate * 100);
+    factors.push({
+      label: de ? `Zyklen-Zuverlässigkeit ${pct}%` : `Cycle reliability ${pct}%`,
+      delta: bonus,
+      color: cycleRate >= 0.8 ? '#22c55e' : cycleRate >= 0.5 ? '#f59e0b' : '#ef4444',
+    });
+  }
+
+  // Recent activity bonus (max +5)
+  if (recentActivityCount && recentActivityCount > 0) {
+    score += 5;
+    factors.push({
+      label: de ? `${recentActivityCount} Agenten heute aktiv` : `${recentActivityCount} agents active today`,
+      delta: 5,
+      color: '#22c55e',
+    });
+  } else if (experten.running > 0) {
+    score += 5;
+    factors.push({
+      label: de ? `${experten.running} Agenten laufen gerade` : `${experten.running} agents running now`,
+      delta: 5,
+      color: '#23CDCB',
+    });
+  }
+
+  // ── Penalties ────────────────────────────────────────────────────────────
+
+  // Budget (max -30)
+  if (kosten.prozent >= 100) {
+    score -= 30; factors.push({ label: de ? 'Budget überschritten' : 'Budget exceeded', delta: -30, color: '#ef4444' });
+  } else if (kosten.prozent >= 90) {
+    score -= 20; factors.push({ label: de ? 'Budget kritisch' : 'Budget critical', delta: -20, color: '#ef4444' });
+  } else if (kosten.prozent >= 75) {
+    score -= 10; factors.push({ label: de ? 'Budget knapp' : 'Budget low', delta: -10, color: '#f59e0b' });
+  }
+
+  // Agent errors (max -20)
   const errPenalty = Math.min(experten.error * 5, 20);
   if (errPenalty > 0) {
-    score -= errPenalty; factors.push({ label: `${experten.error} Agenten fehlerhaft`, delta: -errPenalty, color: '#ef4444' });
+    score -= errPenalty;
+    factors.push({ label: de ? `${experten.error} Agenten fehlerhaft` : `${experten.error} agents in error`, delta: -errPenalty, color: '#ef4444' });
   }
 
-  // Blocked tasks (max penalty -20)
-  const blockPenalty = Math.min(aufgaben.blockiert * 5, 20);
+  // Failed tasks penalty (max -10) — separate from success rate
+  if (fehlgeschlagen > 0 && taskTotal === 0) {
+    // Only failures, zero success
+    const pen = Math.min(fehlgeschlagen * 3, 10);
+    score -= pen;
+    factors.push({ label: de ? `${fehlgeschlagen} Tasks fehlgeschlagen` : `${fehlgeschlagen} tasks failed`, delta: -pen, color: '#ef4444' });
+  }
+
+  // Blocked tasks (max -15)
+  const blockPenalty = Math.min(aufgaben.blockiert * 5, 15);
   if (blockPenalty > 0) {
-    score -= blockPenalty; factors.push({ label: `${aufgaben.blockiert} blockierte Aufgaben`, delta: -blockPenalty, color: '#f59e0b' });
+    score -= blockPenalty;
+    factors.push({ label: de ? `${aufgaben.blockiert} Tasks blockiert` : `${aufgaben.blockiert} tasks blocked`, delta: -blockPenalty, color: '#f59e0b' });
   }
 
-  // Pending approvals penalty (-5)
+  // Pending approvals (-5)
   if (pendingApprovals > 0) {
-    score -= 5; factors.push({ label: `${pendingApprovals} ausstehende Genehmigungen`, delta: -5, color: '#f59e0b' });
-  }
-
-  // Positive: agents actively working
-  if (experten.running > 0) {
-    factors.push({ label: `${experten.running} Agenten aktiv`, delta: 0, color: '#22c55e' });
-  }
-
-  // Positive: tasks being completed
-  if (aufgaben.erledigt > 0) {
-    factors.push({ label: `${aufgaben.erledigt} Aufgaben erledigt`, delta: 0, color: '#22c55e' });
+    score -= 5;
+    factors.push({ label: de ? `${pendingApprovals} Genehmigungen offen` : `${pendingApprovals} approvals pending`, delta: -5, color: '#f59e0b' });
   }
 
   score = Math.max(0, Math.min(100, score));
-  const grade = score >= 90 ? 'Exzellent' : score >= 70 ? 'Gut' : score >= 50 ? 'Mittel' : 'Kritisch';
+  const grade = score >= 90
+    ? (de ? 'Exzellent' : 'Excellent')
+    : score >= 70
+    ? (de ? 'Gut' : 'Good')
+    : score >= 50
+    ? (de ? 'Mittel' : 'Fair')
+    : (de ? 'Kritisch' : 'Critical');
   const gradeColor = score >= 90 ? '#22c55e' : score >= 70 ? '#23CDCB' : score >= 50 ? '#f59e0b' : '#ef4444';
 
   return { score, grade, gradeColor, factors };
@@ -820,15 +885,17 @@ function HealthScoreGauge({ score, color, size = 80 }: { score: number; color: s
   );
 }
 
-function HealthScoreCard({ experten, aufgaben, kosten, pendingApprovals, lang }: {
+function HealthScoreCard({ experten, aufgaben, kosten, pendingApprovals, zyklen, recentActivityCount, lang }: {
   experten: { gesamt: number; aktiv: number; running: number; error: number };
-  aufgaben: { gesamt: number; erledigt: number; blockiert: number; inBearbeitung: number };
+  aufgaben: { gesamt: number; erledigt: number; fehlgeschlagen?: number; blockiert: number; inBearbeitung: number };
   kosten: { prozent: number };
   pendingApprovals: number;
+  zyklen?: { total: number; succeeded: number; failed: number };
+  recentActivityCount?: number;
   lang: string;
 }) {
   const de = lang === 'de';
-  const { score, grade, gradeColor, factors } = computeHealthScore(experten, aufgaben, kosten, pendingApprovals);
+  const { score, grade, gradeColor, factors } = computeHealthScore(experten, aufgaben, kosten, pendingApprovals, zyklen, recentActivityCount, lang);
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -1919,6 +1986,8 @@ export function Dashboard() {
   );
 
   const { experten, aufgaben, kosten, pendingApprovals, topExperten, letzteAktivitaet } = data;
+  const zyklen: { total: number; succeeded: number; failed: number } = (data as any).zyklen || { total: 0, succeeded: 0, failed: 0 };
+  const recentActivityCount: number = (data as any).recentActivityCount || 0;
   const topProjekte: any[] = (data as any).topProjekte || [];
   const aktiveZiele: any[] = (data as any).aktiveZiele || [];
   const letzteTrace: TraceEvent[] = (data as any).letzteTrace || [];
@@ -1926,7 +1995,7 @@ export function Dashboard() {
 
   const budgetColor = kosten.prozent > 95 ? '#ef4444' : kosten.prozent > 80 ? '#f59e0b' : '#22c55e';
   const hasRunningAgents = experten.running > 0;
-  const { score: healthScore, grade: healthGrade, gradeColor: healthColor, factors: healthFactors } = computeHealthScore(experten, aufgaben, kosten, pendingApprovals);
+  const { score: healthScore, grade: healthGrade, gradeColor: healthColor, factors: healthFactors } = computeHealthScore(experten, aufgaben, kosten, pendingApprovals, zyklen, recentActivityCount, lang);
 
   // Derive simple trends from current values
   const taskTrend: 'up' | 'down' | 'neutral' = aufgaben.inBearbeitung > 0 ? 'up' : 'neutral';
