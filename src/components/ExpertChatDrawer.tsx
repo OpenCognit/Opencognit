@@ -312,7 +312,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
   const [showCommands, setShowCommands] = useState(false);
   const [commandFilter, setCommandFilter] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
-  const [directChatMode, setDirectChatMode] = useState(false);
+  const [directChatMode, setDirectChatMode] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -558,12 +558,25 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
           const cm = msg.data;
           if (cm.unternehmenId === aktivesUnternehmen.id && cm.expertId === expert.id) {
             setMessages(prev => {
+              // Dedup by real id
               if (prev.find(m => m.id === cm.id)) return prev;
               if (cm.absenderTyp === 'board') {
+                // Replace optimistic pending message
                 const pendingIdx = prev.findIndex(m => m._pending && m.nachricht === cm.nachricht);
                 if (pendingIdx !== -1) {
                   const next = [...prev];
                   next[pendingIdx] = cm;
+                  return next;
+                }
+              }
+              if (cm.absenderTyp === 'agent') {
+                // Replace HTTP-fallback message (id starts with 'direct-') that has same content
+                const fallbackIdx = prev.findIndex(m =>
+                  typeof m.id === 'string' && m.id.startsWith('direct-') && m.nachricht === cm.nachricht
+                );
+                if (fallbackIdx !== -1) {
+                  const next = [...prev];
+                  next[fallbackIdx] = cm; // swap in the real DB-backed message
                   return next;
                 }
               }
@@ -731,7 +744,8 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
     setTimeout(scrollToBottom, 50);
 
     if (directChatMode) {
-      // Fast direct LLM call
+      // Fast direct LLM call — reply comes back in HTTP response AND via WebSocket
+      // We use the HTTP response as the source of truth; WS deduplicates by id
       try {
         const res = await authFetch(`/api/experten/${expert.id}/chat/direct`, {
           method: 'POST',
@@ -744,13 +758,35 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
           addSystemMsg(`⚠️ ${data.message}`);
           return;
         }
-        // Reply arrives via WebSocket broadcast
+        if (data.error) {
+          setAgentTyping(false);
+          addSystemMsg(`❌ ${data.message || (de ? 'Fehler beim Antworten' : 'Error generating reply')}`);
+          return;
+        }
+        // HTTP response is authoritative — stop typing and add reply now.
+        // The WS broadcast will arrive too, but the dedup check (find by id) handles that.
+        setAgentTyping(false);
+        if (data.reply) {
+          const replyMsg = {
+            id: `direct-${Date.now()}`,
+            absenderTyp: 'agent',
+            nachricht: data.reply,
+            erstelltAm: new Date().toISOString(),
+          };
+          setMessages(prev => {
+            // Don't add if WS already delivered an agent reply for this exchange
+            // (WS delivers with a real DB id, so it won't match 'direct-*')
+            if (prev.some(m => m.absenderTyp === 'agent' && m.nachricht === data.reply)) return prev;
+            return [...prev, replyMsg];
+          });
+          setTimeout(scrollToBottom, 50);
+        }
       } catch {
         setAgentTyping(false);
         addSystemMsg(`❌ ${de ? 'Verbindungsfehler' : 'Connection error'}`);
       }
     } else {
-      // Heartbeat-triggered response
+      // Heartbeat-triggered response (legacy — only used if user manually switches off direct mode)
       await authFetch(`/api/experten/${expert.id}/chat`, {
         method: 'POST',
         headers: { 'x-unternehmen-id': aktivesUnternehmen.id },

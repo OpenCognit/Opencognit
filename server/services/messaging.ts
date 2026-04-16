@@ -749,10 +749,17 @@ export const messagingService = {
       const atMatch = text.match(/^@(\S+)\s*([\s\S]*)/);
       if (atMatch) {
         const name = atMatch[1].toLowerCase();
-        targetAgent = (agents as any[]).find((a: any) =>
-          a.name.toLowerCase().replace(/\s+/g, '') === name ||
-          a.name.toLowerCase().startsWith(name)
-        );
+        targetAgent = (agents as any[]).find((a: any) => {
+          const normalized = a.name.toLowerCase().replace(/\s+/g, '');
+          const words = a.name.toLowerCase().split(/\s+/);
+          return (
+            normalized === name ||                    // exact: @DevAgent
+            normalized.startsWith(name) ||            // prefix no-space: @Dev → DevAgent
+            words.some((w: string) => w === name) || // exact word: @Dev → "Dev Agent"
+            words.some((w: string) => w.startsWith(name)) || // word prefix: @De → "Dev Agent"
+            a.rolle.toLowerCase().replace(/\s+/g, '').startsWith(name) // role: @ceo
+          );
+        });
         if (targetAgent) messageText = atMatch[2].trim() || text;
       }
 
