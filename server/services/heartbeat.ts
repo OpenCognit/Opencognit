@@ -5,7 +5,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { appEvents } from '../events.js';
 import { db } from '../db/client.js';
-import { arbeitszyklen, agentWakeupRequests, experten, aufgaben, unternehmen, projekte, kostenbuchungen, kommentare, workProducts, chatNachrichten, aktivitaetslog, ziele, issueRelations, einstellungen, budgetPolicies, budgetIncidents, agentMeetings, genehmigungen } from '../db/schema.js';
+import { arbeitszyklen, agentWakeupRequests, experten, aufgaben, unternehmen, projekte, kostenbuchungen, kommentare, workProducts, chatNachrichten, aktivitaetslog, ziele, issueRelations, einstellungen, budgetPolicies, budgetIncidents, agentMeetings, genehmigungen, agentPermissions } from '../db/schema.js';
 import { eq, and, sql, inArray, or, isNull, asc, desc, gte } from 'drizzle-orm';
 import { pruefeUndEntblocke } from './issue-dependencies.js';
 import { wakeupService, type PendingWakeup } from './wakeup.js';
@@ -1528,6 +1528,15 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
     console.log(`  🎯 CEO Action Parser: ${actions.length} Aktion(en) gefunden`);
     trace(orchestratorId, unternehmenId, 'action', `CEO führt ${actions.length} Aktion(en) aus`);
 
+    // Load permissions for this orchestrator — gate which actions are allowed
+    const perms = db.select().from(agentPermissions)
+      .where(eq(agentPermissions.expertId, orchestratorId)).get();
+
+    const canCreateTask     = !perms || perms.darfAufgabenErstellen !== false;
+    const canAssignTask     = !perms || perms.darfAufgabenZuweisen !== false;
+    const canRequestApproval = !perms || perms.darfGenehmigungAnfordern !== false;
+    const canRecruitAgent   = !perms || perms.darfExpertenAnwerben !== false;
+
     // Lade Team für Name→ID Auflösung
     const team = await db.select({ id: experten.id, name: experten.name })
       .from(experten)
@@ -1544,6 +1553,10 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
 
           case 'create_task': {
             if (!action.titel) break;
+            if (!canCreateTask) {
+              console.warn(`  🚫 ${orchestratorId} hat keine Berechtigung: create_task`);
+              break;
+            }
 
             // ── Deduplication: skip if similar task exists in last 50 open tasks ──
             const normalizeTitle = (t: string) => t.toLowerCase().trim().slice(0, 60);
@@ -1605,6 +1618,10 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
 
           case 'assign_task': {
             if (!action.taskId || !action.assignTo) break;
+            if (!canAssignTask) {
+              console.warn(`  🚫 ${orchestratorId} hat keine Berechtigung: assign_task`);
+              break;
+            }
             const agent = findAgent(action.assignTo);
             if (!agent) { console.warn(`  ⚠️ Agent "${action.assignTo}" nicht gefunden`); break; }
 
@@ -1660,6 +1677,10 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
           case 'hire_agent': {
             // CEO requests hiring a new agent — creates an approval request for human review
             if (!action.rolle) break;
+            if (!canRecruitAgent && !canRequestApproval) {
+              console.warn(`  🚫 ${orchestratorId} hat keine Berechtigung: hire_agent`);
+              break;
+            }
             const approvalId = crypto.randomUUID();
             await db.insert(genehmigungen as any).values({
               id: approvalId,
