@@ -9,8 +9,12 @@ export interface AdapterConfig {
   workspacePath?: string;
   /** Custom system prompt for this agent (overrides default) */
   systemPrompt?: string;
-  /** Agent's connection type (openrouter, anthropic, claude-code, bash, http, etc.) */
+  /** Agent's connection type (openrouter, anthropic, claude-code, bash, http, openclaw, etc.) */
   verbindungsTyp?: string;
+  /** Parsed verbindungsConfig JSON — passed through to adapters that need it (e.g. openclaw) */
+  verbindungsConfig?: Record<string, unknown>;
+  /** Global default model for LLM adapters without a specific model configured */
+  globalDefaultModel?: string;
 }
 
 export interface AdapterExecutionResult {

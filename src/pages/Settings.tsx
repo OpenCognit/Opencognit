@@ -99,6 +99,12 @@ export function Settings() {
   const [telegramChatId, setTelegramChatId] = useState('');
   const [testSending, setTestSending] = useState(false);
 
+  // OpenClaw Gateway
+  const [openclawToken, setOpenclawToken] = useState('');
+  const [openclawTokenLoading, setOpenclawTokenLoading] = useState(false);
+  const [openclawAgents, setOpenclawAgents] = useState<any[]>([]);
+  const [openclawTokenCopied, setOpenclawTokenCopied] = useState(false);
+
   const checkWorkDir = async (dir: string) => {
     if (!aktivesUnternehmen || !dir.trim()) return;
     setCheckingWorkDir(true);
@@ -166,12 +172,33 @@ export function Settings() {
     if (aktivesUnternehmen) {
       authFetch(`/api/unternehmen/${aktivesUnternehmen.id}`)
         .then(r => r.json())
-        .then((c: any) => { setWorkDir(c.workDir || ''); }) // Fix: set empty if null
+        .then((c: any) => { setWorkDir(c.workDir || ''); })
         .catch(() => {});
     } else {
       setWorkDir('');
     }
   }, [aktivesUnternehmen?.id]);
+
+  // OpenClaw token + agents
+  useEffect(() => {
+    if (!aktivesUnternehmen) return;
+    authFetch(`/api/openclaw/token?unternehmenId=${aktivesUnternehmen.id}`)
+      .then(r => r.json()).then(d => setOpenclawToken(d.token || '')).catch(() => {});
+    authFetch(`/api/openclaw/agents?unternehmenId=${aktivesUnternehmen.id}`)
+      .then(r => r.json()).then(d => setOpenclawAgents(Array.isArray(d) ? d : [])).catch(() => {});
+  }, [aktivesUnternehmen?.id]);
+
+  const regenerateOpenclawToken = async () => {
+    if (!aktivesUnternehmen) return;
+    setOpenclawTokenLoading(true);
+    try {
+      const r = await authFetch('/api/openclaw/token/regenerate', {
+        method: 'POST', body: JSON.stringify({ unternehmenId: aktivesUnternehmen.id }),
+      });
+      const d = await r.json();
+      setOpenclawToken(d.token || '');
+    } catch { /* ignore */ } finally { setOpenclawTokenLoading(false); }
+  };
 
   // Fetch OpenRouter models when API key is set
   useEffect(() => {
@@ -1528,6 +1555,101 @@ export function Settings() {
                   )}
                 </div>
               </div>
+            </div>
+
+            {/* OpenClaw Gateway */}
+            <div className="glass-card" style={{
+              padding: '1.5rem',
+              background: 'rgba(255,255,255,0.04)',
+              backdropFilter: 'blur(24px) saturate(160%)',
+              borderRadius: '20px',
+              border: openclawToken ? '1px solid rgba(35,205,203,0.3)' : '1px solid rgba(255,255,255,0.08)',
+              animation: 'fadeInUp 0.5s ease-out 0.45s both',
+              position: 'relative', overflow: 'hidden',
+            }}>
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, transparent, #23CDCB, transparent)' }} />
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(35,205,203,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Zap size={18} style={{ color: '#23CDCB' }} />
+                </div>
+                <div>
+                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>OpenClaw Gateway</h2>
+                  <p style={{ fontSize: '0.75rem', color: '#71717a' }}>Verbinde OpenClaw-Agenten mit ihrem bestehenden Wissen als Experten</p>
+                </div>
+              </div>
+
+              {/* Connection Token */}
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, color: '#d4d4d8', marginBottom: '0.5rem' }}>
+                  Connection Token
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input
+                    readOnly
+                    value={openclawToken}
+                    placeholder="Wird automatisch generiert…"
+                    style={{
+                      flex: 1, padding: '0.625rem 0.875rem', fontFamily: 'monospace', fontSize: '0.8rem',
+                      backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                      borderRadius: '12px', color: '#23CDCB', outline: 'none',
+                    }}
+                  />
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(openclawToken); setOpenclawTokenCopied(true); setTimeout(() => setOpenclawTokenCopied(false), 2000); }}
+                    disabled={!openclawToken}
+                    title="Token kopieren"
+                    style={{ padding: '0.625rem 0.875rem', borderRadius: '12px', cursor: openclawToken ? 'pointer' : 'not-allowed', background: openclawTokenCopied ? 'rgba(35,205,203,0.2)' : 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: openclawTokenCopied ? '#23CDCB' : '#d4d4d8', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                  >
+                    {openclawTokenCopied ? <CheckCircle2 size={14} /> : 'Kopieren'}
+                  </button>
+                  <button
+                    onClick={regenerateOpenclawToken}
+                    disabled={openclawTokenLoading}
+                    title="Token erneuern (invalidiert alten)"
+                    style={{ padding: '0.625rem 0.875rem', borderRadius: '12px', cursor: 'pointer', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a', fontSize: '0.8rem' }}
+                  >
+                    {openclawTokenLoading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={14} />}
+                  </button>
+                </div>
+                <p style={{ fontSize: '0.725rem', color: '#71717a', marginTop: '0.5rem' }}>
+                  Gib diesen Token in deiner OpenClaw-Instanz ein unter <strong style={{ color: '#a1a1aa' }}>Settings → OpenCognit Bridge</strong>.
+                </p>
+              </div>
+
+              {/* How it works */}
+              <div style={{ padding: '1rem', borderRadius: '14px', background: 'rgba(35,205,203,0.05)', border: '1px solid rgba(35,205,203,0.12)', marginBottom: '1.25rem', fontSize: '0.75rem', color: '#a1a1aa' }}>
+                <div style={{ fontWeight: 600, color: '#23CDCB', marginBottom: '0.5rem' }}>So funktioniert die Verbindung</div>
+                <ol style={{ margin: 0, paddingLeft: '1.25rem', lineHeight: 1.7 }}>
+                  <li>OpenClaw-User gibt den Token oben in OpenClaw ein</li>
+                  <li>Der Agent registriert sich automatisch als Experte hier</li>
+                  <li>Du kannst ihn dann als CEO oder in beliebiger Rolle einsetzen</li>
+                  <li>Tasks werden an OpenClaw delegiert — Wissen bleibt lokal</li>
+                </ol>
+              </div>
+
+              {/* Connected Agents */}
+              {openclawAgents.length > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#d4d4d8', marginBottom: '0.75rem' }}>
+                    Verbundene Agenten ({openclawAgents.length})
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {openclawAgents.map((agent: any) => (
+                      <div key={agent.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 1rem', borderRadius: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                        <div>
+                          <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#ffffff' }}>{agent.name}</div>
+                          <div style={{ fontSize: '0.75rem', color: '#71717a' }}>{agent.rolle} · {agent.gatewayUrl || 'kein Gateway'}</div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.7rem', color: '#23CDCB', background: 'rgba(35,205,203,0.1)', padding: '0.25rem 0.625rem', borderRadius: '99px' }}>
+                          <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#23CDCB' }} />
+                          OpenClaw
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Version */}

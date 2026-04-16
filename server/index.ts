@@ -5,7 +5,7 @@ import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { db, initializeDatabase, sqlite } from './db/client.js';
-import { unternehmen, experten, aufgaben, kommentare, genehmigungen, aktivitaetslog, kostenbuchungen, arbeitszyklen, ziele, einstellungen, chatNachrichten, benutzer, routinen, routineTrigger, routineAusfuehrung, workProducts, projekte, agentPermissions, traceEreignisse, skillsLibrary, expertenSkills, agentWakeupRequests, palaceWings, palaceDrawers, palaceDiary, palaceKg, palaceSummaries, budgetPolicies, budgetIncidents, executionWorkspaces, issueRelations, agentMeetings } from './db/schema.js';
+import { unternehmen, experten, aufgaben, kommentare, genehmigungen, aktivitaetslog, kostenbuchungen, arbeitszyklen, ziele, einstellungen, chatNachrichten, benutzer, routinen, routineTrigger, routineAusfuehrung, workProducts, projekte, agentPermissions, traceEreignisse, skillsLibrary, expertenSkills, agentWakeupRequests, palaceWings, palaceDrawers, palaceDiary, palaceKg, palaceSummaries, budgetPolicies, budgetIncidents, executionWorkspaces, issueRelations, agentMeetings, openclawTokens } from './db/schema.js';
 import { getWorkspaceInfo, readWorkspaceFile } from './services/workspace.js';
 import { encryptSetting, decryptSetting } from './utils/crypto.js';
 import { eq, desc, asc, and, sql, count, sum, inArray, isNotNull, isNull, or } from 'drizzle-orm';
@@ -5722,6 +5722,160 @@ async function processAllPendingWakeups() {
     console.error('❌ Fehler beim Wakeup-Processor:', error);
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OpenClaw Gateway API
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/openclaw/token?unternehmenId=...
+ * Returns (or creates) the connection token for a company.
+ * Admins use this token to share with OpenClaw users.
+ */
+app.get('/api/openclaw/token', (req: any, res: any) => {
+  const unternehmenId = req.query.unternehmenId as string;
+  if (!unternehmenId) return res.status(400).json({ error: 'unternehmenId required' });
+
+  let row = db.select().from(openclawTokens)
+    .where(eq(openclawTokens.unternehmenId, unternehmenId))
+    .get();
+
+  if (!row) {
+    const newToken = uuid();
+    db.insert(openclawTokens).values({
+      id: uuid(),
+      unternehmenId,
+      token: newToken,
+      beschreibung: 'Auto-generiert',
+      erstelltAm: now(),
+    }).run();
+    row = db.select().from(openclawTokens).where(eq(openclawTokens.unternehmenId, unternehmenId)).get();
+  }
+
+  res.json({ token: row!.token, erstelltAm: row!.erstelltAm, letzterJoin: row!.letzterJoin });
+});
+
+/**
+ * POST /api/openclaw/token/regenerate
+ * Regenerates the connection token (invalidates old one).
+ */
+app.post('/api/openclaw/token/regenerate', (req: any, res: any) => {
+  const { unternehmenId } = req.body;
+  if (!unternehmenId) return res.status(400).json({ error: 'unternehmenId required' });
+
+  const newToken = uuid();
+  const existing = db.select({ id: openclawTokens.id }).from(openclawTokens)
+    .where(eq(openclawTokens.unternehmenId, unternehmenId)).get();
+
+  if (existing) {
+    db.update(openclawTokens).set({ token: newToken }).where(eq(openclawTokens.unternehmenId, unternehmenId)).run();
+  } else {
+    db.insert(openclawTokens).values({ id: uuid(), unternehmenId, token: newToken, beschreibung: 'Auto-generiert', erstelltAm: now() }).run();
+  }
+
+  res.json({ token: newToken });
+});
+
+/**
+ * POST /api/openclaw/join
+ * Called by an OpenClaw instance to register its agent in OpenCognit.
+ * Body: { token, agentName, agentRolle, gatewayUrl, openclawAgentId, faehigkeiten? }
+ * No auth middleware — the connection token IS the authentication.
+ */
+app.post('/api/openclaw/join', (req: any, res: any) => {
+  const { token, agentName, agentRolle, gatewayUrl, openclawAgentId, faehigkeiten } = req.body;
+
+  if (!token || !agentName || !gatewayUrl) {
+    return res.status(400).json({ error: 'token, agentName und gatewayUrl sind Pflichtfelder' });
+  }
+
+  // Verify token
+  const tokenRow = db.select().from(openclawTokens).where(eq(openclawTokens.token, token)).get();
+  if (!tokenRow) return res.status(403).json({ error: 'Ungültiger Token' });
+
+  const unternehmenId = tokenRow.unternehmenId;
+
+  // Check if this OpenClaw agent is already registered (by openclawAgentId or gatewayUrl match)
+  const verbindungsConfigPattern = openclawAgentId ?? gatewayUrl;
+  const existing = db.select().from(experten)
+    .where(and(
+      eq(experten.unternehmenId, unternehmenId),
+      eq(experten.verbindungsTyp, 'openclaw' as any),
+    ))
+    .all()
+    .find((e: any) => {
+      try {
+        const cfg = JSON.parse(e.verbindungsConfig || '{}');
+        return cfg.openclawAgentId === openclawAgentId || cfg.gatewayUrl === gatewayUrl;
+      } catch { return false; }
+    });
+
+  const verbindungsConfig = JSON.stringify({
+    openclawGateway: true,
+    gatewayUrl,
+    token,
+    openclawAgentId: openclawAgentId ?? null,
+  });
+
+  let expertId: string;
+  if (existing) {
+    // Update existing registration (new gateway URL or token)
+    db.update(experten).set({
+      name: agentName,
+      rolle: agentRolle || existing.rolle,
+      faehigkeiten: faehigkeiten || existing.faehigkeiten,
+      verbindungsConfig,
+      aktualisiertAm: now(),
+    }).where(eq(experten.id, existing.id)).run();
+    expertId = existing.id;
+    console.log(`🔗 OpenClaw agent updated: ${agentName} (${expertId})`);
+  } else {
+    // Create new expert entry
+    expertId = uuid();
+    db.insert(experten).values({
+      id: expertId,
+      unternehmenId,
+      name: agentName,
+      rolle: agentRolle || 'Externer Agent',
+      verbindungsTyp: 'openclaw' as any,
+      verbindungsConfig,
+      faehigkeiten: faehigkeiten || null,
+      status: 'idle',
+      erstelltAm: now(),
+      aktualisiertAm: now(),
+    }).run();
+    console.log(`🔗 OpenClaw agent registered: ${agentName} (${expertId})`);
+  }
+
+  // Update letzterJoin timestamp
+  db.update(openclawTokens).set({ letzterJoin: now() }).where(eq(openclawTokens.token, token)).run();
+
+  const agent = db.select().from(experten).where(eq(experten.id, expertId)).get();
+  res.status(201).json({ expertId, agent, message: `Agent "${agentName}" erfolgreich in OpenCognit registriert` });
+});
+
+/**
+ * GET /api/openclaw/agents?unternehmenId=...
+ * Lists all OpenClaw agents for a company.
+ */
+app.get('/api/openclaw/agents', (req: any, res: any) => {
+  const unternehmenId = req.query.unternehmenId as string;
+  if (!unternehmenId) return res.status(400).json({ error: 'unternehmenId required' });
+
+  const agents = db.select().from(experten)
+    .where(and(
+      eq(experten.unternehmenId, unternehmenId),
+      eq(experten.verbindungsTyp, 'openclaw' as any),
+    ))
+    .all()
+    .map((a: any) => {
+      let cfg: any = {};
+      try { cfg = JSON.parse(a.verbindungsConfig || '{}'); } catch {}
+      return { ...a, gatewayUrl: cfg.gatewayUrl, openclawAgentId: cfg.openclawAgentId };
+    });
+
+  res.json(agents);
+});
 
 // ── Production: serve built frontend ──────────────────────────────────────────
 if (process.env.NODE_ENV === 'production') {

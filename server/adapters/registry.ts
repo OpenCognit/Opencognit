@@ -6,6 +6,7 @@ import { HttpAdapter } from './http.js';
 import { ClaudeCodeAdapter } from './claude-code.js';
 import { CodexCLIAdapter } from './codex-cli.js';
 import { GeminiCLIAdapter } from './gemini-cli.js';
+import { OpenClawAdapter } from './openclaw.js';
 import { createLLMWrapper } from './llm-wrapper.js';
 
 export class AdapterRegistry {
@@ -19,6 +20,7 @@ export class AdapterRegistry {
     this.register('claude-code', new ClaudeCodeAdapter());
     this.register('codex-cli', new CodexCLIAdapter());
     this.register('gemini-cli', new GeminiCLIAdapter());
+    this.register('openclaw', new OpenClawAdapter());
     // API-key adapters (claude, openrouter, anthropic, openai, ollama, ceo)
     // are handled via createLLMWrapper() below — they use run() not execute()
   }

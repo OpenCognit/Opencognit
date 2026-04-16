@@ -1077,6 +1077,7 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
         workspacePath: (taskFull as any).workspacePath || undefined,
         systemPrompt: resolvedSystemPrompt,
         verbindungsTyp: effectiveVerbindungsTyp,
+        verbindungsConfig: Object.keys(heartbeatParsedConfig).length > 0 ? heartbeatParsedConfig : undefined,
         globalDefaultModel: heartbeatGlobalDefaultModel,
       });
 
