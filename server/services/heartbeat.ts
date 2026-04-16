@@ -1453,10 +1453,9 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
       const meetingPrompt = `Du nimmst an einem Team-Meeting teil.
 
 **Meeting-Thema:** ${meeting.titel}
-${meeting.agenda ? `**Agenda:** ${meeting.agenda}` : ''}
 
 **Bisherige Antworten der Teilnehmer:**
-${Object.entries(existingAnswers).map(([name, ans]) => `- ${name}: ${ans}`).join('\n') || '(noch keine)'}
+${Object.entries(existingAnswers).map(([id, ans]) => `- ${id}: ${ans}`).join('\n') || '(noch keine)'}
 
 Bitte gib deine Meinung, deinen Input oder deine Empfehlung zum Thema in 2-4 Sätzen. Sei präzise und konstruktiv.`;
 
@@ -1486,31 +1485,34 @@ Bitte gib deine Meinung, deinen Input oder deine Empfehlung zum Thema in 2-4 Sä
         }
       }
 
-      // Save answer
-      existingAnswers[expert?.name || expertId] = response;
+      // Save answer keyed by expertId (as per schema: { expertId: "response" })
+      existingAnswers[expertId] = response;
       db.update(agentMeetings)
-        .set({ antworten: JSON.stringify(existingAnswers), aktualisiertAm: new Date().toISOString() })
+        .set({ antworten: JSON.stringify(existingAnswers) })
         .where(eq(agentMeetings.id, meetingId)).run();
 
       // Check if all participants have answered → close meeting
       const teilnehmerIds: string[] = (() => {
         try { return JSON.parse(meeting.teilnehmerIds || '[]'); } catch { return []; }
       })();
-      const allAnswered = teilnehmerIds.every(id => {
-        const name = db.select({ name: experten.name }).from(experten).where(eq(experten.id, id)).get()?.name || id;
-        return existingAnswers[name];
-      });
+      const allAnswered = teilnehmerIds.every((id: string) => existingAnswers[id]);
 
       if (allAnswered) {
+        // Build human-readable summary for CEO notification
+        const summary = teilnehmerIds.map((id: string) => {
+          const name = db.select({ name: experten.name }).from(experten).where(eq(experten.id, id)).get()?.name || id;
+          return `${name}: "${(existingAnswers[id] || '').slice(0, 100)}"`;
+        }).join(' | ');
+
         db.update(agentMeetings)
-          .set({ status: 'completed', aktualisiertAm: new Date().toISOString() })
+          .set({ status: 'completed', abgeschlossenAm: new Date().toISOString() })
           .where(eq(agentMeetings.id, meetingId)).run();
         console.log(`  ✅ Meeting "${meeting.titel}" — alle Antworten eingegangen, abgeschlossen`);
-        // Notify orchestrator
+        // Notify orchestrator with full summary
         await wakeupService.wakeup(meeting.veranstalterExpertId, unternehmenId, {
           source: 'automation',
           triggerDetail: 'callback',
-          reason: `Meeting abgeschlossen: ${meeting.titel}. Antworten: ${Object.entries(existingAnswers).map(([n, a]) => `${n}: "${a.slice(0, 80)}"`).join(' | ')}`,
+          reason: `Meeting abgeschlossen: "${meeting.titel}". Alle Antworten: ${summary}`,
         });
       }
 
