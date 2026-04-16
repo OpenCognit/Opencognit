@@ -180,6 +180,7 @@ let isPolling = false;
 let pollTimeout: NodeJS.Timeout | null = null;
 let pollController: AbortController | null = null;
 const registeredBotCommands = new Set<string>(); // tokens that already had setMyCommands called
+const invalidTokens = new Set<string>(); // tokens that returned 401 — skip until cleared
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -269,6 +270,7 @@ export const messagingService = {
     try {
       const cfg = getBotConfig(unternehmenId);
       if (!cfg) return;
+      if (invalidTokens.has(cfg.token)) return; // don't spam with a bad token
       await sendMsg(cfg.token, cfg.chatId, text, keyboard);
     } catch (e) {
       console.error(`[Telegram] sendTelegram error (${unternehmenId}):`, e);
@@ -1330,13 +1332,22 @@ ${isEn ? 'ACTIONS (only when explicitly requested, at the end of response):' : '
             }).catch(() => {});
           }
 
+          // Skip tokens that previously returned 401
+          if (invalidTokens.has(token)) continue;
+
           const offset = offsets.get(uId) || 0;
           try {
             const resp = await fetch(
               `https://api.telegram.org/bot${token}/getUpdates?offset=${offset}&timeout=5`,
               { signal: pollController.signal }
             );
-            if (!resp.ok) continue;
+            if (!resp.ok) {
+              if (resp.status === 401) {
+                invalidTokens.add(token);
+                console.warn(`[Telegram] Token ungültig (401) — ignoriert bis Server-Neustart.`);
+              }
+              continue;
+            }
 
             const data = await resp.json() as any;
             if (!data.ok || !data.result.length) continue;
@@ -1369,6 +1380,12 @@ ${isEn ? 'ACTIONS (only when explicitly requested, at the end of response):' : '
     };
 
     poll();
+  },
+
+  // Clear cached invalid tokens — call this after a new token is saved
+  clearInvalidTokens() {
+    invalidTokens.clear();
+    registeredBotCommands.clear();
   },
 
   stopPolling() {

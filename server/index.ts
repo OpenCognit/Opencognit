@@ -2162,10 +2162,25 @@ app.get('/api/einstellungen', (req, res) => {
   res.json(obj);
 });
 
-app.put('/api/einstellungen/:key', (req, res) => {
+app.put('/api/einstellungen/:key', async (req: express.Request, res: express.Response) => {
   const key = req.params.key;
   const uId = req.body.unternehmenId || '';
   const wert = typeof req.body.wert === 'string' ? req.body.wert.trim() : req.body.wert;
+
+  // Validate Telegram bot token before saving
+  if (key === 'telegram_bot_token' && wert) {
+    try {
+      const tgCheck = await fetch(`https://api.telegram.org/bot${wert}/getMe`);
+      const tgData = await tgCheck.json() as any;
+      if (!tgData.ok) {
+        return res.status(400).json({ error: 'invalid_token', message: `Telegram bot token ungültig: ${tgData.description || 'Unauthorized'}` });
+      }
+      console.log(`[Telegram] Token validiert: @${tgData.result?.username}`);
+    } catch (e: any) {
+      return res.status(400).json({ error: 'validation_failed', message: `Telegram Validierung fehlgeschlagen: ${e.message}` });
+    }
+  }
+
   const wertToStore = encryptSetting(key, wert);
 
   db.insert(einstellungen)
@@ -2175,6 +2190,11 @@ app.put('/api/einstellungen/:key', (req, res) => {
       set: { wert: wertToStore, aktualisiertAm: now() }
     })
     .run();
+
+  // If a new Telegram token was saved, clear the invalid-token cache so polling resumes
+  if (key === 'telegram_bot_token') {
+    messagingService.clearInvalidTokens();
+  }
 
   res.json({ schluessel: key, unternehmenId: uId, wert });
 });

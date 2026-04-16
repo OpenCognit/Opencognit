@@ -311,19 +311,18 @@ export function Settings() {
         ['telegram_chat_id', telegramChatId],
       ];
       const uId = aktivesUnternehmen?.id || '';
-      const results = await Promise.allSettled([
-        ...entries.map(([key, wert]) =>
-          authFetch(`/api/einstellungen/${key}`, {
-            method: 'PUT',
-            body: JSON.stringify({ wert, unternehmenId: uId })
-          })
-        ),
-        saveWorkDir(),
-      ]);
-      const failed = results.filter(r => r.status === 'rejected');
-      if (failed.length > 0) {
-        throw new Error(`${failed.length} Einstellung(en) konnten nicht gespeichert werden`);
+      // Save all settings — check HTTP status for validation errors (e.g. invalid Telegram token)
+      for (const [key, wert] of entries) {
+        const r = await authFetch(`/api/einstellungen/${key}`, {
+          method: 'PUT',
+          body: JSON.stringify({ wert, unternehmenId: uId })
+        });
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({})) as any;
+          throw new Error(body.message || `Fehler beim Speichern von "${key}" (${r.status})`);
+        }
       }
+      await saveWorkDir();
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
       toastCtx.success(i18n.t.einstellungen.saved, 'API Keys & Einstellungen gespeichert');
