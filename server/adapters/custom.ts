@@ -78,8 +78,12 @@ export class CustomAdapter implements ExpertAdapter {
               body: JSON.stringify({
                 model,
                 messages,
-                tools: AGENT_TOOLS_OPENAI,
-                tool_choice: 'auto',
+                // Claude models via Poe don't support tools in OpenAI format —
+                // they fall back to text-based bash block parsing (see below).
+                ...(model.toLowerCase().includes('claude') ? {} : {
+                  tools: AGENT_TOOLS_OPENAI,
+                  tool_choice: 'auto',
+                }),
               }),
               signal: controller.signal,
             });
