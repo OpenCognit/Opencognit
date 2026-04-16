@@ -60,6 +60,8 @@ export class CustomAdapter implements ExpertAdapter {
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
     let finalOutput = '';
+    // Accumulated log of bash commands + their outputs for auditing
+    const bashLog: Array<{ cmd: string; output: string }> = [];
 
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
       let data: any;
@@ -148,6 +150,7 @@ export class CustomAdapter implements ExpertAdapter {
             for (const block of blocks) {
               console.log(`  🔧 [Custom API text] bash: ${block.slice(0, 100)}`);
               const result = await executeBashCommand(block, options.workspacePath);
+              bashLog.push({ cmd: block, output: result.output });
               toolResultText += `\n\`\`\`\n$ ${block}\n${result.output}\n\`\`\``;
             }
             messages.push({ role: 'user', content: toolResultText + '\n\nMache weiter mit der Aufgabe.' });
@@ -182,6 +185,7 @@ export class CustomAdapter implements ExpertAdapter {
           const cmd = input.command || '';
           console.log(`  🔧 [Custom API tool] bash: ${cmd.slice(0, 100)}`);
           const result = await executeBashCommand(cmd, options.workspacePath);
+          bashLog.push({ cmd, output: result.output });
           toolResults.push({
             role: 'tool',
             tool_call_id: toolCall.id,
@@ -192,6 +196,14 @@ export class CustomAdapter implements ExpertAdapter {
 
       messages.push(...toolResults);
       if (taskDone) break;
+    }
+
+    // Append bash execution log so kommentare show exactly what ran
+    if (bashLog.length > 0) {
+      const logSection = bashLog.map(({ cmd, output }) =>
+        `$ ${cmd}\n${output.slice(0, 2000)}`,
+      ).join('\n\n---\n\n');
+      finalOutput = `${finalOutput}\n\n---\n**Ausgeführte Bash-Befehle:**\n\`\`\`\n${logSection}\n\`\`\``;
     }
 
     return {

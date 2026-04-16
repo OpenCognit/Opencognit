@@ -588,6 +588,21 @@ app.post('/api/unternehmen/:unternehmenId/aufgaben', (req, res) => {
   if (!titel) return res.status(400).json({ error: 'Titel ist erforderlich' });
 
   const unternehmenId = req.params.unternehmenId;
+
+  // Dedup: reject if an open task with the same title already exists
+  const existing = db.select({ id: aufgaben.id })
+    .from(aufgaben)
+    .where(and(
+      eq(aufgaben.unternehmenId, unternehmenId),
+      sql`LOWER(TRIM(${aufgaben.titel})) = LOWER(TRIM(${titel}))`,
+      sql`${aufgaben.status} != 'done'`,
+    ))
+    .limit(1)
+    .all();
+  if (existing.length > 0) {
+    return res.status(409).json({ error: 'Duplikat: Task mit diesem Titel existiert bereits', existingId: existing[0].id });
+  }
+
   const id = uuid();
 
   db.insert(aufgaben).values({

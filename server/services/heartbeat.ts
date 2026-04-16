@@ -5,7 +5,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { appEvents } from '../events.js';
 import { db } from '../db/client.js';
-import { arbeitszyklen, agentWakeupRequests, experten, aufgaben, unternehmen, projekte, kostenbuchungen, kommentare, workProducts, chatNachrichten, aktivitaetslog, ziele, issueRelations, einstellungen, budgetPolicies, budgetIncidents, agentMeetings } from '../db/schema.js';
+import { arbeitszyklen, agentWakeupRequests, experten, aufgaben, unternehmen, projekte, kostenbuchungen, kommentare, workProducts, chatNachrichten, aktivitaetslog, ziele, issueRelations, einstellungen, budgetPolicies, budgetIncidents, agentMeetings, genehmigungen } from '../db/schema.js';
 import { eq, and, sql, inArray, or, isNull, asc, desc, gte } from 'drizzle-orm';
 import { pruefeUndEntblocke } from './issue-dependencies.js';
 import { wakeupService, type PendingWakeup } from './wakeup.js';
@@ -445,6 +445,7 @@ class HeartbeatServiceImpl implements HeartbeatService {
       prioritaet: aufgaben.prioritaet,
       executionLockedAt: aufgaben.executionLockedAt,
       zielId: aufgaben.zielId,
+      isMaximizerMode: aufgaben.isMaximizerMode,
     })
     .from(aufgaben)
     .where(
@@ -457,9 +458,13 @@ class HeartbeatServiceImpl implements HeartbeatService {
       )
     );
 
-    // Sort: goal-linked tasks first, then by priority weight
+    // Sort: MaximizerMode → goal-linked → priority weight
     const priorityWeight: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
     tasks.sort((a, b) => {
+      // MaximizerMode tasks float to the very top
+      const aMax = (a as any).isMaximizerMode ? 1 : 0;
+      const bMax = (b as any).isMaximizerMode ? 1 : 0;
+      if (aMax !== bMax) return bMax - aMax;
       const aGoal = a.zielId ? 1 : 0;
       const bGoal = b.zielId ? 1 : 0;
       if (aGoal !== bGoal) return bGoal - aGoal; // goal-linked first
@@ -824,6 +829,10 @@ class HeartbeatServiceImpl implements HeartbeatService {
           name: expert?.name || 'Unknown Agent',
           rolle: expert?.rolle || 'Agent',
           faehigkeiten: expert?.faehigkeiten || null,
+          // MaximizerMode: tell the agent to work at maximum speed and output
+          ...((taskFull as any).isMaximizerMode ? {
+            maximizerMode: '⚡ MAXIMIZER MODE AKTIV: Arbeite schnellstmöglich. Erzeuge vollständigen, sofort nutzbaren Output. Keine Rückfragen, keine Platzhalter — liefere alles in einem Durchgang.',
+          } : {}),
           ...(memoryContext ? { gedaechtnis: memoryContext } : {}),
           ...(blockerOutputs ? { vorgaengerOutputs: blockerOutputs } : {}),
           ...(advisorPlan ? { advisorPlan: `### 🧠 STRATEGISCHER PLAN DES ARCHITEKTEN/ADVISORS\n\n${advisorPlan}\n\n*Bitte befolge diesen Plan strikt bei der Ausführung der Aufgabe.*` } : {}),
@@ -842,7 +851,8 @@ Wenn du Tasks erstellen, zuweisen oder Ziele aktualisieren willst, füge am ENDE
     {"type": "create_task", "titel": "Task-Titel", "beschreibung": "Beschreibung...", "assignTo": "Agent Name", "prioritaet": "high", "zielId": "GOAL_ID"},
     {"type": "assign_task", "taskId": "TASK_ID", "assignTo": "Agent Name"},
     {"type": "mark_done", "taskId": "TASK_ID"},
-    {"type": "update_goal", "goalId": "GOAL_ID", "fortschritt": 50}
+    {"type": "update_goal", "goalId": "GOAL_ID", "fortschritt": 50},
+    {"type": "hire_agent", "rolle": "QA Engineer", "faehigkeiten": "Testing, Python", "begruendung": "Wir brauchen mehr QA-Kapazität"}
   ]
 }
 \`\`\`
@@ -1610,6 +1620,36 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
             console.log(`  ✅ CEO aktualisiert Ziel ${action.goalId}: ${action.fortschritt ?? ''}%`);
             trace(orchestratorId, unternehmenId, 'result',
               `Ziel aktualisiert${typeof action.fortschritt === 'number' ? `: ${action.fortschritt}%` : ''}`,
+            );
+            break;
+          }
+
+          case 'hire_agent': {
+            // CEO requests hiring a new agent — creates an approval request for human review
+            if (!action.rolle) break;
+            const approvalId = crypto.randomUUID();
+            await db.insert(genehmigungen as any).values({
+              id: approvalId,
+              unternehmenId,
+              typ: 'hire_expert',
+              titel: `Neuen Agent einstellen: ${action.rolle}`,
+              beschreibung: action.begruendung || `Der CEO empfiehlt, einen neuen Agent mit der Rolle "${action.rolle}" einzustellen.`,
+              angefordertVon: orchestratorId,
+              status: 'pending',
+              payload: JSON.stringify({
+                rolle: action.rolle,
+                faehigkeiten: action.faehigkeiten || '',
+                verbindungsTyp: action.verbindungsTyp || 'custom',
+                budgetMonatCent: action.budgetMonatCent || 50000,
+              }),
+              erstelltAm: now,
+              aktualisiertAm: now,
+            }).run();
+
+            console.log(`  📋 CEO beantragt Einstellung: "${action.rolle}" — Genehmigung ausstehend`);
+            trace(orchestratorId, unternehmenId, 'action',
+              `Einstellungsantrag: ${action.rolle}`,
+              `Genehmigung erforderlich`,
             );
             break;
           }
