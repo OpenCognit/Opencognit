@@ -28,6 +28,8 @@ export function Settings() {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [savingSection, setSavingSection] = useState<string | null>(null);
+  const [savedSection, setSavedSection] = useState<string | null>(null);
 
   // Claude Code status
   const [claudeStatus, setClaudeStatus] = useState<{
@@ -334,6 +336,58 @@ export function Settings() {
     }
   };
 
+  const saveSection = async (sectionId: string, entries: [string, string][], extraFn?: () => Promise<void>) => {
+    if (savingSection) return;
+    setSavingSection(sectionId);
+    try {
+      const uId = aktivesUnternehmen?.id || '';
+      for (const [key, wert] of entries) {
+        const r = await authFetch(`/api/einstellungen/${key}`, {
+          method: 'PUT',
+          body: JSON.stringify({ wert, unternehmenId: uId }),
+        });
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({})) as any;
+          throw new Error(body.message || `Fehler beim Speichern von "${key}" (${r.status})`);
+        }
+      }
+      if (extraFn) await extraFn();
+      setSavedSection(sectionId);
+      setTimeout(() => setSavedSection(s => s === sectionId ? null : s), 2500);
+      toastCtx.success(i18n.t.einstellungen.saved, 'Einstellungen gespeichert');
+    } catch (e: any) {
+      toastCtx.error('Fehler beim Speichern', e.message);
+    } finally {
+      setSavingSection(null);
+    }
+  };
+
+  // Reusable mini save button rendered at bottom of each card
+  const SectionSaveBtn = ({ id, onClick }: { id: string; onClick: () => void }) => (
+    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+      <button
+        onClick={onClick}
+        disabled={!!savingSection}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '0.4375rem 0.875rem', borderRadius: 10, cursor: savingSection ? 'not-allowed' : 'pointer',
+          background: savedSection === id ? 'rgba(34,197,94,0.1)' : 'rgba(35,205,202,0.08)',
+          border: `1px solid ${savedSection === id ? 'rgba(34,197,94,0.25)' : 'rgba(35,205,202,0.18)'}`,
+          color: savedSection === id ? '#22c55e' : '#23CDCB',
+          fontWeight: 600, fontSize: '0.8125rem', transition: 'all 0.2s',
+          opacity: savingSection && savingSection !== id ? 0.5 : 1,
+        }}
+      >
+        {savingSection === id
+          ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Speichern...</>
+          : savedSection === id
+            ? <><CheckCircle2 size={13} /> Gespeichert</>
+            : <><Save size={13} /> Speichern</>
+        }
+      </button>
+    </div>
+  );
+
   return (
     <>
       <div>
@@ -387,7 +441,7 @@ export function Settings() {
                   ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Speichern...</>
                   : saved
                     ? <><CheckCircle2 size={16} /> {i18n.t.einstellungen.saved}</>
-                    : <><Save size={16} /> {i18n.t.actions.speichern}</>
+                    : <><Save size={16} /> {i18n.language === 'de' ? 'Alle speichern' : 'Save all'}</>
                 }
               </button>
               {saveError && <span style={{ fontSize: '0.75rem', color: '#ef4444' }}>{saveError}</span>}
@@ -714,6 +768,15 @@ export function Settings() {
                   </div>
                 )}
               </div>
+              <SectionSaveBtn id="api" onClick={() => saveSection('api', [
+                ['anthropic_api_key', anthropicKey],
+                ['openai_api_key', openaiKey],
+                ['openrouter_api_key', openrouterKey],
+                ['openrouter_default_model', defaultModel],
+                ['ollama_base_url', ollamaUrl],
+                ['custom_api_key', customApiKey],
+                ['custom_api_base_url', customApiBaseUrl],
+              ])} />
             </div>
 
             {/* Budget & Kontrolle */}
@@ -776,6 +839,11 @@ export function Settings() {
                   </label>
                 </div>
               </div>
+              <SectionSaveBtn id="budget" onClick={() => saveSection('budget', [
+                ['budget_pause_threshold', String(budgetPauseThreshold)],
+                ['approval_required', String(approvalRequired)],
+                ['strategy_approval', String(strategyApproval)],
+              ])} />
             </div>
 
             {/* Benachrichtigungen */}
@@ -804,6 +872,12 @@ export function Settings() {
                   </label>
                 ))}
               </div>
+              <SectionSaveBtn id="notify" onClick={() => saveSection('notify', [
+                ['notify_approvals', String(notifyApprovals)],
+                ['notify_budget', String(notifyBudget)],
+                ['notify_work_cycle', String(notifyWorkCycle)],
+                ['notify_errors', String(notifyErrors)],
+              ])} />
             </div>
 
             {/* Projekt-Arbeitsverzeichnis */}
@@ -904,6 +978,7 @@ export function Settings() {
                 <p style={{ fontSize: '0.75rem', color: '#52525b', marginTop: '0.75rem' }}>
                   {i18n.t.einstellungen.workDirHint}
                 </p>
+              <SectionSaveBtn id="workspace" onClick={() => saveSection('workspace', [], saveWorkDir)} />
               </div>
             )}
 
@@ -1042,8 +1117,8 @@ export function Settings() {
                   </div>
                 )}
 
-                <div style={{ 
-                  display: 'flex', alignItems: 'center', gap: '0.5rem', 
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '0.5rem',
                   padding: '0.75rem', borderRadius: '12px', background: 'rgba(35, 205, 202, 0.05)',
                   border: '1px solid rgba(35, 205, 202, 0.1)'
                 }}>
@@ -1053,6 +1128,10 @@ export function Settings() {
                   </span>
                 </div>
               </div>
+              <SectionSaveBtn id="telegram" onClick={() => saveSection('telegram', [
+                ['telegram_bot_token', telegramBotToken],
+                ['telegram_chat_id', telegramChatId],
+              ])} />
             </div>
 
             {/* Datenbank */}
