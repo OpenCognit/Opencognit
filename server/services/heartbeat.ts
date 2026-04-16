@@ -839,7 +839,7 @@ Wenn du Tasks erstellen, zuweisen oder Ziele aktualisieren willst, füge am ENDE
 \`\`\`json
 {
   "actions": [
-    {"type": "create_task", "titel": "Task-Titel", "beschreibung": "Beschreibung...", "assignTo": "Agent Name", "prioritaet": "high"},
+    {"type": "create_task", "titel": "Task-Titel", "beschreibung": "Beschreibung...", "assignTo": "Agent Name", "prioritaet": "high", "zielId": "GOAL_ID"},
     {"type": "assign_task", "taskId": "TASK_ID", "assignTo": "Agent Name"},
     {"type": "mark_done", "taskId": "TASK_ID"},
     {"type": "update_goal", "goalId": "GOAL_ID", "fortschritt": 50}
@@ -849,6 +849,7 @@ Wenn du Tasks erstellen, zuweisen oder Ziele aktualisieren willst, füge am ENDE
 
 Verfügbare Prioritäten: critical, high, medium, low
 Verfügbare Team-Mitglieder: ${teamMembers.map(m => m.name).join(', ')}
+WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Ziel-Fortschritt (update_goal) wenn Tasks abgeschlossen wurden.
 `,
           } : {}),
         },
@@ -1143,6 +1144,28 @@ Verfügbare Team-Mitglieder: ${teamMembers.map(m => m.name).join(', ')}
             if (entblockt.length > 0) {
               trace(expertId, unternehmenId, 'info', `🔓 ${entblockt.length} Task(s) entblockt`, entblockt.join(', '), runId);
             }
+
+            // ── Auto-update goal progress based on task completion ──────────
+            const completedTask = await db.select({ zielId: aufgaben.zielId })
+              .from(aufgaben).where(eq(aufgaben.id, task.id)).get();
+            const zielId = completedTask?.zielId;
+            if (zielId) {
+              const allGoalTasks = await db.select({ status: aufgaben.status })
+                .from(aufgaben)
+                .where(and(eq(aufgaben.zielId, zielId), eq(aufgaben.unternehmenId, unternehmenId)));
+              const total = allGoalTasks.length;
+              const done = allGoalTasks.filter(t => t.status === 'done').length;
+              if (total > 0) {
+                const fortschritt = Math.round((done / total) * 100);
+                await db.update(ziele)
+                  .set({ fortschritt, aktualisiertAm: new Date().toISOString() })
+                  .where(and(eq(ziele.id, zielId), eq(ziele.unternehmenId, unternehmenId)))
+                  .run();
+                console.log(`  📊 Ziel-Fortschritt auto-aktualisiert: ${fortschritt}% (${done}/${total} Tasks erledigt)`);
+                trace(expertId, unternehmenId, 'result', `Ziel-Fortschritt aktualisiert: ${fortschritt}%`, `${done}/${total} Tasks erledigt`, runId);
+              }
+            }
+            // ────────────────────────────────────────────────────────────────
           }
         } else {
           // ─── SELF-HEALING RETRY + ORCHESTRATOR ESCALATION ─────────────────
@@ -1480,14 +1503,19 @@ Verfügbare Team-Mitglieder: ${teamMembers.map(m => m.name).join(', ')}
             // ── Deduplication: skip if similar task exists in last 50 open tasks ──
             const normalizeTitle = (t: string) => t.toLowerCase().trim().slice(0, 60);
             const normalized = normalizeTitle(action.titel);
-            const recentTasks = await db.select({ titel: aufgaben.titel })
+            // Dedup: include open tasks + recently-done tasks (last 48h) to avoid re-creating completed work
+            const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+            const recentTasks = await db.select({ titel: aufgaben.titel, status: aufgaben.status })
               .from(aufgaben)
               .where(and(
                 eq(aufgaben.unternehmenId, unternehmenId),
-                inArray(aufgaben.status, ['backlog', 'todo', 'in_progress', 'blocked']),
+                or(
+                  inArray(aufgaben.status, ['backlog', 'todo', 'in_progress', 'blocked']),
+                  and(eq(aufgaben.status, 'done'), gte(aufgaben.abgeschlossenAm, cutoff48h)),
+                ),
               ))
               .orderBy(desc(aufgaben.erstelltAm))
-              .limit(50);
+              .limit(100);
             const isDuplicate = recentTasks.some(t => normalizeTitle(t.titel) === normalized);
             if (isDuplicate) {
               console.log(`  ⏭️ CEO: Task "${action.titel}" bereits vorhanden — übersprungen (Dedup)`);
