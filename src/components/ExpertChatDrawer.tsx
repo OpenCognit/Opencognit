@@ -766,6 +766,8 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
         // HTTP response is authoritative — stop typing and add reply now.
         // The WS broadcast will arrive too, but the dedup check (find by id) handles that.
         setAgentTyping(false);
+        // Remove any pending board message (WS may not arrive if connection dropped)
+        setMessages(prev => prev.map(m => m._pending ? { ...m, _pending: false } : m));
         if (data.reply) {
           const replyMsg = {
             id: `direct-${Date.now()}`,
