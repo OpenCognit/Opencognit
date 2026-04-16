@@ -70,7 +70,6 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
       { to: '/goals',        icon: Target,         label: t.nav.ziele },
       { to: '/intelligence', icon: Brain,          label: t.nav.intelligence },
       { to: '/meetings',     icon: MessagesSquare, label: t.nav.meetings },
-      { to: '/war-room',     icon: Zap,            label: t.nav.warRoom },
       { to: '/activity',     icon: Activity,       label: t.nav.aktivitaet },
       { to: '/weekly-report',icon: BarChart3,      label: t.nav.weeklyReport },
       { to: '/clipmart',     icon: Package,        label: 'CognitHub' },
