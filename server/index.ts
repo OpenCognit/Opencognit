@@ -2645,13 +2645,14 @@ ${langLine(uiLang)} ${isEn ? `You respond directly to board messages. Be precise
   autoSaveInsights(expertId, unternehmenId, agentReply, urlContext ? `Chat + Links: ${urls[0] || ''}` : 'Chat').catch(() => {});
 
   // Track cost
+  const n2 = new Date().toISOString();
   const kostenCent = Math.ceil((inputTokens * 0.0008 + outputTokens * 0.004) / 100);
   if (kostenCent > 0) {
-    db.insert(kostenbuchungen).values({ id: uuid(), unternehmenId, expertId, kostenCent, beschreibung: 'direct_chat', zeitpunkt: new Date().toISOString() }).run();
-    db.update(experten).set({ verbrauchtMonatCent: sql`${experten.verbrauchtMonatCent} + ${kostenCent}`, aktualisiertAm: new Date().toISOString() }).where(eq(experten.id, expertId)).run();
+    db.insert(kostenbuchungen).values({ id: uuid(), unternehmenId, expertId, anbieter: expert.verbindungsTyp || 'custom', modell: modelId, inputTokens, outputTokens, kostenCent, zeitpunkt: n2, erstelltAm: n2 }).run();
+    db.update(experten).set({ verbrauchtMonatCent: sql`${experten.verbrauchtMonatCent} + ${kostenCent}`, aktualisiertAm: n2 }).where(eq(experten.id, expertId)).run();
   }
 
-  res.json({ status: 'ok', reply: agentReply });
+  res.json({ antwort: agentReply, tokensVerwendet: inputTokens + outputTokens, modell: modelId, provider: expert.verbindungsTyp });
 });
 
 // =============================================

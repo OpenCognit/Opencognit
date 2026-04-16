@@ -143,14 +143,13 @@ export function Experts() {
             </div>
           ) : null}
           <div style={{
-            display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
             gap: '1.25rem',
             display: (loading || !alleExperten) ? 'none' : 'grid',
           }}>
-            {(alleExperten || []).map((m, i) => {
+            {(alleExperten ?? []).map((m, i) => {
               const budget = m.budgetMonatCent > 0 ? Math.round((m.verbrauchtMonatCent / m.budgetMonatCent) * 100) : 0;
-              const manager = m.reportsTo ? alleExperten.find(x => x.id === m.reportsTo) : null;
+              const manager = m.reportsTo ? (alleExperten ?? []).find(x => x.id === m.reportsTo) : null;
               let modell = '';
               try {
                 if (m.verbindungsConfig) {
