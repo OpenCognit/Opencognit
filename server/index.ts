@@ -5705,6 +5705,18 @@ async function start() {
   // Start Telegram Polling (Gateway Mode)
   messagingService.startPolling().catch(console.error);
 
+  // Wire channelRegistry inbound handler → messagingService
+  // Without this, webhook-based Telegram messages are silently dropped
+  try {
+    const { channelRegistry } = await import('./channels/index.js');
+    channelRegistry.setInboundHandler(async (unternehmenId: string, message: any) => {
+      await messagingService.handleInboundMessage(unternehmenId, message, '');
+    });
+    console.log('📡 Channel-Registry Inbound-Handler verdrahtet');
+  } catch (e: any) {
+    console.warn('⚠️ Channel-Registry konnte nicht initialisiert werden:', e.message);
+  }
+
   server.listen(PORT, () => {
     console.log('\x1b[36m'); // cyan
     console.log(' ██████╗ ██████╗ ███████╗███╗   ██╗ ██████╗ ██████╗  ██████╗ ███╗   ██╗██╗████████╗');

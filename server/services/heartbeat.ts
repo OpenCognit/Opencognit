@@ -5,7 +5,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { appEvents } from '../events.js';
 import { db } from '../db/client.js';
-import { arbeitszyklen, agentWakeupRequests, experten, aufgaben, unternehmen, projekte, kostenbuchungen, kommentare, workProducts, chatNachrichten, aktivitaetslog, ziele, issueRelations, einstellungen, budgetPolicies, budgetIncidents, agentMeetings, genehmigungen, agentPermissions, expertenSkills, skillsLibrary } from '../db/schema.js';
+import { arbeitszyklen, agentWakeupRequests, experten, aufgaben, unternehmen, projekte, kostenbuchungen, kommentare, workProducts, chatNachrichten, aktivitaetslog, ziele, issueRelations, einstellungen, budgetPolicies, budgetIncidents, agentMeetings, genehmigungen, agentPermissions, expertenSkills, skillsLibrary, routinen, routineAusfuehrung } from '../db/schema.js';
 import { eq, and, sql, inArray, or, isNull, asc, desc, gte } from 'drizzle-orm';
 import { pruefeUndEntblocke } from './issue-dependencies.js';
 import { wakeupService, type PendingWakeup } from './wakeup.js';
@@ -54,10 +54,14 @@ function loadSoul(expert: { soulPath?: string | null; soulVersion?: string | nul
 
     // Persist new version hash to DB asynchronously (non-blocking)
     setImmediate(() => {
-      db.update(experten)
-        .set({ soulVersion: version })
-        .where(eq(experten.soulPath, filePath))
-        .run();
+      try {
+        db.update(experten)
+          .set({ soulVersion: version })
+          .where(eq(experten.soulPath, filePath))
+          .run();
+      } catch (e: any) {
+        console.warn(`⚠️ SOUL.md version persist fehlgeschlagen: ${e.message}`);
+      }
     });
 
     return raw;
@@ -344,6 +348,49 @@ class HeartbeatServiceImpl implements HeartbeatService {
         })
         .where(eq(experten.id, expertId));
 
+      // ─── Routine Handler ─────────────────────────────────────────────────────
+      // If this wakeup was triggered by a scheduled routine, run the routine
+      // as a synthetic task using the routine's beschreibung as the prompt.
+      if (options.payload?.routineId) {
+        const routineId = options.payload.routineId as string;
+        const executionId = options.payload.executionId as string | undefined;
+        const routine = db.select({ id: routinen.id, titel: routinen.titel, beschreibung: routinen.beschreibung, unternehmenId: routinen.unternehmenId })
+          .from(routinen).where(eq(routinen.id, routineId)).get() as any;
+
+        if (routine) {
+          const syntheticTask = {
+            id: `routine-${routineId}-${runId}`,
+            titel: routine.titel,
+            beschreibung: routine.beschreibung || routine.titel,
+            status: 'todo',
+            prioritaet: 'medium',
+            executionLockedAt: null,
+          };
+
+          console.log(`  📅 Routine-Trigger: "${routine.titel}"`);
+          trace(expertId, unternehmenId, 'action', `Routine gestartet: ${routine.titel}`, undefined, runId);
+          await this.executeTaskViaAdapter(runId, expertId, unternehmenId, syntheticTask, advisorPlan);
+
+          // Update execution record
+          if (executionId) {
+            db.update(routineAusfuehrung as any)
+              .set({ status: 'completed', beendetAm: new Date().toISOString() } as any)
+              .where(eq((routineAusfuehrung as any).id, executionId)).run();
+          }
+          // Update routine last run
+          db.update(routinen).set({ zuletztAusgefuehrtAm: new Date().toISOString() } as any)
+            .where(eq(routinen.id, routineId)).run();
+        }
+
+        await this.updateRunStatus(runId, 'succeeded', {
+          ausgabe: routine ? `Routine ausgeführt: ${routine.titel}` : `Routine ${routineId} nicht gefunden`,
+          beendetAm: new Date().toISOString(),
+        });
+        await db.update(experten).set({ status: 'idle', aktualisiertAm: new Date().toISOString() }).where(eq(experten.id, expertId));
+        return;
+      }
+      // ─────────────────────────────────────────────────────────────────────────────
+
       // ─── Meeting Handler ──────────────────────────────────────────────────────
       // If this wakeup was triggered by a meeting invitation, handle it first.
       const meetingPayload = options.payload?.meetingId ? options.payload : null;
@@ -465,6 +512,7 @@ class HeartbeatServiceImpl implements HeartbeatService {
       status: aufgaben.status,
       prioritaet: aufgaben.prioritaet,
       executionLockedAt: aufgaben.executionLockedAt,
+      executionRunId: aufgaben.executionRunId,
       zielId: aufgaben.zielId,
       isMaximizerMode: aufgaben.isMaximizerMode,
     })
@@ -507,17 +555,23 @@ class HeartbeatServiceImpl implements HeartbeatService {
   ): Promise<void> {
     console.log(`  📋 Processing task: ${task.titel} (${task.id})`);
 
-    // Check if task is already locked by another run
-    if (task.executionLockedAt && task.executionLockedAt !== runId) {
-      const lockAge = Date.now() - new Date(task.executionLockedAt).getTime();
+    // Check if task is already locked by a DIFFERENT run
+    // Bug fix: executionLockedAt is an ISO timestamp, runId is a UUID —
+    // comparing them directly is always !== true. Use executionRunId instead.
+    const lockedByOtherRun = task.executionLockedAt &&
+      (task as any).executionRunId &&
+      (task as any).executionRunId !== runId;
+
+    if (lockedByOtherRun) {
+      const lockAge = Date.now() - new Date(task.executionLockedAt!).getTime();
       const lockTimeout = 30 * 60 * 1000; // 30 minutes
 
       if (lockAge < lockTimeout) {
-        console.log(`  ⏸️ Task ${task.id} is locked by another run, skipping`);
+        console.log(`  ⏸️ Task ${task.id} is locked by run ${(task as any).executionRunId}, skipping`);
         return;
       }
 
-      console.log(`  ⏰ Task ${task.id} lock expired, reclaiming`);
+      console.log(`  ⏰ Task ${task.id} lock expired (${Math.round(lockAge / 60000)}min), reclaiming`);
     }
 
     // Resolve workspace: projekt.workDir → unternehmen.workDir → isolated fallback
@@ -1055,7 +1109,13 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
         result.error?.includes('429') ||
         result.error?.includes('rate') ||
         result.error?.includes('ECONNREFUSED') ||
-        result.error?.includes('ETIMEDOUT')
+        result.error?.includes('ETIMEDOUT') ||
+        // AbortController fired (request timeout / Poe connection drop)
+        result.error?.includes('aborted') ||
+        result.error?.includes('AbortError') ||
+        result.output?.includes('aborted') ||
+        result.error?.includes('socket hang up') ||
+        result.error?.includes('network')
       );
 
       if (isTransient) {

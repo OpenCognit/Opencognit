@@ -69,7 +69,9 @@ export class CustomAdapter implements ExpertAdapter {
         data = await withRetry(
           async () => {
             const controller = new AbortController();
-            const id = setTimeout(() => controller.abort(), timeout);
+            // Per-request timeout: use the full task timeout, min 3 min
+            const perRequestTimeout = Math.max(timeout, 3 * 60 * 1000);
+            const id = setTimeout(() => controller.abort(), perRequestTimeout);
 
             const res = await fetch(`${apiBase}/chat/completions`, {
               method: 'POST',
@@ -108,6 +110,9 @@ export class CustomAdapter implements ExpertAdapter {
               if (err.status === 429) return true;
               if (err.status >= 500 && err.status <= 599) return true;
               if (err.message?.toLowerCase().includes('timeout')) return true;
+              if (err.message?.toLowerCase().includes('aborted')) return true;
+              if (err.message?.toLowerCase().includes('network')) return true;
+              if (err.name === 'AbortError') return true;
               return false;
             },
             onRetry: (err, attempt, delay) => {
