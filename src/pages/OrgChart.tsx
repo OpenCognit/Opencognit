@@ -29,7 +29,7 @@ function getRoleIcon(role: string) {
   if (r.includes('front')) return ROLE_ICONS.frontend;
   if (r.includes('back')) return ROLE_ICONS.backend;
   if (r.includes('research')) return ROLE_ICONS.research;
-  if (r.includes('security')) return ROLE_ICONS.shield;
+  if (r.includes('security')) return ROLE_ICONS.security;
   if (r.includes('infra') || r.includes('ops')) return ROLE_ICONS.devops;
   return ROLE_ICONS.default;
 }
