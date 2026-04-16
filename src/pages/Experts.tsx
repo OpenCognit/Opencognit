@@ -667,11 +667,12 @@ export function Experts() {
                   onClick={() => setActiveChatExpert(m)}
                   active={isRunning}
                   accent={isCEO ? '#FFD700' : '#23CDCB'}
-                  style={{ padding: '1.5rem', borderRadius: '24px', animation: `fadeInUp 0.5s ease-out ${Math.min(i, 4) * 0.1}s both` }}
+                  style={{
+                    padding: '1.5rem', borderRadius: '24px',
+                    animation: `fadeInUp 0.5s ease-out ${Math.min(i, 4) * 0.1}s both`,
+                    ...(isCEO ? { boxShadow: '0 0 48px rgba(255, 215, 0, 0.07), 0 0 12px rgba(255, 215, 0, 0.04)' } : {}),
+                  }}
                 >
-                  {isCEO && (
-                    <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '4px', background: 'linear-gradient(to bottom, #FFD700, #FFA500)' }} />
-                  )}
                   {isCEO && (
                     <div style={{
                       position: 'absolute', top: '0.75rem', right: '3.25rem',
