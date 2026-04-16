@@ -355,7 +355,7 @@ export const messagingService = {
       const tasks = db.select().from(aufgabenTable)
         .where(and(eq(aufgabenTable.unternehmenId, unternehmenId), eq(aufgabenTable.status, 'todo')))
         .orderBy(desc(aufgabenTable.erstelltAm)).limit(8).all();
-      const agents = db.select().from(experten).where(eq(aufgabenTable.unternehmenId, unternehmenId)).all();
+      const agents = db.select().from(experten).where(eq(experten.unternehmenId, unternehmenId)).all();
 
       if (tasks.length === 0) {
         await sendMsg(token, chatId, '📋 Keine offenen Aufgaben. 🎉');

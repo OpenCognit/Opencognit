@@ -1100,32 +1100,46 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
 
       // Transient errors (429, rate limit, network) → silently retry next cycle
       const isSyntheticTask = task.id.startsWith('planning-');
-      const isTransient = !result.success && (
+      const isRateLimit = !result.success && (
         result.output?.includes('429') ||
         result.output?.includes('rate') ||
         result.output?.includes('Rate') ||
         result.output?.includes('temporarily') ||
         result.output?.includes('overloaded') ||
         result.error?.includes('429') ||
-        result.error?.includes('rate') ||
+        result.error?.includes('rate')
+      );
+      // Timeout/network errors — transient but need a short backoff to avoid tight retry loops
+      const isTimeout = !result.success && (
         result.error?.includes('ECONNREFUSED') ||
         result.error?.includes('ETIMEDOUT') ||
-        // AbortController fired (request timeout / Poe connection drop)
         result.error?.includes('aborted') ||
         result.error?.includes('AbortError') ||
         result.output?.includes('aborted') ||
         result.error?.includes('socket hang up') ||
         result.error?.includes('network')
       );
+      const isTransient = isRateLimit || isTimeout;
 
       if (isTransient) {
-        console.log(`  ⏳ Transient error for task ${task.id} (${taskFull.titel}) — will retry next cycle`);
-        trace(expertId, unternehmenId, 'info', `Rate limit — wird automatisch wiederholt: ${taskFull.titel}`, undefined, runId);
-        // Just release the lock, don't mark as failed, don't notify
-        if (!isSyntheticTask) {
-          await db.update(aufgaben)
-            .set({ executionLockedAt: null, executionRunId: null })
-            .where(eq(aufgaben.id, task.id));
+        if (isRateLimit) {
+          console.log(`  ⏳ Rate limit for task ${task.id} (${taskFull.titel}) — will retry next cycle`);
+          trace(expertId, unternehmenId, 'info', `Rate limit — wird automatisch wiederholt: ${taskFull.titel}`, undefined, runId);
+          if (!isSyntheticTask) {
+            await db.update(aufgaben)
+              .set({ executionLockedAt: null, executionRunId: null })
+              .where(eq(aufgaben.id, task.id));
+          }
+        } else {
+          // Timeout/network: apply a 5-minute backoff to avoid tight retry loops
+          console.log(`  ⏳ Timeout/network for task ${task.id} (${taskFull.titel}) — retry in 5min`);
+          trace(expertId, unternehmenId, 'info', `Timeout — Retry in 5 Minuten: ${taskFull.titel}`, result.error, runId);
+          if (!isSyntheticTask) {
+            const backoffLock = new Date(Date.now() - (30 * 60 * 1000 - 5 * 60 * 1000)).toISOString();
+            await db.update(aufgaben)
+              .set({ executionLockedAt: backoffLock, executionRunId: null })
+              .where(eq(aufgaben.id, task.id));
+          }
         }
         return;
       }

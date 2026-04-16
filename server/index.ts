@@ -425,6 +425,28 @@ app.patch('/api/mitarbeiter/:id', (req, res) => {
   res.json(agent);
 });
 
+// Alias: ExpertChatDrawer uses /api/experten/:id for PATCH (e.g. soul editor)
+app.patch('/api/experten/:id', (req, res) => {
+  if (req.body.verbindungsConfig !== undefined) {
+    const freeModel = checkFreeModel(req.body.verbindungsConfig);
+    if (freeModel) return res.status(400).json({ error: `Free-Model "${freeModel}" ist nicht erlaubt.` });
+  }
+  const updates: any = { aktualisiertAm: now() };
+  const allowed = ['name', 'rolle', 'titel', 'faehigkeiten', 'verbindungsTyp', 'verbindungsConfig', 'reportsTo', 'avatar', 'avatarFarbe', 'budgetMonatCent', 'zyklusIntervallSek', 'zyklusAktiv', 'status', 'systemPrompt', 'advisorId', 'advisorStrategy', 'advisorConfig', 'isOrchestrator'];
+  for (const key of allowed) {
+    if (req.body[key] !== undefined) {
+      if ((key === 'verbindungsConfig' || key === 'advisorConfig') && typeof req.body[key] === 'object' && req.body[key] !== null) {
+        updates[key] = JSON.stringify(req.body[key]);
+      } else {
+        updates[key] = req.body[key];
+      }
+    }
+  }
+  db.update(experten).set(updates).where(eq(experten.id, req.params.id)).run();
+  const agent = db.select().from(experten).where(eq(experten.id, req.params.id)).get();
+  res.json(agent);
+});
+
 app.post('/api/mitarbeiter/:id/pausieren', (req, res) => {
   const agent = db.select().from(experten).where(eq(experten.id, req.params.id)).get();
   if (!agent) return res.status(404).json({ error: 'Nicht gefunden' });
@@ -4600,6 +4622,104 @@ app.get('/api/experten/:id/stats', authMiddleware, (req, res) => {
     latestRun: latestRunResult,
     recentTasks
   });
+});
+
+// =============================================
+// HALLUCINATION / QUALITY TRACKING
+// =============================================
+app.get('/api/unternehmen/:unternehmenId/agent-qualitaet', authMiddleware, (req, res) => {
+  const { unternehmenId } = req.params;
+  const daysBack = Number(req.query.days || 30);
+  const since = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString();
+
+  const agents = db.select({ id: experten.id, name: experten.name, rolle: experten.rolle })
+    .from(experten)
+    .where(eq(experten.unternehmenId, unternehmenId))
+    .all();
+
+  const HEDGE_WORDS = /\b(ich denke|ich glaube|vielleicht|möglicherweise|könnte sein|wahrscheinlich|vermutlich|i think|maybe|possibly|might be|could be|i believe|not sure|unclear)\b/i;
+  const BASH_FAILURE = /command not found|No such file|permission denied|STDERR:.*Error|exit code [^0]|npm ERR|SyntaxError|ModuleNotFoundError/i;
+
+  const result = agents.map(agent => {
+    // All runs in window
+    const runs = db.select({ id: arbeitszyklen.id, status: arbeitszyklen.status, ausgabe: arbeitszyklen.ausgabe })
+      .from(arbeitszyklen)
+      .where(and(
+        eq(arbeitszyklen.expertId, agent.id),
+        sql`${arbeitszyklen.erstelltAm} > ${since}`,
+        sql`${arbeitszyklen.status} != 'queued' AND ${arbeitszyklen.status} != 'running'`,
+      ))
+      .all();
+
+    const totalRuns = runs.length;
+    const failedRuns = runs.filter(r => r.status === 'failed').length;
+
+    // Critic signals from kommentare
+    const taskIds = db.select({ id: aufgaben.id })
+      .from(aufgaben)
+      .where(and(eq(aufgaben.zugewiesenAn, agent.id), sql`${aufgaben.erstelltAm} > ${since}`))
+      .all()
+      .map(t => t.id);
+
+    let criticRejections = 0;
+    let escalations = 0;
+    let emptyActions = 0;
+    let bashFailures = 0;
+    let hedgingCount = 0;
+
+    if (taskIds.length > 0) {
+      const allComments = db.select({ inhalt: kommentare.inhalt })
+        .from(kommentare)
+        .where(and(
+          eq(kommentare.autorTyp, 'agent'),
+          inArray(kommentare.aufgabeId, taskIds.slice(0, 200)),
+        ))
+        .all();
+
+      for (const c of allComments) {
+        const text = c.inhalt || '';
+        if (text.includes('Critic Review — Überarbeitung')) criticRejections++;
+        if (text.includes('Manuelle Prüfung')) escalations++;
+      }
+    }
+
+    // Analyse run ausgaben
+    for (const run of runs) {
+      const out = run.ausgabe || '';
+      if (!out) continue;
+      const hasBashBlock = out.includes('```') || out.includes('$ ');
+      if (!hasBashBlock && run.status === 'succeeded') emptyActions++;
+      if (BASH_FAILURE.test(out)) bashFailures++;
+      if (HEDGE_WORDS.test(out)) hedgingCount++;
+    }
+
+    // Hallucination score: 0 = perfect, 100 = completely unreliable
+    const rawScore = totalRuns === 0 ? 0 :
+      Math.min(100, Math.round(
+        (criticRejections * 15 + escalations * 30 + emptyActions * 10 + bashFailures * 8 + failedRuns * 5 + hedgingCount * 3) /
+        Math.max(totalRuns, 1)
+      ));
+
+    const approvedRuns = totalRuns - failedRuns - criticRejections;
+
+    return {
+      expertId: agent.id,
+      name: agent.name,
+      rolle: agent.rolle,
+      totalRuns,
+      approvedRuns: Math.max(0, approvedRuns),
+      failedRuns,
+      criticRejections,
+      escalations,
+      emptyActions,
+      bashFailures,
+      hedgingCount,
+      halluzinationsScore: rawScore,  // 0 = perfect, 100 = bad
+      qualityLabel: rawScore === 0 ? 'Exzellent' : rawScore < 20 ? 'Gut' : rawScore < 40 ? 'Mittel' : 'Kritisch',
+    };
+  });
+
+  res.json(result);
 });
 
 // =============================================
