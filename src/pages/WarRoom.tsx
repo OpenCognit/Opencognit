@@ -625,6 +625,12 @@ export function WarRoom() {
   const [logAgent, setLogAgent] = useState<LiveAgent | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
+  // System Pulse scroll management
+  const pulseRef = useRef<HTMLDivElement>(null);
+  const [pulseAutoScroll, setPulseAutoScroll] = useState(true);
+  const [newEventCount, setNewEventCount] = useState(0);
+  const [pulseFilter, setPulseFilter] = useState<string>('all'); // 'all' | 'error' | 'action' | 'thinking'
+
   useEffect(() => {
     const id = setInterval(() => setClock(new Date()), 1000);
     return () => clearInterval(id);
@@ -652,8 +658,8 @@ export function WarRoom() {
 
       const combined = Object.values(traceMap)
         .flat()
-        .sort((a, b) => new Date(b.erstelltAm).getTime() - new Date(a.erstelltAm).getTime())
-        .slice(0, 40)
+        .sort((a, b) => new Date(a.erstelltAm).getTime() - new Date(b.erstelltAm).getTime()) // oldest first → newest at bottom
+        .slice(-80)
         .map(ev => ({ ...ev, expertName: allAgents.find(a => a.id === ev.expertId)?.name }));
       setFeed(combined);
     } catch {
@@ -696,7 +702,7 @@ export function WarRoom() {
             [expertId]: [newEvent, ...(prev[expertId] || [])].slice(0, 30),
           }));
 
-          setFeed(prev => [newEvent, ...prev].slice(0, 40));
+          setFeed(prev => [...prev, newEvent].slice(-80));
 
           setAgents(prev => prev.map(a =>
             a.id === expertId
@@ -745,6 +751,36 @@ export function WarRoom() {
 
     return () => { ws.close(); wsRef.current = null; };
   }, [aktivesUnternehmen?.id, load]);
+
+  // Auto-scroll System Pulse to bottom when new events arrive (if user is at bottom)
+  useEffect(() => {
+    if (!pulseRef.current) return;
+    if (pulseAutoScroll) {
+      pulseRef.current.scrollTop = pulseRef.current.scrollHeight;
+      setNewEventCount(0);
+    } else {
+      setNewEventCount(c => c + 1);
+    }
+  }, [feed.length]); // trigger on count change, not content (avoid stale closure)
+
+  const handlePulseScroll = () => {
+    if (!pulseRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = pulseRef.current;
+    const atBottom = scrollHeight - scrollTop - clientHeight < 50;
+    if (atBottom && !pulseAutoScroll) {
+      setPulseAutoScroll(true);
+      setNewEventCount(0);
+    } else if (!atBottom && pulseAutoScroll) {
+      setPulseAutoScroll(false);
+    }
+  };
+
+  const scrollPulseToBottom = () => {
+    if (!pulseRef.current) return;
+    pulseRef.current.scrollTo({ top: pulseRef.current.scrollHeight, behavior: 'smooth' });
+    setPulseAutoScroll(true);
+    setNewEventCount(0);
+  };
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -915,30 +951,97 @@ export function WarRoom() {
           borderLeft: '1px solid rgba(35,205,202,0.1)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
           background: 'rgba(0,0,0,0.2)',
+          position: 'relative', // needed for badge positioning
         }}>
+          {/* Pulse header */}
           <div style={{
-            padding: '14px 16px', borderBottom: '1px solid rgba(35,205,202,0.1)',
-            display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+            padding: '10px 12px', borderBottom: '1px solid rgba(35,205,202,0.1)',
+            flexShrink: 0,
           }}>
-            <Activity size={12} style={{ color: '#23CDCB' }} />
-            <span style={{ fontSize: 10, fontWeight: 800, color: '#23CDCB', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-              System Pulse
-            </span>
-            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5 }}>
-              <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#23CDCB', animation: 'pulse 2s ease-in-out infinite' }} />
-              <span style={{ fontSize: 9, color: '#23CDCB', fontWeight: 700 }}>LIVE</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <Activity size={12} style={{ color: '#23CDCB' }} />
+              <span style={{ fontSize: 10, fontWeight: 800, color: '#23CDCB', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                System Pulse
+              </span>
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+                {!pulseAutoScroll ? (
+                  <span style={{ fontSize: 8, color: '#f59e0b', fontWeight: 700, letterSpacing: '0.08em' }}>⏸ PAUSED</span>
+                ) : (
+                  <>
+                    <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#23CDCB', animation: 'pulse 2s ease-in-out infinite' }} />
+                    <span style={{ fontSize: 9, color: '#23CDCB', fontWeight: 700 }}>LIVE</span>
+                  </>
+                )}
+              </div>
+            </div>
+            {/* Filter tabs */}
+            <div style={{ display: 'flex', gap: 4 }}>
+              {(['all', 'error', 'action', 'thinking'] as const).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setPulseFilter(f)}
+                  style={{
+                    padding: '2px 7px', borderRadius: 4, border: 'none', cursor: 'pointer',
+                    fontSize: 8, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+                    background: pulseFilter === f ? 'rgba(35,205,202,0.2)' : 'rgba(255,255,255,0.04)',
+                    color: pulseFilter === f ? '#23CDCB' : '#334155',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {f === 'all' ? (de ? 'Alle' : 'All') : f === 'error' ? '⚠ Errors' : f === 'action' ? '⚡ Actions' : '🧠 Thinking'}
+                </button>
+              ))}
             </div>
           </div>
 
-          <div style={{ flex: 1, overflowY: 'auto', padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {/* Pulse feed — newest at bottom, auto-scrolling */}
+          <div
+            ref={pulseRef}
+            onScroll={handlePulseScroll}
+            style={{ flex: 1, overflowY: 'auto', padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}
+          >
             {feed.length === 0 ? (
               <div style={{ color: '#334155', fontSize: 11, padding: '20px 0', textAlign: 'center' }}>
                 {de ? 'Warte auf Ereignisse...' : 'Waiting for events...'}
               </div>
-            ) : feed.map((ev, i) => (
-              <PulseEntry key={ev.id || i} ev={ev} isNew={i === 0} de={de} />
-            ))}
+            ) : (() => {
+              const filtered = pulseFilter === 'all' ? feed
+                : feed.filter(ev =>
+                    pulseFilter === 'error' ? (ev.typ === 'error' || ev.typ === 'warning' || ev.typ === 'critic_rejected')
+                    : pulseFilter === 'action' ? (ev.typ === 'action' || ev.typ === 'task_started' || ev.typ === 'task_completed' || ev.typ === 'tool_call')
+                    : /* thinking */ (ev.typ === 'thinking' || ev.typ === 'planning' || ev.typ === 'info')
+                  );
+              return filtered.map((ev, i) => (
+                <PulseEntry
+                  key={ev.id || i}
+                  ev={ev}
+                  isNew={i === filtered.length - 1} // newest is last (bottom)
+                  de={de}
+                />
+              ));
+            })()}
+            {/* Invisible anchor for scroll measurement */}
+            <div style={{ height: 1, flexShrink: 0 }} />
           </div>
+
+          {/* "New events" badge when auto-scroll is paused */}
+          {!pulseAutoScroll && newEventCount > 0 && (
+            <button
+              onClick={scrollPulseToBottom}
+              style={{
+                position: 'absolute', bottom: (data?.pendingApprovals || 0) > 0 ? 52 : 12,
+                right: 12, zIndex: 10,
+                display: 'flex', alignItems: 'center', gap: 5,
+                padding: '5px 10px', borderRadius: 12,
+                background: 'rgba(35,205,202,0.15)', border: '1px solid rgba(35,205,202,0.4)',
+                color: '#23CDCB', fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+                animation: 'fadeInUp 0.2s ease-out',
+              }}
+            >
+              ↓ {newEventCount} {de ? 'neue' : 'new'}
+            </button>
+          )}
 
           {(data?.pendingApprovals || 0) > 0 && (
             <div style={{
