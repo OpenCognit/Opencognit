@@ -115,7 +115,10 @@ export class ClaudeCodeAdapter implements Adapter {
     }
   }
 
-  private getDefaultSystemPrompt(): string {
+  private getDefaultSystemPrompt(workspaceDir?: string): string {
+    const workspaceLine = workspaceDir
+      ? `\n\nWORKSPACE CONSTRAINT (mandatory): You may only read and write files inside your assigned workspace:\n  ${workspaceDir}\nDo NOT create files outside this directory. Use only relative paths or paths starting with this workspace root.`
+      : '';
     return `You are an autonomous AI agent in the OpenCognit system.
 Your tasks:
 1. Carefully analyse the assigned task
@@ -123,7 +126,7 @@ Your tasks:
 3. Document your steps clearly
 4. Report success or failure unambiguously
 
-Respond in the language of the task (German if the task is in German, English if in English).`;
+Respond in the language of the task (German if the task is in German, English if in English).${workspaceLine}`;
   }
 
   canHandle(task: AdapterTask): boolean {
@@ -173,8 +176,11 @@ Respond in the language of the task (German if the task is in German, English if
       }
     }
 
+    // Resolve workspace once — used for cwd and injected into the prompt
+    const resolvedWorkdir = resolveAgentWorkdir(config.workspacePath, this.options.workingDir);
+
     // Build the prompt
-    const prompt = this.buildPrompt(task, context, sessionData);
+    const prompt = this.buildPrompt(task, context, sessionData, resolvedWorkdir);
 
     // Write prompt to temp file — avoids shell injection and arg-length limits
     const tmpFile = path.join(this.sessionDir, `prompt_${Date.now()}.txt`);
@@ -204,7 +210,7 @@ Respond in the language of the task (German if the task is in German, English if
 
       const { stdout, stderr } = await execAsync(cmd, {
           shell: '/bin/sh',
-          cwd: resolveAgentWorkdir(config.workspacePath, this.options.workingDir),
+          cwd: resolvedWorkdir,
           timeout: this.options.maxExecutionTimeMs,
           env: {
             ...process.env,
@@ -212,6 +218,7 @@ Respond in the language of the task (German if the task is in German, English if
             OPENCOGNIT_EXPERT_ID: config.expertId,
             OPENCOGNIT_UNTERNEHMEN_ID: config.unternehmenId,
             OPENCOGNIT_RUN_ID: config.runId,
+            OPENCOGNIT_WORKSPACE: resolvedWorkdir,
             CLAUDE_CODE_ENTRYPOINT: 'opencognit',
           },
           maxBuffer: 10 * 1024 * 1024, // 10MB buffer
@@ -267,11 +274,14 @@ Respond in the language of the task (German if the task is in German, English if
     }
   }
 
-  private buildPrompt(task: AdapterTask, context: AdapterContext, sessionData: SessionData | null): string {
+  private buildPrompt(task: AdapterTask, context: AdapterContext, sessionData: SessionData | null, workspaceDir?: string): string {
     const parts: string[] = [];
 
-    // System prompt
-    parts.push(`[SYSTEM]\n${this.options.systemPrompt}\n`);
+    // System prompt (includes workspace constraint when available)
+    const sysPrompt = workspaceDir
+      ? this.getDefaultSystemPrompt(workspaceDir)
+      : (this.options.systemPrompt ?? this.getDefaultSystemPrompt());
+    parts.push(`[SYSTEM]\n${sysPrompt}\n`);
 
     // Company context
     parts.push(`[UNTERNEHMEN]\nName: ${context.companyContext.name}`);
@@ -449,12 +459,14 @@ export async function runClaudeDirectChat(prompt: string, expertId: string): Pro
       `claude -p --output-format text --dangerously-skip-permissions < "${tmpFile}"`,
       {
         shell: '/bin/sh',
+        cwd: SAFE_DEFAULT_WORKDIR,
         timeout: 5 * 60 * 1000,
         env: {
           ...process.env,
           PATH: enrichedPath,
           OPENCOGNIT_EXPERT_ID: expertId,
           CLAUDE_CODE_ENTRYPOINT: 'opencognit_chat',
+          OPENCOGNIT_WORKSPACE: SAFE_DEFAULT_WORKDIR,
         },
         maxBuffer: 5 * 1024 * 1024,
       }
