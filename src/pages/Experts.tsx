@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Plus, ArrowRight, Loader2, MessageSquare, Sparkles, Zap, ZapOff, Settings2, Edit2, Crown, Package, Play } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plus, ArrowRight, Loader2, MessageSquare, Sparkles, Zap, ZapOff, Settings2, Edit2, Crown, Package, Play, ShieldAlert } from 'lucide-react';
 import { PageHelp } from '../components/PageHelp';
 import { useNavigate } from 'react-router-dom';
 import { StatusBadge } from '../components/StatusBadge';
@@ -52,6 +52,23 @@ export function Experts() {
   const [editingExpert, setEditingExpert] = useState<ExperteType | null>(null);
   const [activeChatExpert, setActiveChatExpert] = useState<ExperteType | null>(null);
   const [wakingUp, setWakingUp] = useState<Set<string>>(new Set());
+
+  type QualityEntry = {
+    expertId: string; name: string; totalRuns: number; approvedRuns: number;
+    failedRuns: number; criticRejections: number; escalations: number;
+    emptyActions: number; bashFailures: number; hedgingCount: number;
+    halluzinationsScore: number; qualityLabel: string;
+  };
+  const [qualitaet, setQualitaet] = useState<QualityEntry[]>([]);
+  const [showQuality, setShowQuality] = useState(false);
+
+  useEffect(() => {
+    if (!aktivesUnternehmen || !showQuality) return;
+    const token = localStorage.getItem('opencognit_token');
+    fetch(`/api/unternehmen/${aktivesUnternehmen.id}/agent-qualitaet`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(r => r.json()).then(setQualitaet).catch(() => {});
+  }, [aktivesUnternehmen?.id, showQuality]);
 
   const triggerWakeup = async (expertId: string) => {
     const expert = alleExperten?.find(e => e.id === expertId);
@@ -113,25 +130,46 @@ export function Experts() {
               }}>{i18n.t.experten.title}</h1>
               <p style={{ fontSize: '0.875rem', color: '#71717a', marginTop: '0.25rem' }}>{i18n.t.experten.subtitle}</p>
             </div>
-            <button
-              onClick={() => setShowModal(true)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                padding: '0.75rem 1.25rem',
-                backgroundColor: 'rgba(35, 205, 202, 0.1)',
-                border: '1px solid rgba(35, 205, 202, 0.2)',
-                borderRadius: '12px',
-                color: '#23CDCB',
-                fontWeight: 600,
-                fontSize: '0.875rem',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-              }}
-            >
-              <Plus size={16} /> {i18n.t.experten.neuerExperte}
-            </button>
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+              <button
+                onClick={() => setShowQuality(v => !v)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.75rem 1.25rem',
+                  backgroundColor: showQuality ? 'rgba(239, 68, 68, 0.12)' : 'rgba(255, 255, 255, 0.05)',
+                  border: `1px solid ${showQuality ? 'rgba(239, 68, 68, 0.3)' : 'rgba(255, 255, 255, 0.1)'}`,
+                  borderRadius: '12px',
+                  color: showQuality ? '#ef4444' : '#71717a',
+                  fontWeight: 600,
+                  fontSize: '0.875rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <ShieldAlert size={16} /> {de ? 'Qualität' : 'Quality'}
+              </button>
+              <button
+                onClick={() => setShowModal(true)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.75rem 1.25rem',
+                  backgroundColor: 'rgba(35, 205, 202, 0.1)',
+                  border: '1px solid rgba(35, 205, 202, 0.2)',
+                  borderRadius: '12px',
+                  color: '#23CDCB',
+                  fontWeight: 600,
+                  fontSize: '0.875rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <Plus size={16} /> {i18n.t.experten.neuerExperte}
+              </button>
+            </div>
           </div>
 
           <PageHelp id="agents" lang={i18n.language} />
@@ -505,6 +543,124 @@ export function Experts() {
               );
             })}
           </div>
+
+        {/* ── Quality / Hallucination Tracker ── */}
+        {showQuality && (
+          <div style={{ marginTop: '2.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
+              <ShieldAlert size={18} style={{ color: '#ef4444' }} />
+              <h2 style={{ fontSize: '1.125rem', fontWeight: 700, color: '#ffffff', margin: 0 }}>
+                {de ? 'Agent-Qualität & Halluzinations-Tracking' : 'Agent Quality & Hallucination Tracking'}
+              </h2>
+            </div>
+            {qualitaet.length === 0 ? (
+              <div style={{
+                padding: '2rem',
+                borderRadius: '16px',
+                backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                textAlign: 'center',
+                color: '#71717a',
+                fontSize: '0.875rem',
+              }}>
+                {de ? 'Noch keine Runs aufgezeichnet — Agenten müssen erst Aufgaben ausführen.' : 'No runs recorded yet — agents need to execute tasks first.'}
+              </div>
+            ) : (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                gap: '1rem',
+              }}>
+                {qualitaet.map(q => {
+                  const score = q.halluzinationsScore;
+                  const scoreColor = score >= 70 ? '#ef4444' : score >= 40 ? '#eab308' : '#22c55e';
+                  const labelColor = q.qualityLabel === 'critical' ? '#ef4444'
+                    : q.qualityLabel === 'low' ? '#f97316'
+                    : q.qualityLabel === 'moderate' ? '#eab308'
+                    : '#22c55e';
+                  const labelText = q.qualityLabel === 'critical' ? (de ? 'Kritisch' : 'Critical')
+                    : q.qualityLabel === 'low' ? (de ? 'Niedrig' : 'Low')
+                    : q.qualityLabel === 'moderate' ? (de ? 'Mittel' : 'Moderate')
+                    : (de ? 'Gut' : 'Good');
+                  return (
+                    <div key={q.expertId} style={{
+                      padding: '1.25rem',
+                      borderRadius: '16px',
+                      backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                      border: `1px solid ${score >= 70 ? 'rgba(239,68,68,0.2)' : score >= 40 ? 'rgba(234,179,8,0.15)' : 'rgba(34,197,94,0.15)'}`,
+                      backdropFilter: 'blur(8px)',
+                    }}>
+                      {/* Header */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                        <span style={{ fontWeight: 700, color: '#ffffff', fontSize: '0.9375rem' }}>{q.name}</span>
+                        <span style={{
+                          padding: '0.25rem 0.625rem',
+                          borderRadius: '9999px',
+                          fontSize: '0.6875rem',
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.05em',
+                          backgroundColor: labelColor + '22',
+                          color: labelColor,
+                          border: `1px solid ${labelColor}44`,
+                        }}>{labelText}</span>
+                      </div>
+
+                      {/* Score bar */}
+                      <div style={{ marginBottom: '1rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.375rem' }}>
+                          <span style={{ fontSize: '0.75rem', color: '#71717a' }}>{de ? 'Halluzinations-Score' : 'Hallucination Score'}</span>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: scoreColor }}>{score}/100</span>
+                        </div>
+                        <div style={{ height: '8px', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden' }}>
+                          <div style={{
+                            height: '100%',
+                            width: `${score}%`,
+                            backgroundColor: scoreColor,
+                            borderRadius: '4px',
+                            transition: 'width 0.5s',
+                            boxShadow: `0 0 8px ${scoreColor}66`,
+                          }} />
+                        </div>
+                        <div style={{ fontSize: '0.6875rem', color: '#52525b', marginTop: '0.25rem' }}>
+                          {de ? `${q.approvedRuns} von ${q.totalRuns} Runs erfolgreich` : `${q.approvedRuns} of ${q.totalRuns} runs successful`}
+                        </div>
+                      </div>
+
+                      {/* Metrics grid */}
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: '0.5rem',
+                      }}>
+                        {[
+                          { label: de ? 'Critic-Ablehnungen' : 'Critic Rejections', value: q.criticRejections, warn: q.criticRejections > 2 },
+                          { label: de ? 'Eskalationen' : 'Escalations', value: q.escalations, warn: q.escalations > 0 },
+                          { label: de ? 'Leere Aktionen' : 'Empty Actions', value: q.emptyActions, warn: q.emptyActions > 3 },
+                          { label: de ? 'Bash-Fehler' : 'Bash Failures', value: q.bashFailures, warn: q.bashFailures > 2 },
+                          { label: de ? 'Hedging-Sprache' : 'Hedging Language', value: q.hedgingCount, warn: q.hedgingCount > 3 },
+                          { label: de ? 'Fehlgeschlagen' : 'Failed Runs', value: q.failedRuns, warn: q.failedRuns > 1 },
+                        ].map(({ label, value, warn }) => (
+                          <div key={label} style={{
+                            padding: '0.5rem 0.625rem',
+                            borderRadius: '8px',
+                            backgroundColor: warn && value > 0 ? 'rgba(239,68,68,0.07)' : 'rgba(255,255,255,0.03)',
+                            border: `1px solid ${warn && value > 0 ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.06)'}`,
+                          }}>
+                            <div style={{ fontSize: '0.6875rem', color: '#71717a', marginBottom: '0.25rem' }}>{label}</div>
+                            <div style={{ fontSize: '1.125rem', fontWeight: 700, color: warn && value > 0 ? '#ef4444' : value === 0 ? '#22c55e' : '#d4d4d8' }}>
+                              {value}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         <ExpertModal
           isOpen={showModal}
