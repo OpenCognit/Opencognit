@@ -35,7 +35,7 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
   useEffect(() => {
     const id = setInterval(() => {
       setHasAgents(localStorage.getItem('oc_has_agents') === '1');
-    }, 60_000);
+    }, 60000);
     return () => clearInterval(id);
   }, []);
 

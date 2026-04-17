@@ -645,9 +645,9 @@ function CallMeetingModal({
   };
 
   const handleCreate = async () => {
-    if (!titel.trim()) { setErr('Bitte Thema eingeben'); return; }
-    if (!veranstalter) { setErr('Bitte Veranstalter wählen'); return; }
-    if (selected.length === 0) { setErr('Mindestens einen Teilnehmer wählen'); return; }
+    if (!titel.trim()) { setErr(m.errNoTopic); return; }
+    if (!veranstalter) { setErr(m.errNoHost); return; }
+    if (selected.length === 0) { setErr(m.errNoParticipants); return; }
     setCreating(true); setErr('');
     try {
       const r = await authFetch(`/api/unternehmen/${unternehmenId}/meetings`, {
@@ -655,7 +655,7 @@ function CallMeetingModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ titel: titel.trim(), veranstalterExpertId: veranstalter, teilnehmerIds: selected }),
       });
-      if (!r.ok) { const d = await r.json(); setErr(d.error || 'Fehler'); setCreating(false); return; }
+      if (!r.ok) { const d = await r.json(); setErr(d.error || m.errGeneric); setCreating(false); return; }
       onCreated();
     } catch (e: any) {
       setErr(e.message || 'Fehler');
@@ -836,7 +836,7 @@ function CompleteModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ergebnis }),
       });
-      if (!r.ok) throw new Error('Fehler beim Abschließen');
+      if (!r.ok) throw new Error(m.errCompleteFailed);
       onCompleted();
     } catch (err: any) {
       console.error('[Meeting] complete error:', err?.message);

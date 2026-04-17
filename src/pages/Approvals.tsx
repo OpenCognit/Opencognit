@@ -21,6 +21,18 @@ export function Approvals() {
     agent_action: i18n.t.genehmigungen.types.agent_action,
   };
 
+  const payloadFieldLabel = (key: string): string => {
+    const fields = i18n.t.genehmigungen.payloadFields as Record<string, string>;
+    return fields[key] ?? key;
+  };
+
+  const formatPayloadValue = (key: string, val: unknown): string => {
+    if (key === 'budgetMonatCent' && typeof val === 'number') {
+      return `€${(val / 100).toFixed(2)}`;
+    }
+    return typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val);
+  };
+
   const { data: alle, loading, reload } = useApi<Genehmigung[]>(
     () => apiGenehmigungen.liste(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
   );
@@ -185,11 +197,13 @@ export function Approvals() {
                               borderBottom: '1px solid rgba(255,255,255,0.03)',
                               gap: '1rem'
                             }}>
-                              <span style={{ color: '#71717a', textTransform: 'capitalize', fontWeight: 500, minWidth: '100px' }}>
-                                {key === 'action' ? <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Terminal size={12} /> Action</div> : key}
+                              <span style={{ color: '#71717a', fontWeight: 500, minWidth: '100px', flexShrink: 0 }}>
+                                {key === 'action'
+                                  ? <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Terminal size={12} /> {payloadFieldLabel(key)}</div>
+                                  : payloadFieldLabel(key)}
                               </span>
                               <span style={{ color: '#d4d4d8', flex: 1, textAlign: 'right', wordBreak: 'break-all', fontFamily: key === 'action' || key === 'params' ? 'monospace' : 'inherit' }}>
-                                {typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val)}
+                                {formatPayloadValue(key, val)}
                               </span>
                             </div>
                           ))

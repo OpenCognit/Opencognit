@@ -235,6 +235,26 @@ export async function processOrchestratorActions(
             console.warn(`  🚫 ${orchestratorId} hat keine Berechtigung: hire_agent`);
             break;
           }
+          // Deduplication: skip if a pending hire_expert request for same role already exists
+          const existingHire = await db.select({ id: genehmigungen.id })
+            .from(genehmigungen as any)
+            .where(and(
+              eq(genehmigungen.unternehmenId as any, unternehmenId),
+              eq(genehmigungen.typ as any, 'hire_expert'),
+              eq(genehmigungen.status as any, 'pending'),
+            ))
+            .limit(20);
+          const duplicateRole = existingHire.some(g => {
+            try {
+              const payload = JSON.parse((g as any).payload || '{}');
+              return payload.rolle === action.rolle;
+            } catch { return false; }
+          });
+          if (duplicateRole) {
+            console.log(`  ⏭ hire_agent dedup: pending request for "${action.rolle}" already exists — skipping`);
+            trace(orchestratorId, unternehmenId, 'info', `Einstellung "${action.rolle}" bereits beantragt — übersprungen`);
+            break;
+          }
           const approvalId = crypto.randomUUID();
           await db.insert(genehmigungen as any).values({
             id: approvalId,

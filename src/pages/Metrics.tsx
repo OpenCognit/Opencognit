@@ -103,8 +103,8 @@ function StatCard({ icon: Icon, label, value, sub, color = '#23CDCB' }: {
 }
 
 export function Metrics() {
-  useBreadcrumbs(['Metriken']);
   const { t } = useI18n();
+  useBreadcrumbs([t.nav.metrics ?? 'Metrics']);
   const { aktivesUnternehmen } = useCompany();
   const selectedUnternehmenId = aktivesUnternehmen?.id;
 
@@ -194,10 +194,10 @@ export function Metrics() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#fff', margin: 0 }}>
-            System-Metriken
+            {t.metriken.title}
           </h1>
           <p style={{ color: '#71717a', margin: '0.25rem 0 0', fontSize: '0.875rem' }}>
-            Performance, Kosten, Agent-Gesundheit & Backups
+            {t.metriken.subtitle}
           </p>
         </div>
         <button onClick={loadMetrics} style={{
@@ -207,16 +207,16 @@ export function Metrics() {
           color: '#23CDCB', cursor: 'pointer', fontSize: '0.8125rem',
         }}>
           <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
-          Aktualisieren
+          {t.metriken.refresh}
         </button>
       </div>
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '0.25rem', width: 'fit-content' }}>
         {[
-          { id: 'overview', label: 'Übersicht', icon: BarChart3 },
-          { id: 'health', label: `Agent-Gesundheit${alertCount > 0 ? ` (${alertCount})` : ''}`, icon: alertCount > 0 ? AlertTriangle : Shield },
-          { id: 'backups', label: 'Backups & Cleanup', icon: Database },
+          { id: 'overview', label: t.metriken.tabOverview, icon: BarChart3 },
+          { id: 'health', label: `${t.metriken.tabHealth}${alertCount > 0 ? ` (${alertCount})` : ''}`, icon: alertCount > 0 ? AlertTriangle : Shield },
+          { id: 'backups', label: t.metriken.tabBackups, icon: Database },
         ].map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} style={{
             display: 'flex', alignItems: 'center', gap: '0.5rem',
@@ -501,7 +501,7 @@ export function Metrics() {
               cursor: backupRunning ? 'not-allowed' : 'pointer', fontSize: '0.8125rem', fontWeight: 500,
             }}>
               <Download size={14} style={{ animation: backupRunning ? 'spin 1s linear infinite' : 'none' }} />
-              {backupRunning ? 'Backup läuft...' : 'Jetzt sichern'}
+              {backupRunning ? t.metriken.backingUp : t.metriken.backupNow}
             </button>
 
             <button onClick={runCleanup} disabled={cleanupRunning} style={{
@@ -512,7 +512,7 @@ export function Metrics() {
               cursor: cleanupRunning ? 'not-allowed' : 'pointer', fontSize: '0.8125rem', fontWeight: 500,
             }}>
               <Trash2 size={14} style={{ animation: cleanupRunning ? 'spin 1s linear infinite' : 'none' }} />
-              {cleanupRunning ? 'Cleanup läuft...' : 'Cleanup ausführen'}
+              {cleanupRunning ? t.metriken.cleanupRunning : t.metriken.cleanupNow}
             </button>
           </div>
 

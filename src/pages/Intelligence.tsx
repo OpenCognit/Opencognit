@@ -569,7 +569,7 @@ function KnowledgeGraphPanel({ facts, unternehmenId, onRefresh }: { facts: KgFac
 
 const ALLOWED_ROOMS = ['entscheidungen', 'kontakte', 'projekt', 'erkenntnisse', 'notizen', 'aufgaben', 'fehler'];
 
-function WriteMemoryForm({ expertId, onSaved }: { expertId: string; onSaved: () => void }) {
+function WriteMemoryForm({ expertId, onSaved, t }: { expertId: string; onSaved: () => void; t: any }) {
   const [room, setRoom] = useState(ALLOWED_ROOMS[0]);
   const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
@@ -599,7 +599,7 @@ function WriteMemoryForm({ expertId, onSaved }: { expertId: string; onSaved: () 
           {ALLOWED_ROOMS.map(r => <option key={r} value={r}>{r}</option>)}
         </select>
       </div>
-      <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="Inhalt eingeben…"
+      <textarea value={content} onChange={e => setContent(e.target.value)} placeholder={t.gedaechtnis.contentPlaceholder}
         rows={3} style={{
           width: '100%', padding: '0.5rem', borderRadius: '6px', fontSize: '0.8125rem', resize: 'vertical',
           background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: '#e4e4e7',
@@ -612,7 +612,7 @@ function WriteMemoryForm({ expertId, onSaved }: { expertId: string; onSaved: () 
           background: 'rgba(35,205,202,0.1)', border: '1px solid rgba(35,205,202,0.25)', color: '#23CDCB',
           fontSize: '0.8125rem', fontWeight: 600, opacity: saving || !content.trim() ? 0.5 : 1,
         }}>
-          <Save size={13} /> {saving ? 'Speichern…' : 'Speichern'}
+          <Save size={13} /> {saving ? t.gedaechtnis.saving : t.gedaechtnis.save}
         </button>
       </div>
     </div>
@@ -779,14 +779,14 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
                     background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: '#52525b',
                   }}>
                     <RefreshCw size={12} style={consolidating ? { animation: 'spin 1s linear infinite' } : {}} />
-                    {consolidating ? 'Läuft…' : 'Konsolidieren'}
+                    {consolidating ? t.gedaechtnis.consolidating : t.gedaechtnis.consolidate}
                   </button>
                 </div>
               </div>
 
               {/* Write to Memory Form */}
               {showWriteForm && (
-                <WriteMemoryForm expertId={expert.id} onSaved={() => { setShowWriteForm(false); loadData(); }} />
+                <WriteMemoryForm expertId={expert.id} onSaved={() => { setShowWriteForm(false); loadData(); }} t={t} />
               )}
 
               {/* Live Trace Tab */}
@@ -861,13 +861,13 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
                   {!summary ? (
                     <div style={{ textAlign: 'center', padding: '2rem', color: '#3f3f46', fontSize: '0.8125rem' }}>
                       <Archive size={28} style={{ opacity: 0.2, marginBottom: '0.5rem' }} />
-                      <div style={{ marginBottom: '0.5rem' }}>Noch keine Zusammenfassung vorhanden.</div>
+                      <div style={{ marginBottom: '0.5rem' }}>{t.gedaechtnis.noSummaryYet}</div>
                       <button onClick={triggerConsolidation} disabled={consolidating} style={{
                         padding: '0.375rem 0.875rem', borderRadius: '7px', cursor: consolidating ? 'wait' : 'pointer',
                         background: 'rgba(35,205,202,0.08)', border: '1px solid rgba(35,205,202,0.2)', color: '#23CDCB',
                         fontSize: '0.8125rem', fontWeight: 600,
                       }}>
-                        {consolidating ? 'Läuft…' : 'Jetzt konsolidieren'}
+                        {consolidating ? t.gedaechtnis.consolidating : t.gedaechtnis.consolidateNow}
                       </button>
                     </div>
                   ) : (
