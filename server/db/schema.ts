@@ -515,7 +515,17 @@ export const openclawTokens = sqliteTable('openclaw_tokens', {
   letzterJoin:   text('letzter_join'),
 });
 
-// ===== Projekte =====
+// ===== Expert Config History (rollback snapshots) =====
+export const expertConfigHistory = sqliteTable('expert_config_history', {
+  id: text('id').primaryKey(),
+  expertId: text('expert_id').notNull().references(() => experten.id),
+  changedAt: text('changed_at').notNull(),
+  changedBy: text('changed_by'), // userId or 'system'
+  configJson: text('config_json').notNull(), // full snapshot of changed fields
+  note: text('note'),
+}, (t) => ({
+  idxExpertHistory: index('expert_config_history_expert_idx').on(t.expertId, t.changedAt),
+}));
 
 // Export helper for all tables
 export const allTables = {
@@ -552,4 +562,5 @@ export const allTables = {
   executionWorkspaces,
   issueRelations,
   openclawTokens,
+  expertConfigHistory,
 };

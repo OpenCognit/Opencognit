@@ -5,7 +5,7 @@ import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { db, initializeDatabase, sqlite } from './db/client.js';
-import { unternehmen, experten, aufgaben, kommentare, genehmigungen, aktivitaetslog, kostenbuchungen, arbeitszyklen, ziele, einstellungen, chatNachrichten, benutzer, routinen, routineTrigger, routineAusfuehrung, workProducts, projekte, agentPermissions, traceEreignisse, skillsLibrary, expertenSkills, agentWakeupRequests, palaceWings, palaceDrawers, palaceDiary, palaceKg, palaceSummaries, budgetPolicies, budgetIncidents, executionWorkspaces, issueRelations, agentMeetings, openclawTokens } from './db/schema.js';
+import { unternehmen, experten, aufgaben, kommentare, genehmigungen, aktivitaetslog, kostenbuchungen, arbeitszyklen, ziele, einstellungen, chatNachrichten, benutzer, routinen, routineTrigger, routineAusfuehrung, workProducts, projekte, agentPermissions, traceEreignisse, skillsLibrary, expertenSkills, agentWakeupRequests, palaceWings, palaceDrawers, palaceDiary, palaceKg, palaceSummaries, budgetPolicies, budgetIncidents, executionWorkspaces, issueRelations, agentMeetings, openclawTokens, expertConfigHistory } from './db/schema.js';
 import { getWorkspaceInfo, readWorkspaceFile } from './services/workspace.js';
 import { encryptSetting, decryptSetting } from './utils/crypto.js';
 import { eq, desc, asc, and, sql, count, sum, inArray, isNotNull, isNull, or } from 'drizzle-orm';
@@ -435,8 +435,20 @@ app.patch('/api/experten/:id', (req, res) => {
     const freeModel = checkFreeModel(req.body.verbindungsConfig);
     if (freeModel) return res.status(400).json({ error: `Free-Model "${freeModel}" ist nicht erlaubt.` });
   }
-  const updates: any = { aktualisiertAm: now() };
   const allowed = ['name', 'rolle', 'titel', 'faehigkeiten', 'verbindungsTyp', 'verbindungsConfig', 'reportsTo', 'avatar', 'avatarFarbe', 'budgetMonatCent', 'zyklusIntervallSek', 'zyklusAktiv', 'status', 'systemPrompt', 'advisorId', 'advisorStrategy', 'advisorConfig', 'isOrchestrator'];
+  const updates: any = { aktualisiertAm: now() };
+  const changedFields: Record<string, any> = {};
+
+  // Snapshot current values of fields being changed
+  const current = db.select().from(experten).where(eq(experten.id, req.params.id)).get() as any;
+  if (current) {
+    for (const key of allowed) {
+      if (req.body[key] !== undefined && req.body[key] !== current[key]) {
+        changedFields[key] = current[key]; // old value snapshot
+      }
+    }
+  }
+
   for (const key of allowed) {
     if (req.body[key] !== undefined) {
       if ((key === 'verbindungsConfig' || key === 'advisorConfig') && typeof req.body[key] === 'object' && req.body[key] !== null) {
@@ -447,8 +459,63 @@ app.patch('/api/experten/:id', (req, res) => {
     }
   }
   db.update(experten).set(updates).where(eq(experten.id, req.params.id)).run();
+
+  // Save config history snapshot if anything changed
+  if (Object.keys(changedFields).length > 0) {
+    db.insert(expertConfigHistory).values({
+      id: uuid(),
+      expertId: req.params.id,
+      changedAt: now(),
+      changedBy: (req as any).user?.id || 'board',
+      configJson: JSON.stringify(changedFields),
+      note: req.body._note || null,
+    } as any).run();
+  }
+
   const agent = db.select().from(experten).where(eq(experten.id, req.params.id)).get();
   res.json(agent);
+});
+
+// GET /api/experten/:id/config-history — last N snapshots (default 20)
+app.get('/api/experten/:id/config-history', authMiddleware, (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 20, 100);
+  const rows = db.select().from(expertConfigHistory)
+    .where(eq(expertConfigHistory.expertId, req.params.id))
+    .orderBy(desc(expertConfigHistory.changedAt))
+    .limit(limit)
+    .all();
+  res.json(rows);
+});
+
+// POST /api/experten/:id/config-history/:historyId/restore — restore a snapshot
+app.post('/api/experten/:id/config-history/:historyId/restore', authMiddleware, (req, res) => {
+  const snap = db.select().from(expertConfigHistory)
+    .where(and(eq(expertConfigHistory.id, req.params.historyId), eq(expertConfigHistory.expertId, req.params.id)))
+    .get() as any;
+  if (!snap) return res.status(404).json({ error: 'Snapshot not found' });
+
+  let fields: Record<string, any>;
+  try { fields = JSON.parse(snap.configJson); } catch { return res.status(422).json({ error: 'Invalid snapshot data' }); }
+
+  const safeFields: any = { aktualisiertAm: now() };
+  const allowed = ['name', 'rolle', 'titel', 'faehigkeiten', 'verbindungsTyp', 'verbindungsConfig', 'reportsTo', 'avatar', 'avatarFarbe', 'budgetMonatCent', 'zyklusIntervallSek', 'zyklusAktiv', 'status', 'systemPrompt', 'advisorId', 'advisorStrategy', 'advisorConfig', 'isOrchestrator'];
+  for (const key of allowed) {
+    if (key in fields) safeFields[key] = fields[key];
+  }
+  db.update(experten).set(safeFields).where(eq(experten.id, req.params.id)).run();
+
+  // Record the restore action itself as a new history entry
+  db.insert(expertConfigHistory).values({
+    id: uuid(),
+    expertId: req.params.id,
+    changedAt: now(),
+    changedBy: (req as any).user?.id || 'board',
+    configJson: JSON.stringify(safeFields),
+    note: `Restored from snapshot ${req.params.historyId}`,
+  } as any).run();
+
+  const agent = db.select().from(experten).where(eq(experten.id, req.params.id)).get();
+  res.json({ ok: true, agent });
 });
 
 app.post('/api/mitarbeiter/:id/pausieren', (req, res) => {

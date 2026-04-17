@@ -471,3 +471,13 @@ export const openclawTokens = pgTable('openclaw_tokens', {
   erstelltAm: text('erstellt_am').notNull(),
   letzterJoin: text('letzter_join'),
 });
+
+// ===== Expert Config History =====
+export const expertConfigHistory = pgTable('expert_config_history', {
+  id: text('id').primaryKey(),
+  expertId: text('expert_id').notNull().references(() => experten.id),
+  changedAt: text('changed_at').notNull(),
+  changedBy: text('changed_by'),
+  configJson: text('config_json').notNull(),
+  note: text('note'),
+});
