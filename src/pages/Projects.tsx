@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import {
   Plus, FolderOpen, Loader2, Trash2, ChevronDown, ChevronRight,
-  Calendar, User, BarChart2, AlertCircle, Layout,
+  Calendar, User, BarChart2, AlertCircle, Layout, Search as SearchIcon,
 } from 'lucide-react';
+import { FolderPickerModal } from '../components/FolderPickerModal';
 import { WhiteboardPanel } from '../components/WhiteboardPanel';
 import { GlassCard } from '../components/GlassCard';
 import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
@@ -81,6 +82,7 @@ function ProjektModal({ unternehmenId, experten, onClose, onSaved }: ProjektModa
   const [eigentuemerId, setEigentuemerId] = useState('');
   const [farbe, setFarbe] = useState('#23CDCB');
   const [workDir, setWorkDir] = useState('');
+  const [showFolderPicker, setShowFolderPicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -252,20 +254,56 @@ function ProjektModal({ unternehmenId, experten, onClose, onSaved }: ProjektModa
               <FolderOpen size={11} style={{ marginRight: 4, verticalAlign: 'middle' }} />
               {i18n.language === 'de' ? 'Arbeitsverzeichnis (optional)' : 'Working Directory (optional)'}
             </label>
-            <input
-              style={inputStyle}
-              placeholder={i18n.language === 'de' ? '/pfad/zum/projekt — überschreibt Firmen-Ordner' : '/path/to/project — overrides company folder'}
-              value={workDir}
-              onChange={e => setWorkDir(e.target.value)}
-            />
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <input
+                style={{ ...inputStyle, flex: 1, fontFamily: 'monospace', fontSize: '0.8125rem' }}
+                placeholder={i18n.language === 'de' ? '/pfad/zum/projekt' : '/path/to/project'}
+                value={workDir}
+                onChange={e => setWorkDir(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => setShowFolderPicker(true)}
+                title={i18n.language === 'de' ? 'Ordner durchsuchen' : 'Browse folders'}
+                style={{
+                  padding: '0 0.75rem', borderRadius: '10px', cursor: 'pointer',
+                  background: 'rgba(35,205,202,0.08)', border: '1px solid rgba(35,205,202,0.2)',
+                  color: '#23CDCB', display: 'flex', alignItems: 'center', gap: '0.375rem',
+                  fontSize: '0.8125rem', fontWeight: 600, flexShrink: 0,
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(35,205,202,0.14)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(35,205,202,0.08)'; }}
+              >
+                <SearchIcon size={13} />
+                {i18n.language === 'de' ? 'Durchsuchen' : 'Browse'}
+              </button>
+            </div>
             {workDir.trim() && (
-              <div style={{ fontSize: '0.7rem', color: '#71717a', marginTop: 3 }}>
+              <div style={{ fontSize: '0.7rem', color: '#23CDCB', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <FolderOpen size={10} />
                 {i18n.language === 'de'
                   ? 'Agenten dieses Projekts arbeiten in diesem Ordner.'
                   : 'Agents in this project will use this folder.'}
               </div>
             )}
+            {!workDir.trim() && (
+              <div style={{ fontSize: '0.7rem', color: '#52525b', marginTop: 4 }}>
+                {i18n.language === 'de'
+                  ? 'Leer = Firmen-Verzeichnis oder isolierter Workspace'
+                  : 'Empty = company directory or isolated workspace'}
+              </div>
+            )}
           </div>
+
+          {/* Folder Picker Modal */}
+          {showFolderPicker && (
+            <FolderPickerModal
+              initialPath={workDir.trim() || undefined}
+              onSelect={p => { setWorkDir(p); setShowFolderPicker(false); }}
+              onClose={() => setShowFolderPicker(false)}
+            />
+          )}
         </div>
 
         {/* Buttons */}

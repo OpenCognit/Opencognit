@@ -322,6 +322,53 @@ app.get('/api/unternehmen/:id/workspace/check', (req, res) => {
   }
 });
 
+// Filesystem directory browser — lists subdirectories of a given path
+app.get('/api/fs/dirs', authenticateToken, (req: any, res) => {
+  const requested = (req.query.path as string) || '';
+  const home = process.env.HOME || process.env.USERPROFILE || '/home';
+  const current = requested ? path.resolve(requested) : home;
+
+  // Safety: never list inside server/, src/, node_modules/
+  const projectRoot = path.resolve(process.cwd());
+  const blocked = ['node_modules', 'src', 'server', '.git'].map(d => path.join(projectRoot, d));
+  if (blocked.some(b => current.startsWith(b))) {
+    return res.status(403).json({ error: 'Dieser Pfad ist nicht durchsuchbar' });
+  }
+
+  if (!fs.existsSync(current) || !fs.statSync(current).isDirectory()) {
+    return res.status(400).json({ error: 'Pfad existiert nicht oder ist kein Ordner' });
+  }
+
+  let dirs: { name: string; path: string }[] = [];
+  try {
+    dirs = fs.readdirSync(current, { withFileTypes: true })
+      .filter(d => d.isDirectory() && !d.name.startsWith('.'))
+      .map(d => ({ name: d.name, path: path.join(current, d.name) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  } catch { /* permission denied etc. */ }
+
+  const parent = path.dirname(current) !== current ? path.dirname(current) : null;
+  res.json({ current, parent, home, dirs });
+});
+
+// Create a directory (used by FolderPickerModal)
+app.post('/api/fs/mkdir', authenticateToken, (req: any, res) => {
+  const { path: dirPath } = req.body as { path?: string };
+  if (!dirPath || !path.isAbsolute(dirPath)) return res.status(400).json({ error: 'Absoluter Pfad erforderlich' });
+  // Block creating inside project source tree
+  const projectRoot = path.resolve(process.cwd());
+  const blocked = ['node_modules', 'src', 'server', '.git'].map(d => path.join(projectRoot, d));
+  if (blocked.some(b => path.resolve(dirPath).startsWith(b))) {
+    return res.status(403).json({ error: 'Ordner kann hier nicht erstellt werden' });
+  }
+  try {
+    fs.mkdirSync(dirPath, { recursive: true });
+    res.json({ ok: true, path: dirPath });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Open company work directory in system file manager
 app.post('/api/unternehmen/:id/open-folder', (req, res) => {
   // Accept path from body (current input value) or fall back to saved DB value
