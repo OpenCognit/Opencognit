@@ -1,8 +1,11 @@
+import crypto from 'crypto';
 import { Router } from 'express';
 import { db } from '../db/client.js';
-import { einstellungen } from '../db/schema.js';
+import { einstellungen, routineTrigger, routinen, routineAusfuehrung } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { messagingService } from '../services/messaging.js';
+import { wakeupService } from '../services/wakeup.js';
+import { v4 as uuid } from 'uuid';
 
 const router = Router();
 
@@ -196,6 +199,81 @@ router.post('/slack/:secret', async (req, res) => {
     console.error('Slack webhook error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+/**
+ * POST /routine/:publicId
+ * External webhook to trigger a Routine. Expects:
+ *   Header: x-signature: sha256=<hmac-sha256 of raw body with secretId>
+ *   Body: any JSON payload (forwarded as trigger payload to the agent)
+ *
+ * Returns: { ok: true, executionId }
+ */
+router.post('/routine/:publicId', async (req, res) => {
+  const { publicId } = req.params;
+
+  // Find matching active webhook trigger
+  const trigger = db.select().from(routineTrigger)
+    .where(and(
+      eq(routineTrigger.publicId, publicId),
+      eq(routineTrigger.kind, 'webhook'),
+      eq(routineTrigger.aktiv, true),
+    ))
+    .get() as any;
+
+  if (!trigger) {
+    return res.status(404).json({ error: 'Webhook not found' });
+  }
+
+  // Verify HMAC-SHA256 signature
+  const signature = req.headers['x-signature'] as string | undefined;
+  if (trigger.secretId && signature) {
+    const rawBody = JSON.stringify(req.body);
+    const expected = 'sha256=' + crypto.createHmac('sha256', trigger.secretId).update(rawBody).digest('hex');
+    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+      return res.status(403).json({ error: 'Invalid signature' });
+    }
+  } else if (trigger.secretId && !signature) {
+    return res.status(403).json({ error: 'Missing x-signature header' });
+  }
+
+  // Load routine + assigned agent
+  const routine = db.select().from(routinen).where(eq(routinen.id, trigger.routineId)).get() as any;
+  if (!routine || !routine.zugewiesenAn) {
+    return res.status(422).json({ error: 'Routine has no assigned agent' });
+  }
+
+  const now = new Date().toISOString();
+  const executionId = uuid();
+
+  // Record execution
+  db.insert(routineAusfuehrung).values({
+    id: executionId,
+    unternehmenId: trigger.unternehmenId,
+    routineId: routine.id,
+    triggerId: trigger.id,
+    quelle: 'webhook',
+    status: 'received',
+    payload: JSON.stringify(req.body),
+    erstelltAm: now,
+  } as any).run();
+
+  // Update trigger last fired
+  db.update(routineTrigger)
+    .set({ zuletztGefeuertAm: now })
+    .where(eq(routineTrigger.id, trigger.id))
+    .run();
+
+  // Wake agent
+  await wakeupService.wakeup(routine.zugewiesenAn, trigger.unternehmenId, {
+    source: 'automation',
+    triggerDetail: 'webhook',
+    reason: `Webhook-Trigger für Routine "${routine.titel}"`,
+    payload: { executionId, routineId: routine.id, body: req.body },
+  });
+
+  console.log(`📡 Webhook: Routine "${routine.titel}" via publicId ${publicId} ausgelöst → Agent ${routine.zugewiesenAn}`);
+  return res.json({ ok: true, executionId });
 });
 
 export default router;
