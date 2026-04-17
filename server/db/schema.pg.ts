@@ -298,3 +298,176 @@ export const routineAusfuehrung = pgTable('routine_ausfuehrung', {
   erstelltAm: text('erstellt_am').notNull(),
   abgeschlossenAm: text('abgeschlossen_am'),
 });
+
+// ===== Agent Meetings =====
+export const agentMeetings = pgTable('agenten_meetings', {
+  id: text('id').primaryKey(),
+  unternehmenId: text('unternehmen_id').notNull().references(() => unternehmen.id),
+  titel: text('titel').notNull(),
+  veranstalterExpertId: text('veranstalter_expert_id').notNull().references(() => experten.id),
+  teilnehmerIds: text('teilnehmer_ids').notNull(),
+  antworten: text('antworten').default('{}'),
+  status: text('status').notNull().default('running'),
+  ergebnis: text('ergebnis'),
+  erstelltAm: text('erstellt_am').notNull(),
+  abgeschlossenAm: text('abgeschlossen_am'),
+});
+
+// ===== Trace Ereignisse =====
+export const traceEreignisse = pgTable('trace_ereignisse', {
+  id: text('id').primaryKey(),
+  unternehmenId: text('unternehmen_id').notNull().references(() => unternehmen.id),
+  expertId: text('expert_id').notNull().references(() => experten.id),
+  runId: text('run_id'),
+  typ: text('typ').notNull(),
+  titel: text('titel').notNull(),
+  details: text('details'),
+  erstelltAm: text('erstellt_am').notNull(),
+});
+
+// ===== Skill Library =====
+export const skillsLibrary = pgTable('skills_library', {
+  id: text('id').primaryKey(),
+  unternehmenId: text('unternehmen_id').notNull().references(() => unternehmen.id),
+  name: text('name').notNull(),
+  beschreibung: text('beschreibung'),
+  inhalt: text('inhalt').notNull(),
+  tags: text('tags'),
+  erstelltVon: text('erstellt_von'),
+  konfidenz: integer('konfidenz').notNull().default(50),
+  nutzungen: integer('nutzungen').notNull().default(0),
+  erfolge: integer('erfolge').notNull().default(0),
+  quelle: text('quelle').notNull().default('manuell'),
+  remoteRef: text('remote_ref'),
+  erstelltAm: text('erstellt_am').notNull(),
+  aktualisiertAm: text('aktualisiert_am').notNull(),
+});
+
+// ===== Expert <-> Skill Library =====
+export const expertenSkills = pgTable('experten_skills', {
+  id: text('id').primaryKey(),
+  expertId: text('expert_id').notNull().references(() => experten.id),
+  skillId: text('skill_id').notNull().references(() => skillsLibrary.id),
+  erstelltAm: text('erstellt_am').notNull(),
+});
+
+// ===== Palace: Wings =====
+export const palaceWings = pgTable('palace_wings', {
+  id: text('id').primaryKey(),
+  unternehmenId: text('unternehmen_id').notNull().references(() => unternehmen.id),
+  expertId: text('expert_id').notNull().references(() => experten.id),
+  name: text('name').notNull(),
+  erstelltAm: text('erstellt_am').notNull(),
+  aktualisiertAm: text('aktualisiert_am').notNull(),
+});
+
+// ===== Palace: Drawers =====
+export const palaceDrawers = pgTable('palace_drawers', {
+  id: text('id').primaryKey(),
+  wingId: text('wing_id').notNull().references(() => palaceWings.id),
+  room: text('room').notNull(),
+  inhalt: text('inhalt').notNull(),
+  erstelltAm: text('erstellt_am').notNull(),
+});
+
+// ===== Palace: Diary =====
+export const palaceDiary = pgTable('palace_diary', {
+  id: text('id').primaryKey(),
+  wingId: text('wing_id').notNull().references(() => palaceWings.id),
+  datum: text('datum').notNull(),
+  thought: text('thought'),
+  action: text('action'),
+  knowledge: text('knowledge'),
+  erstelltAm: text('erstellt_am').notNull(),
+});
+
+// ===== Palace: Knowledge Graph =====
+export const palaceKg = pgTable('palace_kg', {
+  id: text('id').primaryKey(),
+  unternehmenId: text('unternehmen_id').notNull().references(() => unternehmen.id),
+  subject: text('subject').notNull(),
+  predicate: text('predicate').notNull(),
+  object: text('object').notNull(),
+  validFrom: text('valid_from'),
+  validUntil: text('valid_until'),
+  erstelltVon: text('erstellt_von'),
+  erstelltAm: text('erstellt_am').notNull(),
+});
+
+// ===== Palace: Summaries =====
+export const palaceSummaries = pgTable('palace_summaries', {
+  id: text('id').primaryKey(),
+  expertId: text('expert_id').notNull().references(() => experten.id),
+  unternehmenId: text('unternehmen_id').notNull().references(() => unternehmen.id),
+  inhalt: text('inhalt').notNull(),
+  version: integer('version').notNull().default(1),
+  komprimierteTurns: integer('komprimierte_turns').notNull().default(0),
+  erstelltAm: text('erstellt_am').notNull(),
+  aktualisiertAm: text('aktualisiert_am').notNull(),
+});
+
+// ===== Budget Policies =====
+export const budgetPolicies = pgTable('budget_policies', {
+  id: text('id').primaryKey(),
+  unternehmenId: text('unternehmen_id').notNull().references(() => unternehmen.id),
+  scope: text('scope').notNull(),
+  scopeId: text('scope_id').notNull(),
+  limitCent: integer('limit_cent').notNull(),
+  fenster: text('fenster').notNull().default('monatlich'),
+  warnProzent: integer('warn_prozent').notNull().default(80),
+  hardStop: boolean('hard_stop').notNull().default(true),
+  aktiv: boolean('aktiv').notNull().default(true),
+  erstelltAm: text('erstellt_am').notNull(),
+  aktualisiertAm: text('aktualisiert_am').notNull(),
+});
+
+// ===== Budget Incidents =====
+export const budgetIncidents = pgTable('budget_incidents', {
+  id: text('id').primaryKey(),
+  policyId: text('policy_id').notNull().references(() => budgetPolicies.id),
+  unternehmenId: text('unternehmen_id').notNull().references(() => unternehmen.id),
+  typ: text('typ').notNull(),
+  beobachteterBetrag: integer('beobachteter_betrag').notNull(),
+  limitBetrag: integer('limit_betrag').notNull(),
+  status: text('status').notNull().default('offen'),
+  behobeneAm: text('behoben_am'),
+  erstelltAm: text('erstellt_am').notNull(),
+});
+
+// ===== Execution Workspaces =====
+export const executionWorkspaces = pgTable('execution_workspaces', {
+  id: text('id').primaryKey(),
+  unternehmenId: text('unternehmen_id').notNull().references(() => unternehmen.id),
+  aufgabeId: text('aufgabe_id').references(() => aufgaben.id),
+  expertId: text('expert_id').references(() => experten.id),
+  pfad: text('pfad').notNull(),
+  branchName: text('branch_name'),
+  basePfad: text('base_pfad'),
+  abgeleitetVon: text('abgeleitet_von').references((): any => executionWorkspaces.id),
+  status: text('status').notNull().default('offen'),
+  metadaten: text('metadaten'),
+  geoeffnetAm: text('geoeffnet_am').notNull(),
+  geschlossenAm: text('geschlossen_am'),
+  aufgeraeumtAm: text('aufgeraeumt_am'),
+  erstelltAm: text('erstellt_am').notNull(),
+});
+
+// ===== Issue Relations =====
+export const issueRelations = pgTable('issue_relations', {
+  id: text('id').primaryKey(),
+  quellId: text('quell_id').notNull().references(() => aufgaben.id),
+  zielId: text('ziel_id').notNull().references(() => aufgaben.id),
+  typ: text('typ').notNull().default('blocks'),
+  erstelltVon: text('erstellt_von'),
+  erstelltAm: text('erstellt_am').notNull(),
+});
+
+// ===== OpenClaw Gateway Tokens =====
+export const openclawTokens = pgTable('openclaw_tokens', {
+  id: text('id').primaryKey(),
+  unternehmenId: text('unternehmen_id').notNull().references(() => unternehmen.id),
+  token: text('token').notNull().unique(),
+  beschreibung: text('beschreibung'),
+  erstelltAm: text('erstellt_am').notNull(),
+  letzterJoin: text('letzter_join'),
+});
