@@ -82,6 +82,7 @@ Each agent wakes on its own schedule (5m, 15m, 1h, 24h, or custom). The heartbea
 - **Routines** — cron-based automations
 - **Memory** — browsable agent memory with Knowledge Graph viz
 - **Telegram** — mobile interface with `/status`, `/tasks`, free-form chat
+- **OpenClaw Gateway** — bridge existing OpenClaw agents into your company with their full knowledge base
 
 ---
 
@@ -152,6 +153,7 @@ npm start
 | **Gemini CLI** | Google models |
 | **Bash** | Shell commands |
 | **HTTP** | External APIs |
+| **OpenClaw Gateway** | Connect existing OpenClaw agents with their full knowledge base |
 
 ---
 
@@ -174,7 +176,8 @@ npm start
 │         │                                                 │
 │  ┌──────▼──────────────────────────────────────────────┐ │
 │  │           Adapter Registry                           │ │
-│  │  Bash · HTTP · Claude Code · OpenRouter · Ollama    │ │
+│  │  Bash · HTTP · Claude Code · OpenRouter · Ollama    │
+  │  OpenClaw Gateway                                   │ │
 │  │  Critic Loop · Task Chaining · Token Budget Guard   │ │
 │  └──────┬──────────────────────────────────────────────┘ │
 │         │                                                 │
