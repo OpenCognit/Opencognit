@@ -104,6 +104,8 @@ export function Settings() {
   const [openclawTokenLoading, setOpenclawTokenLoading] = useState(false);
   const [openclawAgents, setOpenclawAgents] = useState<any[]>([]);
   const [openclawTokenCopied, setOpenclawTokenCopied] = useState(false);
+  const [openclawNewAgent, setOpenclawNewAgent] = useState<{ expertId: string; agentName: string } | null>(null);
+  const [settingCEO, setSettingCEO] = useState(false);
 
   // Collapsible sections
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -191,6 +193,38 @@ export function Settings() {
       .then(r => r.json()).then(d => setOpenclawToken(d.token || '')).catch(() => {});
     authFetch(`/api/openclaw/agents?unternehmenId=${aktivesUnternehmen.id}`)
       .then(r => r.json()).then(d => setOpenclawAgents(Array.isArray(d) ? d : [])).catch(() => {});
+  }, [aktivesUnternehmen?.id]);
+
+  // WebSocket listener — react to OpenClaw agent connecting in real-time
+  useEffect(() => {
+    if (!aktivesUnternehmen) return;
+    const wsToken = localStorage.getItem('opencognit_token');
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${proto}//${window.location.hostname}:3201/ws${wsToken ? `?token=${wsToken}` : ''}`);
+    ws.onmessage = ev => {
+      try {
+        const msg = JSON.parse(ev.data);
+        if (msg.type === 'openclaw_agent_joined' && msg.data?.unternehmenId === aktivesUnternehmen.id) {
+          const { expertId, agentName, isNew } = msg.data;
+          // Refresh the agents list
+          authFetch(`/api/openclaw/agents?unternehmenId=${aktivesUnternehmen.id}`)
+            .then(r => r.json()).then(d => setOpenclawAgents(Array.isArray(d) ? d : [])).catch(() => {});
+          // Show toast
+          toastCtx.agent(
+            i18n.language === 'de'
+              ? `OpenClaw: ${agentName} ${isNew ? 'verbunden' : 'reconnected'}`
+              : `OpenClaw: ${agentName} ${isNew ? 'connected' : 'reconnected'}`,
+            i18n.language === 'de'
+              ? 'Agent erscheint jetzt in der Agenten-Liste'
+              : 'Agent now appears in the Agents list',
+          );
+          // Show CEO suggestion banner only for newly registered agents
+          if (isNew) setOpenclawNewAgent({ expertId, agentName });
+        }
+      } catch {}
+    };
+    ws.onerror = () => {};
+    return () => { ws.close(); };
   }, [aktivesUnternehmen?.id]);
 
   const regenerateOpenclawToken = async () => {
@@ -614,6 +648,57 @@ export function Settings() {
                   <li>{i18n.t.einstellungen.openclawStep4}</li>
                 </ol>
               </div>
+
+              {/* CEO suggestion banner — shown when a new OpenClaw agent just connected */}
+              {openclawNewAgent && (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '1rem 1.125rem', borderRadius: '14px', background: 'rgba(35,205,203,0.08)', border: '1px solid rgba(35,205,203,0.3)', marginBottom: '1rem' }}>
+                  <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>🎉</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#ffffff', marginBottom: '0.25rem' }}>
+                      {i18n.language === 'de'
+                        ? `${openclawNewAgent.agentName} ist verbunden`
+                        : `${openclawNewAgent.agentName} is connected`}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
+                      {i18n.language === 'de'
+                        ? 'Willst du diesen Agenten als CEO einsetzen? Er orchestriert dann deine OpenCognit-Tasks — sein OpenClaw-Wissen bleibt dabei auf seiner Seite.'
+                        : 'Want to set this agent as CEO? It will orchestrate your OpenCognit tasks — its OpenClaw knowledge stays on its side.'}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        disabled={settingCEO}
+                        onClick={async () => {
+                          setSettingCEO(true);
+                          try {
+                            await authFetch(`/api/mitarbeiter/${openclawNewAgent.expertId}`, {
+                              method: 'PATCH',
+                              body: JSON.stringify({ isOrchestrator: true, zyklusAktiv: true }),
+                            });
+                            toastCtx.success(
+                              i18n.language === 'de' ? 'CEO gesetzt' : 'CEO set',
+                              i18n.language === 'de'
+                                ? `${openclawNewAgent.agentName} ist jetzt CEO`
+                                : `${openclawNewAgent.agentName} is now CEO`,
+                            );
+                            setOpenclawNewAgent(null);
+                          } catch { /* ignore */ } finally { setSettingCEO(false); }
+                        }}
+                        style={{ padding: '0.4rem 0.875rem', borderRadius: '8px', background: 'rgba(35,205,203,0.15)', border: '1px solid rgba(35,205,203,0.4)', color: '#23CDCB', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        {settingCEO
+                          ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+                          : (i18n.language === 'de' ? 'Als CEO einsetzen' : 'Set as CEO')}
+                      </button>
+                      <button
+                        onClick={() => setOpenclawNewAgent(null)}
+                        style={{ padding: '0.4rem 0.875rem', borderRadius: '8px', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a', fontSize: '0.8rem', cursor: 'pointer' }}
+                      >
+                        {i18n.language === 'de' ? 'Später' : 'Later'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Connected Agents */}
               {openclawAgents.length > 0 && (

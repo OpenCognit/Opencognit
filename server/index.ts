@@ -5851,6 +5851,16 @@ app.post('/api/openclaw/join', (req: any, res: any) => {
   db.update(openclawTokens).set({ letzterJoin: now() }).where(eq(openclawTokens.token, token)).run();
 
   const agent = db.select().from(experten).where(eq(experten.id, expertId)).get();
+
+  // Notify all open browser sessions about the new/updated connection
+  broadcastUpdate('openclaw_agent_joined', {
+    expertId,
+    agentName,
+    agentRolle: agentRolle || 'Externer Agent',
+    unternehmenId,
+    isNew: !existing,
+  });
+
   res.status(201).json({ expertId, agent, message: `Agent "${agentName}" erfolgreich in OpenCognit registriert` });
 });
 
