@@ -2444,16 +2444,47 @@ app.delete('/api/unternehmen/:id/reset', authMiddleware, (req, res) => {
   const company = db.select().from(unternehmen).where(eq(unternehmen.id, id)).get();
   if (!company) return res.status(404).json({ error: 'Unternehmen nicht gefunden' });
 
-  // Delete in order (FK constraints)
+  // Delete in correct FK order — leaf tables first, then parents.
+  // SQLite FK enforcement is ON so order matters.
+  // sqlite is the raw better-sqlite3 instance, safe for parameterized raw SQL.
+  const execRaw = (sql: string) => { try { sqlite?.prepare(sql).run(); } catch { /* ignore missing tables on older DBs */ } };
+
+  // Leaf tables referencing experten (must go before experten)
+  execRaw(`DELETE FROM ceo_decision_log WHERE unternehmen_id = '${id}'`);
+  execRaw(`DELETE FROM expert_config_history WHERE expert_id IN (SELECT id FROM experten WHERE unternehmen_id = '${id}')`);
+  execRaw(`DELETE FROM experten_skills WHERE expert_id IN (SELECT id FROM experten WHERE unternehmen_id = '${id}')`);
+  execRaw(`DELETE FROM agent_permissions WHERE expert_id IN (SELECT id FROM experten WHERE unternehmen_id = '${id}')`);
+  execRaw(`DELETE FROM agent_gedaechtnis WHERE unternehmen_id = '${id}'`);
+  execRaw(`DELETE FROM palace_wings WHERE unternehmen_id = '${id}'`);
+  execRaw(`DELETE FROM palace_summaries WHERE unternehmen_id = '${id}'`);
+  execRaw(`DELETE FROM palace_drawers WHERE expert_id IN (SELECT id FROM experten WHERE unternehmen_id = '${id}')`);
+  execRaw(`DELETE FROM palace_diary WHERE expert_id IN (SELECT id FROM experten WHERE unternehmen_id = '${id}')`);
+  execRaw(`DELETE FROM palace_kg WHERE unternehmen_id = '${id}'`);
+  execRaw(`DELETE FROM budget_policies WHERE unternehmen_id = '${id}'`);
+  execRaw(`DELETE FROM budget_incidents WHERE unternehmen_id = '${id}'`);
+  execRaw(`DELETE FROM execution_workspaces WHERE unternehmen_id = '${id}'`);
+  execRaw(`DELETE FROM openclaw_tokens WHERE unternehmen_id = '${id}'`);
+  execRaw(`DELETE FROM agenten_meetings WHERE unternehmen_id = '${id}'`);
+  execRaw(`DELETE FROM trace_ereignisse WHERE unternehmen_id = '${id}'`);
+  execRaw(`DELETE FROM work_products WHERE unternehmen_id = '${id}'`);
+  execRaw(`DELETE FROM agent_wakeup_requests WHERE unternehmen_id = '${id}'`);
+  // issue_relations references aufgaben
+  execRaw(`DELETE FROM issue_relations WHERE quell_id IN (SELECT id FROM aufgaben WHERE unternehmen_id = '${id}') OR ziel_id IN (SELECT id FROM aufgaben WHERE unternehmen_id = '${id}')`);
+  // routine children before routinen
+  execRaw(`DELETE FROM routine_ausfuehrung WHERE routine_id IN (SELECT id FROM routinen WHERE unternehmen_id = '${id}')`);
+  execRaw(`DELETE FROM routine_trigger WHERE routine_id IN (SELECT id FROM routinen WHERE unternehmen_id = '${id}')`);
+  db.delete(routinen).where(eq(routinen.unternehmenId, id)).run();
+  db.delete(projekte).where(eq(projekte.unternehmenId, id)).run();
   db.delete(chatNachrichten).where(eq(chatNachrichten.unternehmenId, id)).run();
   db.delete(kommentare).where(eq(kommentare.unternehmenId, id)).run();
   db.delete(kostenbuchungen).where(eq(kostenbuchungen.unternehmenId, id)).run();
   db.delete(arbeitszyklen).where(eq(arbeitszyklen.unternehmenId, id)).run();
   db.delete(aktivitaetslog).where(eq(aktivitaetslog.unternehmenId, id)).run();
   db.delete(genehmigungen).where(eq(genehmigungen.unternehmenId, id)).run();
+  db.delete(ziele).where(eq(ziele.unternehmenId, id)).run();
   db.delete(aufgaben).where(eq(aufgaben.unternehmenId, id)).run();
-  // CEO Decision Log references experten — delete before experten
-  try { (db as any).delete(ceoDecisionLog).where(eq((ceoDecisionLog as any).unternehmenId, id)).run(); } catch { /* table may not exist on older DBs */ }
+  execRaw(`DELETE FROM skills_library WHERE unternehmen_id = '${id}'`);
+  execRaw(`DELETE FROM einstellungen WHERE unternehmen_id = '${id}'`);
   db.delete(experten).where(eq(experten.unternehmenId, id)).run();
 
   console.log(`🗑️  Unternehmen ${company.name} (${id}) zurückgesetzt`);
@@ -2462,14 +2493,41 @@ app.delete('/api/unternehmen/:id/reset', authMiddleware, (req, res) => {
 
 // DELETE /api/system/factory-reset — alles löschen (außer Benutzer-Account bleibt, aber Unternehmen + alles weg)
 app.delete('/api/system/factory-reset', authMiddleware, (req, res) => {
-  // Delete all company data
+  const execAll = (sql: string) => { try { sqlite?.prepare(sql).run(); } catch { /* ignore */ } };
+  // Delete leaf tables first (FK order)
+  execAll(`DELETE FROM ceo_decision_log`);
+  execAll(`DELETE FROM expert_config_history`);
+  execAll(`DELETE FROM experten_skills`);
+  execAll(`DELETE FROM agent_permissions`);
+  execAll(`DELETE FROM agent_gedaechtnis`);
+  execAll(`DELETE FROM palace_wings`);
+  execAll(`DELETE FROM palace_drawers`);
+  execAll(`DELETE FROM palace_diary`);
+  execAll(`DELETE FROM palace_kg`);
+  execAll(`DELETE FROM palace_summaries`);
+  execAll(`DELETE FROM budget_policies`);
+  execAll(`DELETE FROM budget_incidents`);
+  execAll(`DELETE FROM execution_workspaces`);
+  execAll(`DELETE FROM openclaw_tokens`);
+  execAll(`DELETE FROM agenten_meetings`);
+  execAll(`DELETE FROM trace_ereignisse`);
+  execAll(`DELETE FROM work_products`);
+  execAll(`DELETE FROM agent_wakeup_requests`);
+  execAll(`DELETE FROM issue_relations`);
+  execAll(`DELETE FROM routine_ausfuehrung`);
+  execAll(`DELETE FROM routine_trigger`);
+  db.delete(routinen).run();
+  db.delete(projekte).run();
   db.delete(chatNachrichten).run();
   db.delete(kommentare).run();
   db.delete(kostenbuchungen).run();
   db.delete(arbeitszyklen).run();
   db.delete(aktivitaetslog).run();
   db.delete(genehmigungen).run();
+  db.delete(ziele).run();
   db.delete(aufgaben).run();
+  execAll(`DELETE FROM skills_library`);
+  execAll(`DELETE FROM einstellungen`);
   db.delete(experten).run();
   db.delete(unternehmen).run();
 
