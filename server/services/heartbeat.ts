@@ -5,7 +5,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { appEvents } from '../events.js';
 import { db } from '../db/client.js';
-import { arbeitszyklen, agentWakeupRequests, experten, aufgaben, unternehmen, projekte, kostenbuchungen, kommentare, workProducts, chatNachrichten, aktivitaetslog, ziele, issueRelations, einstellungen, budgetPolicies, budgetIncidents, agentMeetings, genehmigungen, agentPermissions, expertenSkills, skillsLibrary, routinen, routineAusfuehrung } from '../db/schema.js';
+import { arbeitszyklen, agentWakeupRequests, experten, aufgaben, unternehmen, projekte, kostenbuchungen, kommentare, workProducts, chatNachrichten, aktivitaetslog, ziele, issueRelations, einstellungen, budgetPolicies, budgetIncidents, agentMeetings, genehmigungen, agentPermissions, expertenSkills, skillsLibrary, routinen, routineAusfuehrung, palaceKg } from '../db/schema.js';
 import { eq, and, sql, inArray, or, isNull, asc, desc, gte } from 'drizzle-orm';
 import { pruefeUndEntblocke } from './issue-dependencies.js';
 import { wakeupService, type PendingWakeup } from './wakeup.js';
@@ -1067,6 +1067,100 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
           if (dmRow?.wert) heartbeatGlobalDefaultModel = decryptSetting(dmKey, dmRow.wert);
         } catch { /* ignore */ }
       }
+
+      // ─── OpenClaw Enrichment ───────────────────────────────────────────────
+      // For OpenClaw agents, assemble richer situational context so the agent
+      // has full Situational Awareness without needing DB access directly.
+      if (effectiveVerbindungsTyp === 'openclaw') {
+        try {
+          // 1. Last 3 completed task outputs by this agent
+          const recentDone = await db
+            .select({ taskTitel: aufgaben.titel, output: kommentare.inhalt, completedAt: kommentare.erstelltAm })
+            .from(kommentare)
+            .innerJoin(aufgaben, eq(kommentare.aufgabeId, aufgaben.id))
+            .where(and(
+              eq(aufgaben.zugewiesenAn, expertId),
+              eq(aufgaben.status, 'done'),
+              eq(kommentare.autorTyp, 'agent'),
+            ))
+            .orderBy(desc(kommentare.erstelltAm))
+            .limit(3);
+
+          // 2. Sibling tasks in the same project (open)
+          const siblingTasks = taskFull.projektId
+            ? await db
+                .select({ id: aufgaben.id, titel: aufgaben.titel, status: aufgaben.status, zugewiesenAn: aufgaben.zugewiesenAn })
+                .from(aufgaben)
+                .where(and(
+                  eq(aufgaben.projektId, taskFull.projektId),
+                  eq(aufgaben.unternehmenId, unternehmenId),
+                  inArray(aufgaben.status, ['backlog', 'todo', 'in_progress', 'blocked']),
+                ))
+                .limit(15)
+            : [];
+
+          // Resolve assignee names for siblings
+          const assigneeIds = [...new Set(siblingTasks.map((t: any) => t.zugewiesenAn).filter(Boolean))];
+          const assigneeNames: Record<string, string> = {};
+          if (assigneeIds.length > 0) {
+            const rows = await db.select({ id: experten.id, name: experten.name }).from(experten)
+              .where(inArray(experten.id, assigneeIds as string[]));
+            for (const r of rows) assigneeNames[r.id] = r.name;
+          }
+
+          // 3. Knowledge Graph facts relevant to the task (keyword match on subject/object)
+          const taskKeywords = (taskFull.titel + ' ' + (taskFull.beschreibung || ''))
+            .toLowerCase().replace(/[^\wäöüß\s]/g, ' ').split(/\s+/)
+            .filter(w => w.length >= 4).slice(0, 8);
+
+          let kgFacts: Array<{ subject: string; predicate: string; object: string }> = [];
+          if (taskKeywords.length > 0) {
+            const allFacts = await db.select({ subject: palaceKg.subject, predicate: palaceKg.predicate, object: palaceKg.object })
+              .from(palaceKg)
+              .where(and(eq(palaceKg.unternehmenId, unternehmenId), isNull(palaceKg.validUntil)))
+              .limit(200);
+            kgFacts = allFacts
+              .filter((f: any) => taskKeywords.some(kw =>
+                f.subject.toLowerCase().includes(kw) ||
+                f.object.toLowerCase().includes(kw) ||
+                f.predicate.toLowerCase().includes(kw)
+              ))
+              .slice(0, 20);
+          }
+
+          // 4. Active colleagues — other agents currently running tasks
+          const activeOthers = await db
+            .select({ name: experten.name, rolle: experten.rolle, taskTitel: aufgaben.titel })
+            .from(experten)
+            .innerJoin(aufgaben, and(eq(aufgaben.zugewiesenAn, experten.id), eq(aufgaben.status, 'in_progress')))
+            .where(and(eq(experten.unternehmenId, unternehmenId), sql`${experten.id} != ${expertId}`))
+            .limit(5);
+
+          adapterContext.openclawEnrichment = {
+            recentOutputs: recentDone.map((r: any) => ({
+              taskTitel: r.taskTitel,
+              output: (r.output || '').slice(0, 800), // cap per entry
+              completedAt: r.completedAt,
+            })),
+            projectSiblingTasks: siblingTasks.map((t: any) => ({
+              id: t.id,
+              titel: t.titel,
+              status: t.status,
+              assignedTo: t.zugewiesenAn ? (assigneeNames[t.zugewiesenAn] ?? t.zugewiesenAn) : null,
+            })),
+            kgFacts,
+            activeColleagues: activeOthers.map((r: any) => ({
+              name: r.name,
+              rolle: r.rolle,
+              currentTask: r.taskTitel,
+            })),
+          };
+          console.log(`  🔗 OpenClaw enrichment: ${recentDone.length} recent outputs, ${siblingTasks.length} sibling tasks, ${kgFacts.length} KG facts, ${activeOthers.length} active colleagues`);
+        } catch (err: any) {
+          console.warn(`  ⚠️ OpenClaw enrichment failed (non-critical): ${err.message}`);
+        }
+      }
+      // ──────────────────────────────────────────────────────────────────────
 
       // Execute via adapter registry — pass workspace + system prompt + verbindungsTyp
       const result = await adapterRegistry.executeTask(adapterTask, adapterContext, {

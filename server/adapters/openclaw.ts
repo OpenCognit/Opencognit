@@ -147,29 +147,66 @@ export class OpenClawAdapter implements Adapter {
     const waitTimeoutMs = timeoutMs;
 
     // ── Build wake payload (mirrors Paperclip protocol) ────────────────────────
+    const e = context.openclawEnrichment;
+
+    const messageParts: string[] = [
+      `Aufgabe: ${task.titel}`,
+      task.beschreibung ? `\nBeschreibung:\n${task.beschreibung}` : '',
+      `\nPriorität: ${task.prioritaet}`,
+      context.companyContext.ziel ? `\nUnternehmensziel: ${context.companyContext.ziel}` : '',
+      context.agentContext.gedaechtnis ? `\n[GEDÄCHTNIS]\n${context.agentContext.gedaechtnis}` : '',
+    ];
+
+    // ── Enrichment: situational awareness ──────────────────────────────────────
+    if (e) {
+      if (e.recentOutputs.length > 0) {
+        messageParts.push(
+          `\n[MEINE LETZTEN ABGESCHLOSSENEN AUFGABEN]`,
+          ...e.recentOutputs.map(r => `• ${r.taskTitel} (${r.completedAt.slice(0, 10)})\n  ${r.output.slice(0, 400)}`),
+        );
+      }
+      if (e.projectSiblingTasks.length > 0) {
+        messageParts.push(
+          `\n[WEITERE AUFGABEN IN DIESEM PROJEKT]`,
+          ...e.projectSiblingTasks.map(t =>
+            `• [${t.status.toUpperCase()}] ${t.titel}${t.assignedTo ? ` → ${t.assignedTo}` : ' (unassigned)'}`
+          ),
+        );
+      }
+      if (e.kgFacts.length > 0) {
+        messageParts.push(
+          `\n[RELEVANTES WISSEN AUS OPENCOGNIT]`,
+          ...e.kgFacts.map(f => `• ${f.subject} ${f.predicate} ${f.object}`),
+        );
+      }
+      if (e.activeColleagues.length > 0) {
+        messageParts.push(
+          `\n[TEAM — GERADE AKTIV]`,
+          ...e.activeColleagues.map(c => `• ${c.name} (${c.rolle}): arbeitet an „${c.currentTask}"`),
+        );
+      }
+    }
+    // ──────────────────────────────────────────────────────────────────────────
+
     const wakePayload: Record<string, unknown> = {
       runId:      config.runId,
       agentId:    config.expertId,
       companyId:  config.unternehmenId,
       taskId:     task.id,
       wakeReason: 'opencognit_task',
-      message: [
-        `Aufgabe: ${task.titel}`,
-        task.beschreibung ? `\nBeschreibung:\n${task.beschreibung}` : '',
-        `\nPriorität: ${task.prioritaet}`,
-        context.companyContext.ziel ? `\nUnternehmensziel: ${context.companyContext.ziel}` : '',
-        context.agentContext.gedaechtnis ? `\n[GEDÄCHTNIS]\n${context.agentContext.gedaechtnis}` : '',
-      ].filter(Boolean).join(''),
+      message:    messageParts.filter(Boolean).join(''),
       sessionKey: `opencognit:task:${task.id}`,
       idempotencyKey: config.runId,
       opencognit: {
-        runId:       config.runId,
-        taskId:      task.id,
-        agentId:     config.expertId,
-        companyId:   config.unternehmenId,
-        agentName:   context.agentContext.name,
-        agentRolle:  context.agentContext.rolle,
-        companyName: context.companyContext.name,
+        runId:        config.runId,
+        taskId:       task.id,
+        agentId:      config.expertId,
+        companyId:    config.unternehmenId,
+        agentName:    context.agentContext.name,
+        agentRolle:   context.agentContext.rolle,
+        companyName:  context.companyContext.name,
+        // Structured enrichment for OpenClaw systems that can parse it
+        enrichment: e ?? null,
       },
     };
 

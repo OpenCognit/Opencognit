@@ -75,6 +75,20 @@ export interface AdapterContext {
     /** Memory-Kontext (optional, wird beim Wake-Up geladen) */
     gedaechtnis?: string;
   };
+  /**
+   * Rich situational context assembled specifically for OpenClaw agents.
+   * Only populated when verbindungsTyp === 'openclaw'.
+   */
+  openclawEnrichment?: {
+    /** Last 3 completed task outputs by this agent */
+    recentOutputs: Array<{ taskTitel: string; output: string; completedAt: string }>;
+    /** Other open tasks in the same project (so the agent sees the full scope) */
+    projectSiblingTasks: Array<{ id: string; titel: string; status: string; assignedTo: string | null }>;
+    /** Relevant Knowledge Graph facts from OpenCognit matching the current task */
+    kgFacts: Array<{ subject: string; predicate: string; object: string }>;
+    /** Team members currently active/running on related work */
+    activeColleagues: Array<{ name: string; rolle: string; currentTask: string }>;
+  };
 }
 
 export interface Adapter {
