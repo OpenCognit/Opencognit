@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Users, ListTodo, Building2,
@@ -18,6 +18,26 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
   const de = language === 'de';
   const approvalCount = useApprovalCount();
   const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+
+  // New-user state: no agents created yet
+  const [hasAgents, setHasAgents] = useState(() => localStorage.getItem('oc_has_agents') === '1');
+
+  // Listen for localStorage changes from Dashboard (e.g. agent created in another tab or after reload)
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'oc_has_agents') setHasAgents(e.newValue === '1');
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  // Poll once per minute so Sidebar catches up when Dashboard updates the same tab
+  useEffect(() => {
+    const id = setInterval(() => {
+      setHasAgents(localStorage.getItem('oc_has_agents') === '1');
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   // Collapsible sections state (persisted in localStorage)
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => {
@@ -184,6 +204,8 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
       <nav style={{ flex: 1, padding: '1rem', overflowY: 'auto', position: 'relative', zIndex: 1 }}>
         {navItems.map((section) => {
           const isCollapsed = !collapsed && collapsedSections.has(section.section);
+          const isSetupSection = section.section === 'Einrichten' || section.section === 'Setup';
+          const setupHighlight = isSetupSection && !hasAgents;
           return (
           <div key={section.section} style={{ marginBottom: '1.25rem' }}>
             {!collapsed && (
@@ -194,30 +216,53 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   width: '100%',
-                  background: 'none',
-                  border: 'none',
+                  background: setupHighlight ? 'rgba(35,205,202,0.05)' : 'none',
+                  border: setupHighlight ? '1px solid rgba(35,205,202,0.15)' : '1px solid transparent',
+                  borderRadius: setupHighlight ? '8px' : '0',
                   cursor: 'pointer',
-                  padding: '0 0.5rem',
+                  padding: setupHighlight ? '0.3rem 0.5rem' : '0 0.5rem',
                   marginBottom: '0.5rem',
                   gap: '0.25rem',
                 }}
               >
-                <span style={{
-                  fontSize: '0.6875rem',
-                  fontWeight: 600,
-                  color: '#71717a',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.06em',
-                }}>{section.section}</span>
-                <ChevronDown
-                  size={12}
-                  style={{
-                    color: '#71717a',
-                    flexShrink: 0,
-                    transition: 'transform 0.2s ease',
-                    transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-                  }}
-                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  {setupHighlight && (
+                    <div style={{
+                      width: 6, height: 6, borderRadius: '50%',
+                      background: '#23CDCB',
+                      boxShadow: '0 0 6px #23CDCB',
+                      animation: 'sidebar-float 2s ease-in-out infinite',
+                      flexShrink: 0,
+                    }} />
+                  )}
+                  <span style={{
+                    fontSize: '0.6875rem',
+                    fontWeight: 600,
+                    color: setupHighlight ? '#23CDCB' : '#71717a',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                  }}>{section.section}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                  {setupHighlight && (
+                    <span style={{
+                      fontSize: '0.5625rem', fontWeight: 700,
+                      color: '#23CDCB', letterSpacing: '0.04em',
+                      opacity: 0.75,
+                    }}>
+                      {de ? 'START' : 'START'}
+                    </span>
+                  )}
+                  <ChevronDown
+                    size={12}
+                    style={{
+                      color: setupHighlight ? '#23CDCB' : '#71717a',
+                      flexShrink: 0,
+                      transition: 'transform 0.2s ease',
+                      transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                    }}
+                  />
+                </div>
               </button>
             )}
             <div style={{

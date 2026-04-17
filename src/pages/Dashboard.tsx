@@ -1997,6 +1997,13 @@ export function Dashboard() {
   // Show wizard banner when no agents exist
   const isFirstRun = !loading && data && (data.experten?.gesamt === 0);
 
+  // Sync agent state to localStorage so Sidebar can highlight Setup section for new users
+  useEffect(() => {
+    if (data) {
+      localStorage.setItem('oc_has_agents', data.experten.gesamt > 0 ? '1' : '0');
+    }
+  }, [data]);
+
   if (!aktivesUnternehmen) return null;
 
   if (loading) return (
