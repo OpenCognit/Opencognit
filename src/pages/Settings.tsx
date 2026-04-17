@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Save, RotateCcw, Globe, Shield, Bell, Database, Loader2, Key, Sparkles, Download, Upload, CheckCircle2, AlertCircle, Trash2, AlertTriangle, FolderOpen, Send, Terminal, RefreshCw, Zap, Plus, X } from 'lucide-react';
+import { Save, RotateCcw, Globe, Shield, Bell, Database, Loader2, Key, Sparkles, Download, Upload, CheckCircle2, AlertCircle, Trash2, AlertTriangle, FolderOpen, Send, Terminal, RefreshCw, Zap, Plus, X, ChevronDown } from 'lucide-react';
 
 interface CustomConnection {
   id: string;
@@ -104,6 +104,11 @@ export function Settings() {
   const [openclawTokenLoading, setOpenclawTokenLoading] = useState(false);
   const [openclawAgents, setOpenclawAgents] = useState<any[]>([]);
   const [openclawTokenCopied, setOpenclawTokenCopied] = useState(false);
+
+  // Collapsible sections
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggleSection = (key: string) =>
+    setCollapsed(prev => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s; });
 
   const checkWorkDir = async (dir: string) => {
     if (!aktivesUnternehmen || !dir.trim()) return;
@@ -497,11 +502,14 @@ export function Settings() {
               border: '1px solid rgba(255,255,255,0.09)',
               animation: 'fadeInUp 0.5s ease-out', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-                <Globe size={18} style={{ color: '#23CDCB' }} />
-                <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>{i18n.t.einstellungen.sectionGeneral}</h2>
+              <div onClick={() => toggleSection('general')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none', marginBottom: collapsed.has('general') ? 0 : '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <Globe size={18} style={{ color: '#23CDCB' }} />
+                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>{i18n.t.einstellungen.sectionGeneral}</h2>
+                </div>
+                <ChevronDown size={16} style={{ color: '#52525b', transition: 'transform 0.2s', transform: collapsed.has('general') ? 'rotate(-90deg)' : 'rotate(0deg)', flexShrink: 0 }} />
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {!collapsed.has('general') && <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, color: '#d4d4d8', marginBottom: '0.5rem' }}>
                     {i18n.t.einstellungen.language}
@@ -530,7 +538,105 @@ export function Settings() {
                     style={{ maxWidth: 300 }}
                   />
                 </div>
+              </div>}
+            </div>
+
+            {/* OpenClaw Gateway */}
+            <div className="glass-card" style={{
+              padding: '1.5rem',
+              background: 'rgba(255,255,255,0.04)',
+              backdropFilter: 'blur(24px) saturate(160%)',
+              borderRadius: '20px',
+              border: openclawToken ? '1px solid rgba(35,205,203,0.3)' : '1px solid rgba(255,255,255,0.08)',
+              animation: 'fadeInUp 0.5s ease-out 0.05s both',
+              position: 'relative', overflow: 'hidden',
+            }}>
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, transparent, #23CDCB, transparent)' }} />
+
+              <div onClick={() => toggleSection('openclaw')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none', marginBottom: collapsed.has('openclaw') ? 0 : '1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(35,205,203,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Zap size={18} style={{ color: '#23CDCB' }} />
+                  </div>
+                  <div>
+                    <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>{i18n.t.einstellungen.openclawGatewayTitle}</h2>
+                    <p style={{ fontSize: '0.75rem', color: '#71717a' }}>{i18n.t.einstellungen.openclawGatewayDesc}</p>
+                  </div>
+                </div>
+                <ChevronDown size={16} style={{ color: '#52525b', transition: 'transform 0.2s', transform: collapsed.has('openclaw') ? 'rotate(-90deg)' : 'rotate(0deg)', flexShrink: 0 }} />
               </div>
+
+              {!collapsed.has('openclaw') && <>{/* Connection Token */}
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, color: '#d4d4d8', marginBottom: '0.5rem' }}>
+                  {i18n.t.einstellungen.openclawConnectionToken}
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input
+                    readOnly
+                    value={openclawToken}
+                    placeholder={i18n.t.einstellungen.openclawTokenPlaceholder}
+                    style={{
+                      flex: 1, padding: '0.625rem 0.875rem', fontFamily: 'monospace', fontSize: '0.8rem',
+                      backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                      borderRadius: '12px', color: '#23CDCB', outline: 'none',
+                    }}
+                  />
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(openclawToken); setOpenclawTokenCopied(true); setTimeout(() => setOpenclawTokenCopied(false), 2000); }}
+                    disabled={!openclawToken}
+                    title={i18n.t.einstellungen.openclawCopy}
+                    style={{ padding: '0.625rem 0.875rem', borderRadius: '12px', cursor: openclawToken ? 'pointer' : 'not-allowed', background: openclawTokenCopied ? 'rgba(35,205,203,0.2)' : 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: openclawTokenCopied ? '#23CDCB' : '#d4d4d8', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                  >
+                    {openclawTokenCopied ? <CheckCircle2 size={14} /> : i18n.t.einstellungen.openclawCopy}
+                  </button>
+                  <button
+                    onClick={regenerateOpenclawToken}
+                    disabled={openclawTokenLoading}
+                    title={i18n.t.einstellungen.openclawRegenerate}
+                    style={{ padding: '0.625rem 0.875rem', borderRadius: '12px', cursor: 'pointer', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a', fontSize: '0.8rem' }}
+                  >
+                    {openclawTokenLoading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={14} />}
+                  </button>
+                </div>
+                <p style={{ fontSize: '0.725rem', color: '#71717a', marginTop: '0.5rem' }}>
+                  {i18n.t.einstellungen.openclawTokenHint}
+                </p>
+              </div>
+
+              {/* How it works */}
+              <div style={{ padding: '1rem', borderRadius: '14px', background: 'rgba(35,205,203,0.05)', border: '1px solid rgba(35,205,203,0.12)', marginBottom: openclawAgents.length > 0 ? '1.25rem' : 0, fontSize: '0.75rem', color: '#a1a1aa' }}>
+                <div style={{ fontWeight: 600, color: '#23CDCB', marginBottom: '0.5rem' }}>{i18n.t.einstellungen.openclawHowItWorks}</div>
+                <ol style={{ margin: 0, paddingLeft: '1.25rem', lineHeight: 1.7 }}>
+                  <li>{i18n.t.einstellungen.openclawStep1}</li>
+                  <li>{i18n.t.einstellungen.openclawStep2}</li>
+                  <li>{i18n.t.einstellungen.openclawStep3}</li>
+                  <li>{i18n.t.einstellungen.openclawStep4}</li>
+                </ol>
+              </div>
+
+              {/* Connected Agents */}
+              {openclawAgents.length > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#d4d4d8', marginBottom: '0.75rem' }}>
+                    {i18n.t.einstellungen.openclawConnectedAgents} ({openclawAgents.length})
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {openclawAgents.map((agent: any) => (
+                      <div key={agent.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 1rem', borderRadius: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                        <div>
+                          <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#ffffff' }}>{agent.name}</div>
+                          <div style={{ fontSize: '0.75rem', color: '#71717a' }}>{agent.rolle} · {agent.gatewayUrl || i18n.t.einstellungen.openclawNoGateway}</div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.7rem', color: '#23CDCB', background: 'rgba(35,205,203,0.1)', padding: '0.25rem 0.625rem', borderRadius: '99px' }}>
+                          <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#23CDCB' }} />
+                          OpenClaw
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}</>}
             </div>
 
             {/* Claude Code Status */}
@@ -542,10 +648,11 @@ export function Settings() {
               border: '1px solid rgba(255,255,255,0.09)',
               animation: 'fadeInUp 0.5s ease-out 0.05s both',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: collapsed.has('claude') ? 0 : '1rem' }}>
+                <div onClick={() => toggleSection('claude')} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, cursor: 'pointer', userSelect: 'none' }}>
                   <Terminal size={18} style={{ color: '#23CDCB' }} />
                   <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>{i18n.t.einstellungen.claudeCodeTitle}</h2>
+                  <ChevronDown size={16} style={{ color: '#52525b', transition: 'transform 0.2s', transform: collapsed.has('claude') ? 'rotate(-90deg)' : 'rotate(0deg)' }} />
                 </div>
                 <button
                   type="button"
@@ -563,7 +670,7 @@ export function Settings() {
                 </button>
               </div>
 
-              {claudeStatus.loading ? (
+              {!collapsed.has('claude') && (claudeStatus.loading ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#64748b', fontSize: '0.875rem' }}>
                   <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> {i18n.t.einstellungen.checkingStatus}
                 </div>
@@ -578,8 +685,8 @@ export function Settings() {
                     )}
                     <span style={{ fontSize: '0.875rem', color: claudeStatus.installed ? '#d4d4d8' : '#ef4444' }}>
                       {claudeStatus.installed
-                        ? `Claude Code CLI ${i18n.language === 'de' ? 'installiert' : 'installed'} — ${claudeStatus.version}`
-                        : (i18n.language === 'de' ? 'Claude Code CLI nicht gefunden' : 'Claude Code CLI not found')}
+                        ? `Claude Code CLI ${i18n.t.einstellungen.cliInstalled} — ${claudeStatus.version}`
+                        : `Claude Code CLI ${i18n.t.einstellungen.cliNotFound}`}
                     </span>
                   </div>
 
@@ -592,15 +699,15 @@ export function Settings() {
                     )}
                     <span style={{ fontSize: '0.875rem', color: claudeStatus.authenticated ? '#d4d4d8' : '#94a3b8' }}>
                       {claudeStatus.authenticated
-                        ? <>{i18n.language === 'de' ? 'Verbunden' : 'Connected'} · <span style={{
+                        ? <>{i18n.t.einstellungen.connected} · <span style={{
                             fontWeight: 700,
                             color: claudeStatus.subscriptionType === 'max' ? '#23CDCB'
                                  : claudeStatus.subscriptionType === 'pro' ? '#818cf8' : '#94a3b8',
                             textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: 1,
                           }}>{claudeStatus.subscriptionType}</span></>
                         : claudeStatus.tokenExpired
-                          ? (i18n.language === 'de' ? 'Session abgelaufen — bitte neu einloggen' : 'Session expired — please log in again')
-                          : (i18n.language === 'de' ? 'Nicht eingeloggt' : 'Not logged in')}
+                          ? i18n.t.einstellungen.sessionExpired
+                          : i18n.t.einstellungen.notLoggedIn}
                     </span>
                   </div>
 
@@ -611,7 +718,7 @@ export function Settings() {
                       background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)',
                       borderRadius: 10, fontSize: '0.8125rem', color: '#fca5a5',
                     }}>
-                      <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>{i18n.language === 'de' ? 'Installation:' : 'Installation:'}</p>
+                      <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>Installation:</p>
                       <code style={{ display: 'block', padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.3)', borderRadius: 6, fontFamily: 'monospace', color: '#e2e8f0', marginBottom: 8 }}>
                         npm install -g @anthropic-ai/claude-code
                       </code>
@@ -628,31 +735,19 @@ export function Settings() {
                       background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)',
                       borderRadius: 10, fontSize: '0.8125rem', color: '#fcd34d',
                     }}>
-                      <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>{i18n.language === 'de' ? 'Einmalig einloggen:' : 'Log in once:'}</p>
+                      <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>{i18n.t.einstellungen.loginOnce}</p>
                       <code style={{ display: 'block', padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.3)', borderRadius: 6, fontFamily: 'monospace', color: '#e2e8f0', marginBottom: 8 }}>claude</code>
-                      <p style={{ margin: 0 }}>
-                        {i18n.language === 'de'
-                          ? 'Führe diesen Befehl in deinem Terminal aus. Es öffnet sich ein Browser um dich einzuloggen. Danach hier auf "Aktualisieren" klicken.'
-                          : 'Run this command in your terminal. A browser will open to log you in. Then click "Refresh" here.'}
-                      </p>
+                      <p style={{ margin: 0 }}>{i18n.t.einstellungen.loginInstructions}</p>
                     </div>
                   )}
                   {claudeStatus.authenticated && claudeStatus.subscriptionType !== 'max' && claudeStatus.subscriptionType !== 'pro' && (
-                    <p style={{ margin: 0, fontSize: '0.8rem', color: '#71717a' }}>
-                      {i18n.language === 'de'
-                        ? '💡 Für Agenten-Aufgaben empfehlen wir das Pro/Max-Abo (kein API-Schlüssel nötig).'
-                        : '💡 For agent tasks we recommend a Pro/Max plan (no API key needed).'}
-                    </p>
+                    <p style={{ margin: 0, fontSize: '0.8rem', color: '#71717a' }}>{i18n.t.einstellungen.proMaxHint}</p>
                   )}
                   {claudeStatus.authenticated && (
-                    <p style={{ margin: 0, fontSize: '0.8rem', color: '#71717a' }}>
-                      {i18n.language === 'de'
-                        ? 'Agenten mit Verbindungstyp "Claude Code CLI" nutzen automatisch diesen Account.'
-                        : 'Agents with connection type "Claude Code CLI" automatically use this account.'}
-                    </p>
+                    <p style={{ margin: 0, fontSize: '0.8rem', color: '#71717a' }}>{i18n.t.einstellungen.autoUseAccount}</p>
                   )}
                 </div>
-              )}
+              ))}
             </div>
 
             {/* Gemini CLI — only shown when installed */}
@@ -674,14 +769,10 @@ export function Settings() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <CheckCircle2 size={16} style={{ color: '#22c55e', flexShrink: 0 }} />
                   <span style={{ fontSize: '0.875rem', color: '#d4d4d8' }}>
-                    {i18n.language === 'de' ? 'Gemini CLI installiert' : 'Gemini CLI installed'} — {cliStatus.gemini.version}
+                    Gemini CLI {i18n.t.einstellungen.cliInstalled} — {cliStatus.gemini.version}
                   </span>
                 </div>
-                <p style={{ margin: '0.75rem 0 0', fontSize: '0.8rem', color: '#71717a' }}>
-                  {i18n.language === 'de'
-                    ? 'Agenten mit Verbindungstyp "Gemini CLI" nutzen automatisch diesen Account.'
-                    : 'Agents with connection type "Gemini CLI" automatically use this account.'}
-                </p>
+                <p style={{ margin: '0.75rem 0 0', fontSize: '0.8rem', color: '#71717a' }}>{i18n.t.einstellungen.geminiAutoUse}</p>
               </div>
             )}
 
@@ -704,14 +795,10 @@ export function Settings() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <CheckCircle2 size={16} style={{ color: '#22c55e', flexShrink: 0 }} />
                   <span style={{ fontSize: '0.875rem', color: '#d4d4d8' }}>
-                    {i18n.language === 'de' ? 'Codex CLI installiert' : 'Codex CLI installed'} — {cliStatus.codex.version}
+                    Codex CLI {i18n.t.einstellungen.cliInstalled} — {cliStatus.codex.version}
                   </span>
                 </div>
-                <p style={{ margin: '0.75rem 0 0', fontSize: '0.8rem', color: '#71717a' }}>
-                  {i18n.language === 'de'
-                    ? 'Agenten mit Verbindungstyp "Codex CLI" nutzen automatisch diesen Account.'
-                    : 'Agents with connection type "Codex CLI" automatically use this account.'}
-                </p>
+                <p style={{ margin: '0.75rem 0 0', fontSize: '0.8rem', color: '#71717a' }}>{i18n.t.einstellungen.codexAutoUse}</p>
               </div>
             )}
 
@@ -724,11 +811,14 @@ export function Settings() {
               border: '1px solid rgba(255,255,255,0.09)',
               animation: 'fadeInUp 0.5s ease-out 0.1s both',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-                <Key size={18} style={{ color: '#23CDCB' }} />
-                <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>{i18n.t.einstellungen.sectionApiKeys}</h2>
+              <div onClick={() => toggleSection('apikeys')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none', marginBottom: collapsed.has('apikeys') ? 0 : '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <Key size={18} style={{ color: '#23CDCB' }} />
+                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>{i18n.t.einstellungen.sectionApiKeys}</h2>
+                </div>
+                <ChevronDown size={16} style={{ color: '#52525b', transition: 'transform 0.2s', transform: collapsed.has('apikeys') ? 'rotate(-90deg)' : 'rotate(0deg)', flexShrink: 0 }} />
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {!collapsed.has('apikeys') && <><div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {([
                   { label: 'Anthropic API Key', placeholder: 'sk-ant-api03-...', hint: i18n.t.einstellungen.anthropicHint, type: 'password', value: anthropicKey, onChange: setAnthropicKey },
                   { label: 'OpenAI API Key', placeholder: 'sk-proj-...', hint: i18n.t.einstellungen.openaiHint, type: 'password', value: openaiKey, onChange: setOpenaiKey },
@@ -832,9 +922,9 @@ export function Settings() {
                 {openrouterKey && (
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, color: '#d4d4d8', marginBottom: '0.5rem' }}>
-                      Standard-Modell (OpenRouter)
+                      {i18n.t.einstellungen.standardModelLabel}
                       {defaultModel && defaultModel !== 'openrouter/auto' && (
-                        <span style={{ marginLeft: '0.5rem', fontSize: '0.6875rem', color: '#22c55e', fontWeight: 600 }}>✓ Gesetzt</span>
+                        <span style={{ marginLeft: '0.5rem', fontSize: '0.6875rem', color: '#22c55e', fontWeight: 600 }}>{i18n.t.einstellungen.standardModelSet}</span>
                       )}
                     </label>
                     <select
@@ -856,7 +946,7 @@ export function Settings() {
                       }}
                     >
                       <option value="openrouter/auto" style={{ backgroundColor: '#18181b', color: '#ffffff' }}>
-                        {loadingOrModels ? '⏳ Lade Modelle...' : '🤖 Auto Router (Standard)'}
+                        {loadingOrModels ? `⏳ ${i18n.t.einstellungen.loadingModels}` : i18n.t.einstellungen.autoRouter}
                       </option>
                       {orModels.map(m => (
                         <option key={m.id} value={m.id} style={{ backgroundColor: '#18181b', color: '#ffffff' }}>
@@ -865,7 +955,7 @@ export function Settings() {
                       ))}
                     </select>
                     <p style={{ fontSize: '0.75rem', color: '#71717a', marginTop: '0.375rem' }}>
-                      Wird verwendet wenn ein Agent kein spezifisches Modell konfiguriert hat.
+                      {i18n.t.einstellungen.standardModelHint}
                     </p>
                   </div>
                 )}
@@ -878,6 +968,7 @@ export function Settings() {
                 ['ollama_base_url', ollamaUrl],
                 ['custom_connections', JSON.stringify(customConnections)],
               ])} />
+              </>}
             </div>
 
             {/* Budget & Kontrolle */}
@@ -889,11 +980,14 @@ export function Settings() {
               border: '1px solid rgba(255,255,255,0.09)',
               animation: 'fadeInUp 0.5s ease-out 0.2s both',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-                <Shield size={18} style={{ color: '#eab308' }} />
-                <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>{i18n.t.einstellungen.sectionBudget}</h2>
+              <div onClick={() => toggleSection('budget')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none', marginBottom: collapsed.has('budget') ? 0 : '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <Shield size={18} style={{ color: '#eab308' }} />
+                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>{i18n.t.einstellungen.sectionBudget}</h2>
+                </div>
+                <ChevronDown size={16} style={{ color: '#52525b', transition: 'transform 0.2s', transform: collapsed.has('budget') ? 'rotate(-90deg)' : 'rotate(0deg)', flexShrink: 0 }} />
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {!collapsed.has('budget') && <><div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, color: '#d4d4d8', marginBottom: '0.5rem' }}>
                     {i18n.t.einstellungen.budgetAutoPause}
@@ -945,6 +1039,7 @@ export function Settings() {
                 ['approval_required', String(approvalRequired)],
                 ['strategy_approval', String(strategyApproval)],
               ])} />
+              </>}
             </div>
 
             {/* Benachrichtigungen */}
@@ -956,11 +1051,14 @@ export function Settings() {
               border: '1px solid rgba(255,255,255,0.09)',
               animation: 'fadeInUp 0.5s ease-out 0.3s both',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-                <Bell size={18} style={{ color: '#3b82f6' }} />
-                <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>{i18n.t.einstellungen.sectionNotifications}</h2>
+              <div onClick={() => toggleSection('notifs')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none', marginBottom: collapsed.has('notifs') ? 0 : '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <Bell size={18} style={{ color: '#3b82f6' }} />
+                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>{i18n.t.einstellungen.sectionNotifications}</h2>
+                </div>
+                <ChevronDown size={16} style={{ color: '#52525b', transition: 'transform 0.2s', transform: collapsed.has('notifs') ? 'rotate(-90deg)' : 'rotate(0deg)', flexShrink: 0 }} />
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {!collapsed.has('notifs') && <><div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {([
                   { key: 'notifyApprovals', value: notifyApprovals, setter: setNotifyApprovals },
                   { key: 'notifyBudget', value: notifyBudget, setter: setNotifyBudget },
@@ -979,6 +1077,7 @@ export function Settings() {
                 ['notify_work_cycle', String(notifyWorkCycle)],
                 ['notify_errors', String(notifyErrors)],
               ])} />
+              </>}
             </div>
 
             {/* Projekt-Arbeitsverzeichnis */}
@@ -991,13 +1090,16 @@ export function Settings() {
                 border: workDirStatus?.writable ? '1px solid rgba(34,197,94,0.3)' : workDirStatus?.exists === false ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(255, 255, 255, 0.08)',
                 animation: 'fadeInUp 0.5s ease-out 0.35s both',
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-                  <FolderOpen size={18} style={{ color: '#f59e0b' }} />
-                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>
-                    {i18n.t.einstellungen.sectionWorkDir}
-                  </h2>
+                <div onClick={() => toggleSection('workdir')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none', marginBottom: collapsed.has('workdir') ? 0 : '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <FolderOpen size={18} style={{ color: '#f59e0b' }} />
+                    <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>
+                      {i18n.t.einstellungen.sectionWorkDir}
+                    </h2>
+                  </div>
+                  <ChevronDown size={16} style={{ color: '#52525b', transition: 'transform 0.2s', transform: collapsed.has('workdir') ? 'rotate(-90deg)' : 'rotate(0deg)', flexShrink: 0 }} />
                 </div>
-                <p style={{ fontSize: '0.8125rem', color: '#71717a', marginBottom: '1rem' }}>
+                {!collapsed.has('workdir') && <><p style={{ fontSize: '0.8125rem', color: '#71717a', marginBottom: '1rem' }}>
                   {i18n.t.einstellungen.workDirDesc}
                 </p>
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -1055,7 +1157,7 @@ export function Settings() {
                     }}
                   >
                     {openingFolder ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <FolderOpen size={14} />}
-                    Öffnen
+                    {i18n.t.einstellungen.workDirOpen}
                   </button>
                 </div>
                 {workDirStatus && (
@@ -1080,6 +1182,7 @@ export function Settings() {
                   {i18n.t.einstellungen.workDirHint}
                 </p>
               <SectionSaveBtn id="workspace" onClick={() => saveSection('workspace', [], saveWorkDir)} />
+              </>}
               </div>
             )}
 
@@ -1097,12 +1200,12 @@ export function Settings() {
               {/* Blue top glow */}
               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, transparent, #0088cc, transparent)' }} />
               
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <div style={{ 
-                    width: '32px', height: '32px', borderRadius: '8px', 
-                    background: 'rgba(0, 136, 204, 0.1)', display: 'flex', 
-                    alignItems: 'center', justifyContent: 'center' 
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: collapsed.has('telegram') ? 0 : '1.5rem' }}>
+                <div onClick={() => toggleSection('telegram')} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, cursor: 'pointer', userSelect: 'none' }}>
+                  <div style={{
+                    width: '32px', height: '32px', borderRadius: '8px',
+                    background: 'rgba(0, 136, 204, 0.1)', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center'
                   }}>
                     <Globe size={18} style={{ color: '#0088cc' }} />
                   </div>
@@ -1112,6 +1215,7 @@ export function Settings() {
                     </h2>
                     <p style={{ fontSize: '0.75rem', color: '#71717a' }}>{i18n.t.einstellungen.telegramDesc}</p>
                   </div>
+                  <ChevronDown size={16} style={{ color: '#52525b', transition: 'transform 0.2s', transform: collapsed.has('telegram') ? 'rotate(-90deg)' : 'rotate(0deg)' }} />
                 </div>
 
                 <button
@@ -1151,11 +1255,11 @@ export function Settings() {
                 </button>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {!collapsed.has('telegram') && <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.25rem' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, color: '#d4d4d8', marginBottom: '0.5rem' }}>
-                      Bot Token
+                      {i18n.t.einstellungen.telegramBotToken}
                     </label>
                     <input
                       type="password"
@@ -1170,12 +1274,13 @@ export function Settings() {
                       }}
                     />
                     <p style={{ fontSize: '0.725rem', color: '#71717a', marginTop: '0.5rem' }}>
-                      Erstelle einen Bot über <a href="https://t.me/botfather" target="_blank" rel="noreferrer" style={{ color: '#0088cc', textDecoration: 'none' }}>@BotFather</a>.
+                      {i18n.t.einstellungen.telegramBotCreation.replace('@BotFather', '')}
+                      <a href="https://t.me/botfather" target="_blank" rel="noreferrer" style={{ color: '#0088cc', textDecoration: 'none' }}>@BotFather</a>.
                     </p>
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, color: '#d4d4d8', marginBottom: '0.5rem' }}>
-                      Chat ID
+                      {i18n.t.einstellungen.telegramChatId}
                     </label>
                     <input
                       placeholder="123456789"
@@ -1189,31 +1294,32 @@ export function Settings() {
                       }}
                     />
                     <p style={{ fontSize: '0.725rem', color: '#71717a', marginTop: '0.5rem' }}>
-                      Finde deine ID über <a href="https://t.me/userinfobot" target="_blank" rel="noreferrer" style={{ color: '#0088cc', textDecoration: 'none' }}>@userinfobot</a>.
+                      {i18n.t.einstellungen.telegramChatIdHint.replace('@userinfobot', '')}
+                      <a href="https://t.me/userinfobot" target="_blank" rel="noreferrer" style={{ color: '#0088cc', textDecoration: 'none' }}>@userinfobot</a>.
                     </p>
                   </div>
                 </div>
 
                 {aktivesUnternehmen && (
                   <div style={{
-                    padding: '1rem', borderRadius: '14px', 
-                    background: 'linear-gradient(135deg, rgba(0,136,204,0.08) 0%, rgba(0,136,204,0.03) 100%)', 
+                    padding: '1rem', borderRadius: '14px',
+                    background: 'linear-gradient(135deg, rgba(0,136,204,0.08) 0%, rgba(0,136,204,0.03) 100%)',
                     border: '1px solid rgba(0,136,204,0.15)',
                     fontSize: '0.75rem', color: '#d4d4d8'
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
                       <AlertCircle size={14} style={{ color: '#0088cc' }} />
-                      <strong style={{ color: '#ffffff' }}>Webhook URL (Optional)</strong>
+                      <strong style={{ color: '#ffffff' }}>{i18n.t.einstellungen.telegramWebhookTitle}</strong>
                     </div>
-                    <div style={{ 
-                      background: 'rgba(0,0,0,0.2)', padding: '0.5rem', 
+                    <div style={{
+                      background: 'rgba(0,0,0,0.2)', padding: '0.5rem',
                       borderRadius: '8px', fontFamily: 'monospace', color: '#0088cc',
                       wordBreak: 'break-all', marginBottom: '0.5rem'
                     }}>
                       {window.location.origin}/api/webhooks/telegram/{aktivesUnternehmen.id}
                     </div>
                     <p style={{ fontSize: '0.6875rem', lineHeight: 1.4, color: '#71717a' }}>
-                      Nutze diese URL zum Empfangen von Nachrichten, falls der Polling-Modus des Servers deaktiviert ist.
+                      {i18n.t.einstellungen.telegramWebhookHint}
                     </p>
                   </div>
                 )}
@@ -1225,14 +1331,14 @@ export function Settings() {
                 }}>
                   <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 10px #22c55e' }} />
                   <span style={{ fontSize: '0.75rem', fontWeight: 500, color: '#d4d4d8' }}>
-                    Gateway Status: <span style={{ color: '#22c55e' }}>Aktiv</span>
+                    {i18n.t.einstellungen.telegramGatewayStatus} <span style={{ color: '#22c55e' }}>{i18n.t.einstellungen.telegramGatewayActive}</span>
                   </span>
                 </div>
-              </div>
-              <SectionSaveBtn id="telegram" onClick={() => saveSection('telegram', [
+              </div>}
+              {!collapsed.has('telegram') && <SectionSaveBtn id="telegram" onClick={() => saveSection('telegram', [
                 ['telegram_bot_token', telegramBotToken],
                 ['telegram_chat_id', telegramChatId],
-              ])} />
+              ])} />}
             </div>
 
             {/* Datenbank */}
@@ -1244,11 +1350,14 @@ export function Settings() {
               border: '1px solid rgba(255,255,255,0.09)',
               animation: 'fadeInUp 0.5s ease-out 0.4s both',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-                <Database size={18} style={{ color: '#22c55e' }} />
-                <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>{i18n.t.einstellungen.sectionDatabase}</h2>
+              <div onClick={() => toggleSection('database')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none', marginBottom: collapsed.has('database') ? 0 : '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <Database size={18} style={{ color: '#22c55e' }} />
+                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>{i18n.t.einstellungen.sectionDatabase}</h2>
+                </div>
+                <ChevronDown size={16} style={{ color: '#52525b', transition: 'transform 0.2s', transform: collapsed.has('database') ? 'rotate(-90deg)' : 'rotate(0deg)', flexShrink: 0 }} />
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {!collapsed.has('database') && <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
                   <span style={{ color: '#71717a' }}>{i18n.t.einstellungen.dbType}</span>
                   <span style={{
@@ -1290,7 +1399,7 @@ export function Settings() {
                     {i18n.t.einstellungen.dbResetHint}
                   </p>
                 </div>
-              </div>
+              </div>}
             </div>
 
             {/* Export / Import */}
@@ -1302,14 +1411,17 @@ export function Settings() {
               border: '1px solid rgba(255,255,255,0.09)',
               animation: 'fadeInUp 0.5s ease-out 0.45s both',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-                <Download size={18} style={{ color: '#8b5cf6' }} />
-                <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>
-                  {i18n.t.einstellungen.sectionExport ?? 'Export / Import'}
-                </h2>
+              <div onClick={() => toggleSection('export')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none', marginBottom: collapsed.has('export') ? 0 : '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <Download size={18} style={{ color: '#8b5cf6' }} />
+                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>
+                    {i18n.t.einstellungen.sectionExport}
+                  </h2>
+                </div>
+                <ChevronDown size={16} style={{ color: '#52525b', transition: 'transform 0.2s', transform: collapsed.has('export') ? 'rotate(-90deg)' : 'rotate(0deg)', flexShrink: 0 }} />
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {!collapsed.has('export') && <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                 {/* Export */}
                 <div style={{
                   padding: '1rem 1.25rem', borderRadius: '14px',
@@ -1432,7 +1544,7 @@ export function Settings() {
                     </div>
                   )}
                 </div>
-              </div>
+              </div>}
             </div>
 
             {/* Danger Zone */}
@@ -1444,12 +1556,15 @@ export function Settings() {
               border: '1px solid rgba(239, 68, 68, 0.2)',
               animation: 'fadeInUp 0.5s ease-out 0.55s both',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-                <AlertTriangle size={18} style={{ color: '#ef4444' }} />
-                <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ef4444' }}>Danger Zone</h2>
+              <div onClick={() => toggleSection('danger')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none', marginBottom: collapsed.has('danger') ? 0 : '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <AlertTriangle size={18} style={{ color: '#ef4444' }} />
+                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ef4444' }}>{i18n.t.einstellungen.dangerZoneTitle}</h2>
+                </div>
+                <ChevronDown size={16} style={{ color: '#52525b', transition: 'transform 0.2s', transform: collapsed.has('danger') ? 'rotate(-90deg)' : 'rotate(0deg)', flexShrink: 0 }} />
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {!collapsed.has('danger') && <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {/* Company Reset */}
                 <div style={{
                   padding: '1rem 1.25rem', borderRadius: '14px',
@@ -1458,15 +1573,17 @@ export function Settings() {
                 }}>
                   <div style={{ flex: 1, minWidth: 200 }}>
                     <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#fca5a5', marginBottom: '0.25rem' }}>
-                      Unternehmen zurücksetzen
+                      {i18n.t.einstellungen.dangerZoneCompanyResetTitle}
                     </div>
                     <p style={{ fontSize: '0.75rem', color: '#71717a', margin: 0 }}>
-                      Löscht alle Agenten, Aufgaben, Zyklen und Kosten von „{aktivesUnternehmen?.name}". API Keys bleiben erhalten.
+                      {i18n.language === 'de'
+                        ? <>Löscht alle Agenten, Aufgaben, Zyklen und Kosten von „{aktivesUnternehmen?.name}". API Keys bleiben erhalten.</>
+                        : <>Deletes all agents, tasks, cycles and costs from "{aktivesUnternehmen?.name}". API keys are preserved.</>}
                     </p>
                   </div>
                   {resetConfirm === 'company' ? (
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.75rem', color: '#fca5a5' }}>Sicher?</span>
+                      <span style={{ fontSize: '0.75rem', color: '#fca5a5' }}>{i18n.t.einstellungen.dangerZoneAreYouSure}</span>
                       <button
                         onClick={handleCompanyReset}
                         disabled={resetting}
@@ -1476,7 +1593,7 @@ export function Settings() {
                           color: '#ef4444', fontSize: '0.75rem', fontWeight: 600,
                         }}
                       >
-                        {resetting ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : 'Ja, zurücksetzen'}
+                        {resetting ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : i18n.t.einstellungen.dangerZoneConfirmReset}
                       </button>
                       <button
                         onClick={() => setResetConfirm(null)}
@@ -1485,7 +1602,7 @@ export function Settings() {
                           background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
                           color: '#71717a', fontSize: '0.75rem',
                         }}
-                      >Abbrechen</button>
+                      >{i18n.t.einstellungen.dangerZoneCancel}</button>
                     </div>
                   ) : (
                     <button
@@ -1498,7 +1615,7 @@ export function Settings() {
                         color: '#ef4444', fontSize: '0.8125rem', fontWeight: 600, whiteSpace: 'nowrap',
                       }}
                     >
-                      <RotateCcw size={13} /> Zurücksetzen
+                      <RotateCcw size={13} /> {i18n.t.einstellungen.dangerZoneConfirmReset}
                     </button>
                   )}
                 </div>
@@ -1511,15 +1628,17 @@ export function Settings() {
                 }}>
                   <div style={{ flex: 1, minWidth: 200 }}>
                     <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#fca5a5', marginBottom: '0.25rem' }}>
-                      Komplett-Reset (Factory Reset)
+                      {i18n.t.einstellungen.dangerZoneFactoryResetTitle}
                     </div>
                     <p style={{ fontSize: '0.75rem', color: '#71717a', margin: 0 }}>
-                      Löscht alle Unternehmen, Agenten und Daten. Das Onboarding startet neu. Benutzer-Account und API Keys bleiben erhalten.
+                      {i18n.language === 'de'
+                        ? 'Löscht alle Unternehmen, Agenten und Daten. Das Onboarding startet neu. Benutzer-Account und API Keys bleiben erhalten.'
+                        : 'Deletes all companies, agents and data. Onboarding restarts. User account and API keys are preserved.'}
                     </p>
                   </div>
                   {resetConfirm === 'factory' ? (
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.75rem', color: '#fca5a5' }}>Alles löschen?</span>
+                      <span style={{ fontSize: '0.75rem', color: '#fca5a5' }}>{i18n.t.einstellungen.dangerZoneDeleteAll}</span>
                       <button
                         onClick={handleFactoryReset}
                         disabled={resetting}
@@ -1529,7 +1648,7 @@ export function Settings() {
                           color: '#ef4444', fontSize: '0.75rem', fontWeight: 700,
                         }}
                       >
-                        {resetting ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : 'Ja, alles löschen'}
+                        {resetting ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : i18n.t.einstellungen.dangerZoneConfirmFactory}
                       </button>
                       <button
                         onClick={() => setResetConfirm(null)}
@@ -1538,7 +1657,7 @@ export function Settings() {
                           background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
                           color: '#71717a', fontSize: '0.75rem',
                         }}
-                      >Abbrechen</button>
+                      >{i18n.t.einstellungen.dangerZoneCancel}</button>
                     </div>
                   ) : (
                     <button
@@ -1550,106 +1669,11 @@ export function Settings() {
                         color: '#ef4444', fontSize: '0.8125rem', fontWeight: 700, whiteSpace: 'nowrap',
                       }}
                     >
-                      <Trash2 size={13} /> Factory Reset
+                      <Trash2 size={13} /> {i18n.t.einstellungen.dangerZoneFactoryResetTitle}
                     </button>
                   )}
                 </div>
-              </div>
-            </div>
-
-            {/* OpenClaw Gateway */}
-            <div className="glass-card" style={{
-              padding: '1.5rem',
-              background: 'rgba(255,255,255,0.04)',
-              backdropFilter: 'blur(24px) saturate(160%)',
-              borderRadius: '20px',
-              border: openclawToken ? '1px solid rgba(35,205,203,0.3)' : '1px solid rgba(255,255,255,0.08)',
-              animation: 'fadeInUp 0.5s ease-out 0.45s both',
-              position: 'relative', overflow: 'hidden',
-            }}>
-              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, transparent, #23CDCB, transparent)' }} />
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
-                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(35,205,203,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Zap size={18} style={{ color: '#23CDCB' }} />
-                </div>
-                <div>
-                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>OpenClaw Gateway</h2>
-                  <p style={{ fontSize: '0.75rem', color: '#71717a' }}>Verbinde OpenClaw-Agenten mit ihrem bestehenden Wissen als Experten</p>
-                </div>
-              </div>
-
-              {/* Connection Token */}
-              <div style={{ marginBottom: '1.25rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, color: '#d4d4d8', marginBottom: '0.5rem' }}>
-                  Connection Token
-                </label>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <input
-                    readOnly
-                    value={openclawToken}
-                    placeholder="Wird automatisch generiert…"
-                    style={{
-                      flex: 1, padding: '0.625rem 0.875rem', fontFamily: 'monospace', fontSize: '0.8rem',
-                      backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                      borderRadius: '12px', color: '#23CDCB', outline: 'none',
-                    }}
-                  />
-                  <button
-                    onClick={() => { navigator.clipboard.writeText(openclawToken); setOpenclawTokenCopied(true); setTimeout(() => setOpenclawTokenCopied(false), 2000); }}
-                    disabled={!openclawToken}
-                    title="Token kopieren"
-                    style={{ padding: '0.625rem 0.875rem', borderRadius: '12px', cursor: openclawToken ? 'pointer' : 'not-allowed', background: openclawTokenCopied ? 'rgba(35,205,203,0.2)' : 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: openclawTokenCopied ? '#23CDCB' : '#d4d4d8', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-                  >
-                    {openclawTokenCopied ? <CheckCircle2 size={14} /> : 'Kopieren'}
-                  </button>
-                  <button
-                    onClick={regenerateOpenclawToken}
-                    disabled={openclawTokenLoading}
-                    title="Token erneuern (invalidiert alten)"
-                    style={{ padding: '0.625rem 0.875rem', borderRadius: '12px', cursor: 'pointer', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a', fontSize: '0.8rem' }}
-                  >
-                    {openclawTokenLoading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={14} />}
-                  </button>
-                </div>
-                <p style={{ fontSize: '0.725rem', color: '#71717a', marginTop: '0.5rem' }}>
-                  Gib diesen Token in deiner OpenClaw-Instanz ein unter <strong style={{ color: '#a1a1aa' }}>Settings → OpenCognit Bridge</strong>.
-                </p>
-              </div>
-
-              {/* How it works */}
-              <div style={{ padding: '1rem', borderRadius: '14px', background: 'rgba(35,205,203,0.05)', border: '1px solid rgba(35,205,203,0.12)', marginBottom: '1.25rem', fontSize: '0.75rem', color: '#a1a1aa' }}>
-                <div style={{ fontWeight: 600, color: '#23CDCB', marginBottom: '0.5rem' }}>So funktioniert die Verbindung</div>
-                <ol style={{ margin: 0, paddingLeft: '1.25rem', lineHeight: 1.7 }}>
-                  <li>OpenClaw-User gibt den Token oben in OpenClaw ein</li>
-                  <li>Der Agent registriert sich automatisch als Experte hier</li>
-                  <li>Du kannst ihn dann als CEO oder in beliebiger Rolle einsetzen</li>
-                  <li>Tasks werden an OpenClaw delegiert — Wissen bleibt lokal</li>
-                </ol>
-              </div>
-
-              {/* Connected Agents */}
-              {openclawAgents.length > 0 && (
-                <div>
-                  <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#d4d4d8', marginBottom: '0.75rem' }}>
-                    Verbundene Agenten ({openclawAgents.length})
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {openclawAgents.map((agent: any) => (
-                      <div key={agent.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 1rem', borderRadius: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                        <div>
-                          <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#ffffff' }}>{agent.name}</div>
-                          <div style={{ fontSize: '0.75rem', color: '#71717a' }}>{agent.rolle} · {agent.gatewayUrl || 'kein Gateway'}</div>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.7rem', color: '#23CDCB', background: 'rgba(35,205,203,0.1)', padding: '0.25rem 0.625rem', borderRadius: '99px' }}>
-                          <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#23CDCB' }} />
-                          OpenClaw
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              </div>}
             </div>
 
             {/* Version */}
