@@ -2,7 +2,7 @@
 
 import fs from 'fs';
 import { db } from '../../db/client.js';
-import { experten, aufgaben, ziele, projekte, issueRelations, kommentare, palaceKg } from '../../db/schema.js';
+import { experten, aufgaben, ziele, projekte, issueRelations, kommentare, palaceKg, chatNachrichten } from '../../db/schema.js';
 import { eq, and, inArray, desc, asc, isNull, sql } from 'drizzle-orm';
 import type { AdapterContext, AdapterTask, CompanyGoal } from '../../adapters/types.js';
 import { loadRelevantMemory } from '../memory-auto.js';
@@ -41,6 +41,39 @@ export async function buildAdapterContext(params: BuildContextParams): Promise<A
     .split(/\W+/)
     .filter(w => w.length > 4);
   const memoryContext = loadRelevantMemory(expertId, taskKeywords) || null;
+
+  // ─── Letzte Chat-Nachrichten laden (Board ↔ Agent) ──────────────────
+  // Damit der Agent weiß was im direkten Chat besprochen wurde und
+  // autonome Aktionen nicht im Widerspruch zur letzten Unterhaltung stehen.
+  let boardKommunikation: string | undefined;
+  try {
+    const recentChat = await db.select({
+      absenderTyp: chatNachrichten.absenderTyp,
+      nachricht: chatNachrichten.nachricht,
+      erstelltAm: chatNachrichten.erstelltAm,
+    })
+      .from(chatNachrichten)
+      .where(and(
+        eq(chatNachrichten.unternehmenId, unternehmenId),
+        eq(chatNachrichten.expertId, expertId),
+      ))
+      .orderBy(desc(chatNachrichten.erstelltAm))
+      .limit(8)
+      .then(rows => rows.reverse()); // chronological order
+
+    if (recentChat.length > 0) {
+      const lines = recentChat
+        .filter(m => m.absenderTyp !== 'system')
+        .map(m => {
+          const who = m.absenderTyp === 'board' ? '👤 Board' : `🤖 ${expert?.name || 'Agent'}`;
+          const ts = m.erstelltAm ? new Date(m.erstelltAm).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+          return `[${ts}] ${who}: ${m.nachricht}`;
+        });
+      if (lines.length > 0) {
+        boardKommunikation = lines.join('\n');
+      }
+    }
+  } catch { /* non-critical */ }
   // ────────────────────────────────────────────────────────────────────
 
   // ─── Load active goals with live task progress ──────────────────────
@@ -151,6 +184,7 @@ export async function buildAdapterContext(params: BuildContextParams): Promise<A
         } catch { return {}; }
       })(),
       ...(memoryContext ? { gedaechtnis: memoryContext } : {}),
+      ...(boardKommunikation ? { boardKommunikation } : {}),
       ...(blockerOutputs ? { vorgaengerOutputs: blockerOutputs } : {}),
       ...(advisorPlan ? { advisorPlan: `### 🧠 STRATEGISCHER PLAN DES ARCHITEKTEN/ADVISORS\n\n${advisorPlan}\n\n*Bitte befolge diesen Plan strikt bei der Ausführung der Aufgabe.*` } : {}),
       // Orchestrator gets full team + task overview

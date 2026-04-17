@@ -74,6 +74,8 @@ export interface AdapterContext {
     faehigkeiten: string | null;
     /** Memory-Kontext (optional, wird beim Wake-Up geladen) */
     gedaechtnis?: string;
+    /** Letzte Chat-Nachrichten zwischen Board und diesem Agent (Kontinuität zwischen Chat und autonomer Ausführung) */
+    boardKommunikation?: string;
   };
   /**
    * Rich situational context assembled specifically for OpenClaw agents.
