@@ -2,7 +2,7 @@
 
 import crypto from 'crypto';
 import { db } from '../../db/client.js';
-import { aufgaben, experten, ziele, agentPermissions, genehmigungen, agentMeetings, agentWakeupRequests } from '../../db/schema.js';
+import { aufgaben, experten, ziele, agentPermissions, genehmigungen, agentMeetings, agentWakeupRequests, einstellungen } from '../../db/schema.js';
 import { eq, and, inArray, or, desc, gte } from 'drizzle-orm';
 import { wakeupService } from '../wakeup.js';
 import { v4 as uuid } from 'uuid';
@@ -52,6 +52,21 @@ export async function processOrchestratorActions(
   const canRequestApproval = !perms || perms.darfGenehmigungAnfordern !== false;
   const canRecruitAgent   = !perms || perms.darfExpertenAnwerben !== false;
 
+  // ceo_require_approval: when 'true', CEO's create_task goes to approval queue
+  const requireApprovalSetting = db.select({ wert: einstellungen.wert })
+    .from(einstellungen)
+    .where(and(eq(einstellungen.schluessel, 'ceo_require_approval'), eq(einstellungen.unternehmenId, unternehmenId)))
+    .get();
+  const ceoRequireApproval = requireApprovalSetting?.wert === 'true';
+
+  // ceo_max_tasks_per_cycle: max create_task actions before queuing remainder for approval
+  const maxTasksSetting = db.select({ wert: einstellungen.wert })
+    .from(einstellungen)
+    .where(and(eq(einstellungen.schluessel, 'ceo_max_tasks_per_cycle'), eq(einstellungen.unternehmenId, unternehmenId)))
+    .get();
+  const maxTasksPerCycle = maxTasksSetting?.wert ? parseInt(maxTasksSetting.wert, 10) : Infinity;
+  let tasksCreatedThisCycle = 0;
+
   // Lade Team für Name→ID Auflösung
   const team = await db.select({ id: experten.id, name: experten.name })
     .from(experten)
@@ -72,6 +87,28 @@ export async function processOrchestratorActions(
             console.warn(`  🚫 ${orchestratorId} hat keine Berechtigung: create_task`);
             break;
           }
+
+          // ── CEO Approval Gate ─────────────────────────────────────────────────
+          const needsApproval = ceoRequireApproval || tasksCreatedThisCycle >= maxTasksPerCycle;
+          if (needsApproval && canRequestApproval) {
+            const approvalId = crypto.randomUUID();
+            await db.insert(genehmigungen as any).values({
+              id: approvalId,
+              unternehmenId,
+              typ: 'approve_strategy',
+              titel: `CEO möchte Task erstellen: ${action.titel}`,
+              beschreibung: action.beschreibung || null,
+              angefordertVon: orchestratorId,
+              status: 'pending',
+              payload: JSON.stringify({ action }),
+              erstelltAm: now,
+              aktualisiertAm: now,
+            }).run();
+            console.log(`  📋 CEO Task "${action.titel}" → Genehmigung ausstehend (Approval Gate)`);
+            trace(orchestratorId, unternehmenId, 'info', `Task wartet auf Genehmigung: ${action.titel}`);
+            break;
+          }
+          // ─────────────────────────────────────────────────────────────────────
 
           // ── Deduplication: skip if similar task exists in last 50 open tasks ──
           const normalizeTitle = (t: string) => t.toLowerCase().trim().slice(0, 60);
@@ -119,6 +156,8 @@ export async function processOrchestratorActions(
             `CEO erstellt Task: ${action.titel}`,
             `Zugewiesen an: ${agent?.name || 'nicht zugewiesen'}`,
           );
+
+          tasksCreatedThisCycle++;
 
           // Wecke den zugewiesenen Agent sofort
           if (agent) {
