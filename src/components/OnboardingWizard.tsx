@@ -59,15 +59,16 @@ export function OnboardingWizard() {
   const [companyName, setCompanyName] = useState('');
   const [companyGoal, setCompanyGoal] = useState('');
   const [companyDesc, setCompanyDesc] = useState('');
+  const [workDir, setWorkDir] = useState('');
 
   // Step 3: API Keys
-  const [keys, setKeys] = useState({ openrouter: '', anthropic: '', openai: '', ollama: 'http://localhost:11434' });
-  const [llmTab, setLlmTab] = useState<'cloud' | 'local'>('cloud');
+  const [keys, setKeys] = useState({ openrouter: '', anthropic: '', openai: '', ollama: 'http://localhost:11434', customBase: '', customKey: '' });
+  const [llmTab, setLlmTab] = useState<'cloud' | 'local' | 'custom'>('cloud');
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [ollamaDetecting, setOllamaDetecting] = useState(false);
   const [ollamaStatus, setOllamaStatus] = useState<'idle' | 'found' | 'error'>('idle');
   const [selectedOllamaModel, setSelectedOllamaModel] = useState<string | null>(null);
-  const hasKey = !!(keys.openrouter || keys.anthropic || keys.openai || (ollamaStatus === 'found'));
+  const hasKey = !!(keys.openrouter || keys.anthropic || keys.openai || keys.customKey || (ollamaStatus === 'found'));
 
   const detectOllama = async () => {
     setOllamaDetecting(true);
@@ -217,7 +218,7 @@ export function OnboardingWizard() {
       // 1. Firma erstellen (use goalDescription as fallback for company goal)
       const companyRes = await authFetch('/api/unternehmen', {
         method: 'POST',
-        body: JSON.stringify({ name: companyName, beschreibung: companyDesc || null, ziel: companyGoal || goalDescription || null }),
+        body: JSON.stringify({ name: companyName, beschreibung: companyDesc || null, ziel: companyGoal || goalDescription || null, workDir: workDir.trim() || null }),
       });
       if (!companyRes.ok) throw new Error(de ? 'Firma konnte nicht erstellt werden' : 'Could not create company');
       const company = await companyRes.json();
@@ -228,6 +229,8 @@ export function OnboardingWizard() {
         ['anthropic_api_key', keys.anthropic],
         ['openai_api_key', keys.openai],
         ['ollama_base_url', keys.ollama],
+        ['custom_api_key', keys.customKey],
+        ['custom_api_base_url', keys.customBase],
       ];
       if (selectedOllamaModel) keyMap.push(['ollama_default_model', selectedOllamaModel]);
       for (const [k, v] of keyMap) {
@@ -483,6 +486,24 @@ export function OnboardingWizard() {
                   </label>
                   <textarea value={companyDesc} onChange={e => setCompanyDesc(e.target.value)} rows={3} placeholder={de ? 'Optional: Was macht dein Unternehmen?' : 'Optional: What does your company do?'} style={{ ...inputStyle, resize: 'vertical' }} {...focus} />
                 </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 500, color: '#a1a1aa' }}>
+                      {de ? 'Arbeitsverzeichnis' : 'Workspace Directory'}
+                    </label>
+                    <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: '4px', background: 'rgba(255,255,255,0.04)', color: '#3f3f46' }}>
+                      {de ? 'OPTIONAL' : 'OPTIONAL'}
+                    </span>
+                  </div>
+                  <input value={workDir} onChange={e => setWorkDir(e.target.value)}
+                    placeholder={de ? '/home/user/mein-projekt' : '/home/user/my-project'}
+                    style={{ ...inputStyle, fontFamily: 'monospace', fontSize: '0.8125rem' }} {...focus} />
+                  <p style={{ fontSize: '0.7rem', color: '#3f3f46', marginTop: '0.3rem', lineHeight: 1.5 }}>
+                    {de
+                      ? 'Absoluter Pfad zum Projektordner. Claude Code CLI Agenten arbeiten hier.'
+                      : 'Absolute path to your project folder. Claude Code CLI agents will work here.'}
+                  </p>
+                </div>
               </div>
             </div>
           )}
@@ -506,13 +527,17 @@ export function OnboardingWizard() {
 
               {/* Tabs */}
               <div style={{ display: 'flex', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '3px', marginBottom: '1.25rem', border: '1px solid rgba(255,255,255,0.04)' }}>
-                {(['cloud', 'local'] as const).map(tab => (
-                  <button key={tab} type="button" onClick={() => setLlmTab(tab)} style={{
+                {([
+                  { key: 'cloud', label: de ? '☁️ Cloud' : '☁️ Cloud' },
+                  { key: 'local', label: de ? '💻 Lokal' : '💻 Local' },
+                  { key: 'custom', label: de ? '🔌 Custom' : '🔌 Custom' },
+                ] as const).map(tab => (
+                  <button key={tab.key} type="button" onClick={() => setLlmTab(tab.key)} style={{
                     flex: 1, padding: '0.5rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, transition: 'all 0.2s',
-                    background: llmTab === tab ? 'rgba(35,205,202,0.12)' : 'transparent',
-                    color: llmTab === tab ? '#23CDCB' : '#52525b',
+                    background: llmTab === tab.key ? 'rgba(35,205,202,0.12)' : 'transparent',
+                    color: llmTab === tab.key ? '#23CDCB' : '#52525b',
                   }}>
-                    {tab === 'cloud' ? (de ? '☁️ Cloud APIs' : '☁️ Cloud APIs') : (de ? '💻 Lokal (Ollama)' : '💻 Local (Ollama)')}
+                    {tab.label}
                   </button>
                 ))}
               </div>
@@ -618,6 +643,33 @@ export function OnboardingWizard() {
                 </div>
               )}
 
+              {/* Custom / OpenAI-compatible Tab */}
+              {llmTab === 'custom' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                  <div style={{ padding: '0.625rem 0.875rem', borderRadius: '10px', background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.12)', fontSize: '0.7rem', color: '#fde68a', lineHeight: 1.5 }}>
+                    🔌 {de
+                      ? 'OpenAI-kompatible API — funktioniert mit LM Studio, vLLM, LocalAI, eigenen Proxies und mehr.'
+                      : 'OpenAI-compatible API — works with LM Studio, vLLM, LocalAI, custom proxies, and more.'}
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#d4d4d8', display: 'block', marginBottom: '0.3rem' }}>
+                      Base URL
+                    </label>
+                    <input value={keys.customBase} onChange={e => setKeys(k => ({ ...k, customBase: e.target.value }))}
+                      placeholder="http://localhost:1234/v1"
+                      style={{ ...inputStyle, fontSize: '0.8125rem', fontFamily: 'monospace' }} {...focus} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#d4d4d8', display: 'block', marginBottom: '0.3rem' }}>
+                      API Key <span style={{ color: '#3f3f46', fontWeight: 400 }}>({de ? 'optional' : 'optional'})</span>
+                    </label>
+                    <input value={keys.customKey} onChange={e => setKeys(k => ({ ...k, customKey: e.target.value }))}
+                      placeholder="sk-..." type="password" autoComplete="new-password"
+                      style={{ ...inputStyle, fontSize: '0.8125rem', fontFamily: 'monospace' }} {...focus} />
+                  </div>
+                </div>
+              )}
+
               {!hasKey && (
                 <div style={{ marginTop: '1rem', padding: '0.625rem 0.875rem', borderRadius: '10px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', fontSize: '0.7rem', color: '#3f3f46' }}>
                   {de ? '— Ohne LLM-Verbindung können Agenten nicht denken. Jederzeit nachholbar unter Einstellungen.' : '— Without an LLM connection agents cannot think. Configurable anytime in Settings.'}
@@ -682,6 +734,13 @@ export function OnboardingWizard() {
                     {teamMode === 'manual' && <Check size={18} style={{ color: '#23CDCB', marginLeft: 'auto' }} />}
                   </div>
                 </button>
+                {teamMode === 'manual' && (
+                  <div style={{ padding: '0.75rem 0.875rem', borderRadius: '10px', background: 'rgba(35,205,202,0.04)', border: '1px solid rgba(35,205,202,0.12)', fontSize: '0.75rem', color: '#71717a', lineHeight: 1.6 }}>
+                    💡 {de
+                      ? <>Tipp: Erstelle als ersten Agenten einen <strong style={{ color: '#23CDCB' }}>CEO</strong> — Connection Type <code style={{ background: 'rgba(255,255,255,0.06)', padding: '0.1em 0.3em', borderRadius: '4px' }}>ceo</code>, Orchestrator-Flag an. Er koordiniert dann dein ganzes Team.</>
+                      : <>Tip: Create a <strong style={{ color: '#23CDCB' }}>CEO</strong> agent first — connection type <code style={{ background: 'rgba(255,255,255,0.06)', padding: '0.1em 0.3em', borderRadius: '4px' }}>ceo</code>, Orchestrator flag on. It will coordinate your whole team.</>}
+                  </div>
+                )}
 
                 {/* AI Magic Option */}
                 <button onClick={() => setTeamMode('ai')} style={{
@@ -856,7 +915,7 @@ export function OnboardingWizard() {
 
               <div style={{ padding: '1rem', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                  <span style={{ fontSize: '1.25rem' }}>✈️</span>
+                  <span style={{ fontSize: '1.25rem' }}>📨</span>
                   <span style={{ fontWeight: 700, color: '#d4d4d8', fontSize: '0.9375rem' }}>Telegram</span>
                   <span style={{ fontSize: '0.625rem', color: '#3f3f46', marginLeft: 'auto' }}>{de ? 'Weitere Channels in den Einstellungen' : 'More channels in settings'}</span>
                 </div>
@@ -964,7 +1023,7 @@ export function OnboardingWizard() {
                 {[
                   { label: de ? 'Ziel' : 'Goal', value: goalDescription.length > 48 ? goalDescription.slice(0, 48) + '…' : goalDescription, done: !!goalDescription },
                   { label: de ? 'Firma' : 'Company', value: companyName, done: true },
-                  { label: 'API Key', value: hasKey ? (keys.openrouter ? 'OpenRouter' : keys.anthropic ? 'Anthropic' : keys.openai ? 'OpenAI' : 'Ollama') : (de ? 'Keiner' : 'None'), done: hasKey },
+                  { label: 'API Key', value: hasKey ? (keys.openrouter ? 'OpenRouter' : keys.anthropic ? 'Anthropic' : keys.openai ? 'OpenAI' : keys.customKey ? 'Custom API' : 'Ollama') : (de ? 'Keiner' : 'None'), done: hasKey },
                   { label: de ? 'Team' : 'Team', value: teamMode === 'clipmart' ? selectedTemplate || 'Template' : teamMode === 'ai' ? `✨ ${aiPlan?.agents?.length || 0} ${de ? 'Agenten (KI)' : 'agents (AI)'}` : (de ? 'Manuell' : 'Manual'), done: true },
                   { label: 'Telegram', value: telegramToken ? '✓' : (de ? 'Übersprungen' : 'Skipped'), done: !!telegramToken },
                 ].map((item, i) => (
@@ -984,6 +1043,13 @@ export function OnboardingWizard() {
                     <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#d4d4d8' }}>{item.value}</span>
                   </div>
                 ))}
+              </div>
+
+              {/* OpenClaw hint */}
+              <div style={{ marginTop: '1rem', padding: '0.75rem 0.875rem', borderRadius: '10px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', fontSize: '0.75rem', color: '#52525b', lineHeight: 1.6 }}>
+                🔌 {de
+                  ? <><strong style={{ color: '#71717a' }}>OpenClaw-Agenten</strong> einbinden? Nach dem Start: Settings → OpenClaw Gateway → Token generieren, dann im OpenClaw-Agent als Gateway-URL eintragen.</>
+                  : <><strong style={{ color: '#71717a' }}>Have OpenClaw agents?</strong> After launch: Settings → OpenClaw Gateway → generate token, then enter as the Gateway URL in your OpenClaw agent.</>}
               </div>
 
               {error && (
