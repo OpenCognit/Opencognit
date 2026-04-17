@@ -2,7 +2,7 @@
 
 import fs from 'fs';
 import { db } from '../../db/client.js';
-import { experten, aufgaben, ziele, projekte, issueRelations, kommentare, palaceKg, chatNachrichten } from '../../db/schema.js';
+import { experten, aufgaben, ziele, projekte, issueRelations, kommentare, palaceKg, chatNachrichten, ceoDecisionLog } from '../../db/schema.js';
 import { eq, and, inArray, desc, asc, isNull, sql } from 'drizzle-orm';
 import type { AdapterContext, AdapterTask, CompanyGoal } from '../../adapters/types.js';
 import { loadRelevantMemory } from '../memory-auto.js';
@@ -74,6 +74,41 @@ export async function buildAdapterContext(params: BuildContextParams): Promise<A
       }
     }
   } catch { /* non-critical */ }
+  // ────────────────────────────────────────────────────────────────────
+
+  // ─── CEO Decision Log: letzten Planungs-Eintrag laden ───────────────
+  // Nur für Orchestratoren — gibt dem CEO seinen roten Faden zurück.
+  let letzteEntscheidung: string | undefined;
+  if (expert?.isOrchestrator) {
+    try {
+      const lastDecision = await db.select()
+        .from(ceoDecisionLog as any)
+        .where(and(
+          eq((ceoDecisionLog as any).expertId, expertId),
+          eq((ceoDecisionLog as any).unternehmenId, unternehmenId),
+        ))
+        .orderBy(desc((ceoDecisionLog as any).erstelltAm))
+        .limit(1)
+        .then((rows: any[]) => rows[0]);
+
+      if (lastDecision) {
+        const ts = new Date(lastDecision.erstelltAm).toLocaleString('de-DE', {
+          day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+        });
+        const actions: string[] = JSON.parse(lastDecision.actionsJson || '[]');
+        const actionList = actions.length > 0
+          ? '\nAusgeführte Aktionen:\n' + actions.map((a: string) => `  • ${a}`).join('\n')
+          : '\n(Keine Aktionen ausgeführt)';
+        letzteEntscheidung = [
+          `[${ts}] Fokus: ${lastDecision.focusSummary}`,
+          lastDecision.goalsSnapshot ? `Ziele: ${lastDecision.goalsSnapshot}` : null,
+          `Offene Tasks zu dem Zeitpunkt: ${lastDecision.pendingTaskCount}`,
+          lastDecision.teamSummary ? `Team: ${lastDecision.teamSummary}` : null,
+          actionList,
+        ].filter(Boolean).join('\n');
+      }
+    } catch { /* non-critical */ }
+  }
   // ────────────────────────────────────────────────────────────────────
 
   // ─── Load active goals with live task progress ──────────────────────
@@ -184,6 +219,7 @@ export async function buildAdapterContext(params: BuildContextParams): Promise<A
         } catch { return {}; }
       })(),
       ...(memoryContext ? { gedaechtnis: memoryContext } : {}),
+      ...(letzteEntscheidung ? { letzteEntscheidung } : {}),
       ...(boardKommunikation ? { boardKommunikation } : {}),
       ...(blockerOutputs ? { vorgaengerOutputs: blockerOutputs } : {}),
       ...(advisorPlan ? { advisorPlan: `### 🧠 STRATEGISCHER PLAN DES ARCHITEKTEN/ADVISORS\n\n${advisorPlan}\n\n*Bitte befolge diesen Plan strikt bei der Ausführung der Aufgabe.*` } : {}),

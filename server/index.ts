@@ -5,7 +5,7 @@ import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { db, initializeDatabase, sqlite } from './db/client.js';
-import { unternehmen, experten, aufgaben, kommentare, genehmigungen, aktivitaetslog, kostenbuchungen, arbeitszyklen, ziele, einstellungen, chatNachrichten, benutzer, routinen, routineTrigger, routineAusfuehrung, workProducts, projekte, agentPermissions, traceEreignisse, skillsLibrary, expertenSkills, agentWakeupRequests, palaceWings, palaceDrawers, palaceDiary, palaceKg, palaceSummaries, budgetPolicies, budgetIncidents, executionWorkspaces, issueRelations, agentMeetings, openclawTokens, expertConfigHistory } from './db/schema.js';
+import { unternehmen, experten, aufgaben, kommentare, genehmigungen, aktivitaetslog, kostenbuchungen, arbeitszyklen, ziele, einstellungen, chatNachrichten, benutzer, routinen, routineTrigger, routineAusfuehrung, workProducts, projekte, agentPermissions, traceEreignisse, skillsLibrary, expertenSkills, agentWakeupRequests, palaceWings, palaceDrawers, palaceDiary, palaceKg, palaceSummaries, budgetPolicies, budgetIncidents, executionWorkspaces, issueRelations, agentMeetings, openclawTokens, expertConfigHistory, ceoDecisionLog } from './db/schema.js';
 import { getWorkspaceInfo, readWorkspaceFile } from './services/workspace.js';
 import { encryptSetting, decryptSetting } from './utils/crypto.js';
 import { eq, desc, asc, and, sql, count, sum, inArray, isNotNull, isNull, or } from 'drizzle-orm';
@@ -2452,6 +2452,8 @@ app.delete('/api/unternehmen/:id/reset', authMiddleware, (req, res) => {
   db.delete(aktivitaetslog).where(eq(aktivitaetslog.unternehmenId, id)).run();
   db.delete(genehmigungen).where(eq(genehmigungen.unternehmenId, id)).run();
   db.delete(aufgaben).where(eq(aufgaben.unternehmenId, id)).run();
+  // CEO Decision Log references experten — delete before experten
+  try { (db as any).delete(ceoDecisionLog).where(eq((ceoDecisionLog as any).unternehmenId, id)).run(); } catch { /* table may not exist on older DBs */ }
   db.delete(experten).where(eq(experten.unternehmenId, id)).run();
 
   console.log(`🗑️  Unternehmen ${company.name} (${id}) zurückgesetzt`);

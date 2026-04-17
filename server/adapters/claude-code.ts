@@ -316,6 +316,14 @@ Respond in the language of the task (German if the task is in German, English if
       parts.push('');
     }
 
+    // 🧭 Letzte strategische Entscheidung — roter Faden für den CEO
+    if ((context.agentContext as any).letzteEntscheidung) {
+      parts.push('[DEINE LETZTE STRATEGISCHE ENTSCHEIDUNG]');
+      parts.push((context.agentContext as any).letzteEntscheidung);
+      parts.push('Baue darauf auf. Vermeide Widersprüche zu vorherigen Entscheidungen ohne explizite Begründung.');
+      parts.push('');
+    }
+
     // 💬 Letzte Chat-Nachrichten (Board ↔ Agent) — Kontinuität zwischen Chat und autonomer Ausführung
     if ((context.agentContext as any).boardKommunikation) {
       parts.push('[LETZTE KOMMUNIKATION MIT DEM BOARD]');

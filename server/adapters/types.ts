@@ -74,6 +74,8 @@ export interface AdapterContext {
     faehigkeiten: string | null;
     /** Memory-Kontext (optional, wird beim Wake-Up geladen) */
     gedaechtnis?: string;
+    /** Letzte strategische Entscheidung des CEO (vorheriger Planungszyklus) — roter Faden */
+    letzteEntscheidung?: string;
     /** Letzte Chat-Nachrichten zwischen Board und diesem Agent (Kontinuität zwischen Chat und autonomer Ausführung) */
     boardKommunikation?: string;
   };

@@ -516,6 +516,25 @@ export const openclawTokens = sqliteTable('openclaw_tokens', {
 });
 
 // ===== Expert Config History (rollback snapshots) =====
+// ===== CEO Decision Log — persistenter roter Faden für den Orchestrator =====
+// Jeder Planungszyklus schreibt einen Eintrag; beim nächsten Zyklus wird der
+// letzte Eintrag in den Kontext geladen → kein Amnesie-Problem mehr.
+export const ceoDecisionLog = sqliteTable('ceo_decision_log', {
+  id: text('id').primaryKey(),
+  expertId: text('expert_id').notNull().references(() => experten.id),
+  unternehmenId: text('unternehmen_id').notNull().references(() => unternehmen.id),
+  runId: text('run_id').notNull(),
+  erstelltAm: text('erstellt_am').notNull(),
+  // Structured decision snapshot
+  focusSummary: text('focus_summary').notNull(),      // 1-2 sentences: what the CEO decided to focus on
+  actionsJson: text('actions_json').notNull(),          // JSON array of actions taken this cycle
+  goalsSnapshot: text('goals_snapshot'),               // JSON: goal titles + progress at decision time
+  pendingTaskCount: integer('pending_task_count').notNull().default(0),
+  teamSummary: text('team_summary'),                   // "Anna(3 tasks), Bob(1 task)"
+}, (t) => ({
+  idxCeoLog: index('ceo_decision_log_expert_idx').on(t.expertId, t.erstelltAm),
+}));
+
 export const expertConfigHistory = sqliteTable('expert_config_history', {
   id: text('id').primaryKey(),
   expertId: text('expert_id').notNull().references(() => experten.id),
@@ -563,4 +582,5 @@ export const allTables = {
   issueRelations,
   openclawTokens,
   expertConfigHistory,
+  ceoDecisionLog,
 };

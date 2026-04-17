@@ -11,7 +11,7 @@ import {
   kostenbuchungen, kommentare, workProducts, chatNachrichten, aktivitaetslog,
   ziele, issueRelations, einstellungen, budgetPolicies, budgetIncidents,
   agentMeetings, genehmigungen, agentPermissions, expertenSkills, skillsLibrary,
-  routinen, routineAusfuehrung, palaceKg, traceEreignisse,
+  routinen, routineAusfuehrung, palaceKg, traceEreignisse, ceoDecisionLog,
 } from '../../db/schema.js';
 import { eq, and, sql, inArray, or, isNull, asc, desc, gte } from 'drizzle-orm';
 import { pruefeUndEntblocke } from '../issue-dependencies.js';
@@ -934,7 +934,35 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
       let orchestratorMarkedCurrentTaskDone = false;
       if (result.success && result.output) {
         if (isOrchestrator) {
-          orchestratorMarkedCurrentTaskDone = await processOrchestratorActions(task.id, expertId, unternehmenId, result.output);
+          const orchResult = await processOrchestratorActions(task.id, expertId, unternehmenId, result.output);
+          orchestratorMarkedCurrentTaskDone = orchResult.done;
+
+          // ─── CEO Decision Log ───────────────────────────────────────────────
+          // Persist what the CEO decided this cycle so the next cycle starts
+          // with context instead of amnesia.
+          try {
+            const focusLine = result.output.split('\n').find(l => l.trim().length > 20)?.slice(0, 250)
+              ?? task.titel.slice(0, 250);
+            const goalsForLog = (adapterContext.companyContext.goals ?? []).map(g => `${g.titel} (${g.fortschritt}%)`).join(', ');
+            const teamForLog = teamMembers.map(m => m.name).join(', ');
+            const pendingCount = openTasksList.length;
+
+            await db.insert(ceoDecisionLog as any).values({
+              id: crypto.randomUUID(),
+              expertId,
+              unternehmenId,
+              runId,
+              erstelltAm: new Date().toISOString(),
+              focusSummary: focusLine,
+              actionsJson: JSON.stringify(orchResult.actionSummary),
+              goalsSnapshot: goalsForLog || null,
+              pendingTaskCount: pendingCount,
+              teamSummary: teamForLog || null,
+            }).run();
+          } catch (e: any) {
+            console.warn(`  ⚠️ CEO Decision Log konnte nicht gespeichert werden: ${e.message}`);
+          }
+          // ────────────────────────────────────────────────────────────────────
         } else if (isCliAdapter) {
           await processWorkerActions(task.id, expertId, unternehmenId, runId, result.output, (taskFull as any).workspacePath);
         }

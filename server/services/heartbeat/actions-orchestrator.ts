@@ -8,21 +8,27 @@ import { wakeupService } from '../wakeup.js';
 import { v4 as uuid } from 'uuid';
 import { trace } from './utils.js';
 
+export interface OrchestratorActionResult {
+  /** true if the orchestrator's actions included marking the current task as done */
+  done: boolean;
+  /** human-readable summary of each executed action, for the decision log */
+  actionSummary: string[];
+}
+
 /**
  * CEO Action Parser — liest den Output des Orchestrators und führt Aktionen aus:
  * create_task, assign_task, mark_done, update_goal, hire_agent, call_meeting, update_task_status
- *
- * Returns true if the orchestrator marked the current task as done.
  */
 export async function processOrchestratorActions(
   taskId: string,
   orchestratorId: string,
   unternehmenId: string,
   output: string,
-): Promise<boolean> {
+): Promise<OrchestratorActionResult> {
   // Extrahiere JSON-Block aus CEO Output (```json ... ``` oder roher JSON mit "actions")
   let actions: any[] = [];
   let currentTaskMarkedDone = false;
+  const actionSummary: string[] = [];
 
   const jsonBlockMatch = output.match(/```json\s*([\s\S]*?)\s*```/);
   const rawJsonMatch = output.match(/\{\s*"actions"\s*:\s*\[[\s\S]*?\]\s*\}/);
@@ -156,7 +162,7 @@ export async function processOrchestratorActions(
             `CEO erstellt Task: ${action.titel}`,
             `Zugewiesen an: ${agent?.name || 'nicht zugewiesen'}`,
           );
-
+          actionSummary.push(`create_task: "${action.titel}" → ${agent?.name || 'offen'} [${action.prioritaet || 'medium'}]`);
           tasksCreatedThisCycle++;
 
           // Wecke den zugewiesenen Agent sofort
@@ -186,6 +192,7 @@ export async function processOrchestratorActions(
 
           console.log(`  ✅ CEO weist Task zu → ${agent.name}`);
           trace(orchestratorId, unternehmenId, 'action', `Task zugewiesen an ${agent.name}`);
+          actionSummary.push(`assign_task: ${action.taskId} → ${agent.name}`);
 
           await wakeupService.wakeup(agent.id, unternehmenId, {
             source: 'automation',
@@ -207,6 +214,7 @@ export async function processOrchestratorActions(
           }
           console.log(`  ✅ CEO markiert Task ${action.taskId} als erledigt`);
           trace(orchestratorId, unternehmenId, 'result', `Task als erledigt markiert`);
+          actionSummary.push(`mark_done: ${action.taskId}`);
           break;
         }
 
@@ -222,6 +230,7 @@ export async function processOrchestratorActions(
             .run();
 
           console.log(`  ✅ CEO aktualisiert Ziel ${action.goalId}: ${action.fortschritt ?? ''}%`);
+          actionSummary.push(`update_goal: ${action.goalId} → ${action.fortschritt ?? '?'}%`);
           trace(orchestratorId, unternehmenId, 'result',
             `Ziel aktualisiert${typeof action.fortschritt === 'number' ? `: ${action.fortschritt}%` : ''}`,
           );
@@ -275,6 +284,7 @@ export async function processOrchestratorActions(
           }).run();
 
           console.log(`  📋 CEO beantragt Einstellung: "${action.rolle}" — Genehmigung ausstehend`);
+          actionSummary.push(`hire_agent: "${action.rolle}" → Genehmigung ausstehend`);
           trace(orchestratorId, unternehmenId, 'action',
             `Einstellungsantrag: ${action.rolle}`,
             `Genehmigung erforderlich`,
@@ -312,6 +322,7 @@ export async function processOrchestratorActions(
           }
 
           console.log(`  📋 CEO ruft Meeting ein: "${action.thema}" mit ${action.teilnehmerIds.length} Teilnehmern`);
+          actionSummary.push(`call_meeting: "${action.thema}" (${action.teilnehmerIds.length} Teilnehmer)`);
           trace(orchestratorId, unternehmenId, 'action',
             `Meeting einberufen: ${action.thema}`,
             `${action.teilnehmerIds.length} Teilnehmer`, undefined
@@ -326,5 +337,5 @@ export async function processOrchestratorActions(
       console.error(`  ❌ CEO Action "${action.type}" fehlgeschlagen: ${err.message}`);
     }
   }
-  return currentTaskMarkedDone;
+  return { done: currentTaskMarkedDone, actionSummary };
 }
