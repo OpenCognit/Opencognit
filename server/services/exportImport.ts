@@ -12,7 +12,7 @@ import {
   routinen, routineTrigger, kommentare, genehmigungen,
   agentPermissions, aktivitaetslog, arbeitszyklen, agentWakeupRequests,
 } from '../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, and, gte, desc } from 'drizzle-orm';
 
 const EXPORT_VERSION = '1.0';
 
@@ -518,4 +518,123 @@ export function importCompany(data: CompanyExport, newName?: string): ImportResu
     },
     warnings,
   };
+}
+
+// ===== Fine-Tuning Export =====
+
+export interface TrainingRecord {
+  instruction: string;
+  input: string;
+  output: string;
+  metadata: {
+    agentName: string;
+    agentId: string;
+    taskId: string;
+    completedAt: string | null;
+    criticApproved: boolean;
+  };
+}
+
+export interface TrainingExportOptions {
+  format: 'jsonl' | 'json';
+  minQuality: 'approved' | 'all';
+  agentId?: string;
+  since?: string; // ISO date filter
+  limit?: number;
+}
+
+/**
+ * Export agent execution data as training pairs (instruction/input/output).
+ *
+ * Data source:
+ * - aufgaben  → instruction (titel + beschreibung)
+ * - kommentare → output (agent-authored, most recent per task)
+ * - arbeitszyklen → criticApproved (status=succeeded = passed critic gate)
+ */
+export async function exportTrainingData(
+  unternehmenId: string,
+  opts: TrainingExportOptions,
+): Promise<TrainingRecord[]> {
+  const limit = Math.min(opts.limit ?? 500, 2000);
+
+  // Fetch completed tasks for this company
+  let tasksQuery = db
+    .select({
+      id: aufgaben.id,
+      titel: aufgaben.titel,
+      beschreibung: aufgaben.beschreibung,
+      zugewiesenAn: aufgaben.zugewiesenAn,
+      abgeschlossenAm: aufgaben.abgeschlossenAm,
+    })
+    .from(aufgaben)
+    .where(
+      and(
+        eq(aufgaben.unternehmenId, unternehmenId),
+        eq(aufgaben.status, 'done'),
+        opts.agentId ? eq(aufgaben.zugewiesenAn, opts.agentId) : undefined,
+        opts.since ? gte(aufgaben.abgeschlossenAm, opts.since) : undefined,
+      ),
+    )
+    .orderBy(desc(aufgaben.abgeschlossenAm))
+    .limit(limit) as any;
+
+  const tasks: any[] = await tasksQuery.all();
+  if (tasks.length === 0) return [];
+
+  // Resolve agent names
+  const agentIds = [...new Set(tasks.map((t: any) => t.zugewiesenAn).filter(Boolean))] as string[];
+  const agentRows = agentIds.length
+    ? db.select({ id: experten.id, name: experten.name }).from(experten).all()
+    : [];
+  const agentMap = new Map(agentRows.map((a: any) => [a.id, a.name]));
+
+  const records: TrainingRecord[] = [];
+
+  for (const task of tasks) {
+    // Find the most recent agent comment (output) for this task
+    const comment = db
+      .select({ inhalt: kommentare.inhalt })
+      .from(kommentare)
+      .where(
+        and(
+          eq(kommentare.aufgabeId, task.id),
+          eq(kommentare.autorTyp, 'agent'),
+        ),
+      )
+      .orderBy(desc(kommentare.erstelltAm))
+      .limit(1)
+      .get() as any;
+
+    if (!comment?.inhalt) continue;
+
+    // Check if critic approved: task had a successful run
+    const criticApproved = !!db
+      .select({ id: arbeitszyklen.id })
+      .from(arbeitszyklen)
+      .where(
+        and(
+          eq(arbeitszyklen.expertId, task.zugewiesenAn ?? ''),
+          eq(arbeitszyklen.status, 'succeeded'),
+        ),
+      )
+      .limit(1)
+      .get();
+
+    if (opts.minQuality === 'approved' && !criticApproved) continue;
+
+    records.push({
+      instruction: task.titel + (task.beschreibung ? `\n\n${task.beschreibung}` : ''),
+      input: '',
+      output: comment.inhalt,
+      metadata: {
+        agentName: agentMap.get(task.zugewiesenAn) ?? task.zugewiesenAn ?? 'unknown',
+        agentId: task.zugewiesenAn ?? '',
+        taskId: task.id,
+        completedAt: task.abgeschlossenAm,
+        criticApproved,
+      },
+    });
+  }
+
+  return records;
 }

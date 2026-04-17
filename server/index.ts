@@ -4315,6 +4315,7 @@ app.post('/api/experten/:id/skills-library/query', authMiddleware, (req, res) =>
 // =============================================
 
 import { exportCompany, previewImport, importCompany } from './services/company-portability.js';
+import { exportTrainingData } from './services/exportImport.js';
 
 app.get('/api/unternehmen/:id/export', authMiddleware, (req, res) => {
   const manifest = exportCompany(req.params.id as string);
@@ -4333,6 +4334,30 @@ app.post('/api/unternehmen/:id/import', authMiddleware, (req, res) => {
   const result = importCompany(req.params.id as string, manifest, options || { collisionStrategy: 'skip' });
   broadcastUpdate('company_imported', { unternehmenId: req.params.id, ...result });
   res.json(result);
+});
+
+// GET /api/unternehmen/:id/export/training — fine-tuning JSONL/JSON export
+app.get('/api/unternehmen/:id/export/training', authMiddleware, async (req, res) => {
+  const format = (req.query.format as string) === 'json' ? 'json' : 'jsonl';
+  const minQuality = (req.query.minQuality as string) === 'all' ? 'all' : 'approved';
+  const agentId = req.query.agentId as string | undefined;
+  const since = req.query.since as string | undefined;
+  const limit = req.query.limit ? Number(req.query.limit) : undefined;
+
+  try {
+    const records = await exportTrainingData(req.params.id, { format, minQuality, agentId, since, limit });
+
+    if (format === 'jsonl') {
+      res.setHeader('Content-Type', 'application/x-ndjson');
+      res.setHeader('Content-Disposition', `attachment; filename="training-${req.params.id}.jsonl"`);
+      res.send(records.map(r => JSON.stringify(r)).join('\n'));
+    } else {
+      res.setHeader('Content-Disposition', `attachment; filename="training-${req.params.id}.json"`);
+      res.json(records);
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // =============================================
