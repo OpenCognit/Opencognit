@@ -615,6 +615,18 @@ export const de = {
     deleteConfirm: 'Meeting wirklich löschen? Das Archiv und alle Antworten werden entfernt.',
     deleteArchive: 'Archiv leeren',
     deleteArchiveConfirm: 'Alle abgeschlossenen und abgebrochenen Meetings löschen?',
+    completeModalTitle: 'Meeting abschließen',
+    completeModalLabel: 'CEO-SYNTHESE / ERGEBNIS (OPTIONAL)',
+    completeModalPlaceholder: 'Fasst die Diskussion zusammen und gibt eine Entscheidung oder nächste Schritte vor…',
+    completeModalSave: 'Speichern & Abschließen',
+    completeModalSaving: 'Speichert…',
+  },
+  tooltips: {
+    runManual: 'Manuell ausführen',
+    openFolder: 'Ordner im Dateimanager öffnen',
+    openProjectFolder: 'Projektverzeichnis im Dateimanager öffnen',
+    resetZoom: 'Zoom zurücksetzen',
+    agentsRunning: 'Agenten aktiv — klicken für War Room',
   },
   verbindungsLabels: {
     claude: 'Claude Code CLI',

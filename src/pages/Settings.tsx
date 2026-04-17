@@ -1225,7 +1225,7 @@ export function Settings() {
                   <button
                     onClick={openFolder}
                     disabled={openingFolder || !workDir.trim()}
-                    title="Ordner im Dateimanager öffnen"
+                    title={i18n.t.tooltips.openFolder}
                     style={{
                       padding: '0.625rem 1rem',
                       background: 'rgba(35, 205, 203, 0.1)',

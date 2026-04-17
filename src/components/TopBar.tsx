@@ -239,7 +239,7 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
         {runningAgents > 0 && (
           <button
             onClick={() => navigate('/war-room')}
-            title="Agenten aktiv — klicken für War Room"
+            title={i18n.t.tooltips.agentsRunning}
             style={{
               display: 'flex', alignItems: 'center', gap: '0.5rem',
               padding: '0.3rem 0.75rem', borderRadius: '999px',

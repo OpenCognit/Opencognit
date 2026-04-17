@@ -2130,7 +2130,7 @@ export function Dashboard() {
                   body: JSON.stringify({ path: (aktivesUnternehmen as any).workDir }),
                 });
               }}
-              title="Projektverzeichnis im Dateimanager öffnen"
+              title={t.tooltips.openProjectFolder}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: '0.375rem',
                 marginTop: '0.5rem', padding: '0.25rem 0.625rem',

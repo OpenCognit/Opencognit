@@ -37,6 +37,18 @@ You → Goal → CEO Agent → Dev Agent → Writer Agent → Researcher Agent
 
 ---
 
+## OpenCognit is right for you if
+
+✅ You want to build autonomous AI companies  
+✅ You coordinate many different agents (OpenClaw, Codex, Claude, Cursor) toward a common goal  
+✅ You have 20 simultaneous Claude Code terminals open and lose track of what everyone is doing  
+✅ You want agents running autonomously 24/7, but still want to audit work and chime in when needed  
+✅ You want to monitor costs and enforce budgets  
+✅ You want a process for managing agents that feels like using a task manager  
+✅ You want to manage your autonomous businesses from your phone  
+
+---
+
 ## Why OpenCognit?
 
 | Problem | OpenCognit |
@@ -160,37 +172,39 @@ npm start
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    React 19 Frontend                      │
-│  Dashboard · Agents · Tasks · Meetings · Intelligence   │
-│  Goals · War Room · Memory · Costs · SOUL Editor     │
-└────────────────────────┬────────────────────────────────┘
-                         │ REST + WebSocket + SSE
-┌────────────────────────▼────────────────────────────────┐
-│                   Express 5 API Server                    │
-│                                                          │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐  │
-│  │  Heartbeat   │  │  Cron Sched  │  │  CEO Adapter  │  │
-│  │  Runner      │  │  (30s tick)  │  │  + Thinking   │  │
-│  └──────┬───────┘  └──────────────┘  └───────────────┘  │
-│         │                                                 │
-│  ┌──────▼──────────────────────────────────────────────┐ │
-│  │           Adapter Registry                           │ │
-│  │  Bash · HTTP · Claude Code · OpenRouter · Ollama    │
-  │  OpenClaw Gateway                                   │ │
-│  │  Critic Loop · Task Chaining · Token Budget Guard   │ │
-│  └──────┬──────────────────────────────────────────────┘ │
-│         │                                                 │
-│  ┌──────▼───────────────────────────────────────────┐    │
-│  │                  Memory                        │    │
-│  │  Wing · Rooms · Diary · KG · Consolidation        │    │
-│  └──────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────-┘
-                         │
-┌────────────────────────▼────────────────────────────────┐
-│              SQLite (self-hosted, no cloud dependency)    │
-│  Agents · Tasks · Goals · Memory · Meetings · Costs     │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                      React 19 Frontend                        │
+│  Dashboard · Agents · Tasks · Meetings · Intelligence        │
+│  Goals · War Room · Memory (Palace) · Costs · SOUL Editor   │
+└───────────────────────────┬──────────────────────────────────┘
+                            │ REST + WebSocket + SSE
+┌───────────────────────────▼──────────────────────────────────┐
+│                    Express 5 API Server                       │
+│                                                               │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │              Heartbeat Engine (modular)                 │  │
+│  │  context-builder · critic · budget · notifications     │  │
+│  │  actions-orchestrator · actions-worker · dependencies  │  │
+│  └────────────────────────────┬───────────────────────────┘  │
+│                               │                               │
+│  ┌──────────────┐  ┌──────────▼───────┐  ┌───────────────┐  │
+│  │  Cron Sched  │  │  Adapter Registry │  │  CEO Adapter  │  │
+│  │  (30s tick)  │  │  Bash · HTTP      │  │  + Thinking   │  │
+│  └──────────────┘  │  Claude Code      │  └───────────────┘  │
+│                    │  OpenRouter · LLM │                      │
+│                    │  OpenClaw Gateway │                      │
+│                    └──────────┬────────┘                      │
+│                               │                               │
+│  ┌────────────────────────────▼───────────────────────────┐  │
+│  │                  MemPalace (per agent)                  │  │
+│  │  Wing · Rooms · Diary · Knowledge Graph · Summaries   │  │
+│  └────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────┘
+                            │
+┌───────────────────────────▼──────────────────────────────────┐
+│           SQLite / PostgreSQL (self-hosted, no cloud)         │
+│  35 tables: Agents · Tasks · Goals · Memory · Budget · etc.  │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -217,13 +231,26 @@ npm start
 opencognit/
 ├── server/
 │   ├── index.ts              # Express + all API endpoints
-│   ├── db/schema.ts          # Drizzle schema (SQLite)
+│   ├── db/
+│   │   ├── schema.ts         # Drizzle schema (SQLite, 35 tables)
+│   │   └── schema.pg.ts      # Drizzle schema (PostgreSQL, full parity)
 │   ├── services/
-│   │   ├── heartbeat.ts      # Agent cycle runner + Critic Loop
+│   │   ├── heartbeat/        # Modular heartbeat engine (10 files)
+│   │   │   ├── service.ts    # HeartbeatServiceImpl (orchestrator)
+│   │   │   ├── critic.ts     # Critic loop + advisor plan/correction
+│   │   │   ├── context-builder.ts  # Memory/goal/workspace injection
+│   │   │   ├── actions-orchestrator.ts  # CEO action dispatcher
+│   │   │   ├── actions-worker.ts   # Worker bash/JSON actions
+│   │   │   ├── dependencies.ts     # Task chaining + blocker scan
+│   │   │   ├── notifications.ts    # CEO feedback loop + meetings
+│   │   │   ├── budget.ts     # Budget enforcement
+│   │   │   └── utils.ts      # Soul cache, trace, focus mode
 │   │   ├── cron.ts           # Cron scheduler
 │   │   ├── wakeup.ts         # Wakeup coalescing
-│   │   ├── memory-auto.ts # Auto-save + REMEMBER protocol
+│   │   ├── memory-auto.ts    # Auto-save + REMEMBER protocol
 │   │   └── messaging.ts      # Telegram + channels
+│   ├── routes/
+│   │   └── webhooks.ts       # Telegram · WhatsApp · Slack · Routine webhooks
 │   └── adapters/
 │       ├── ceo.ts            # CEO Orchestrator + Extended Thinking
 │       ├── claude-code.ts    # Claude Code CLI adapter

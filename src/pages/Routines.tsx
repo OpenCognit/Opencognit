@@ -389,7 +389,7 @@ export function Routines() {
                   <button
                     style={styles.iconButton}
                     onClick={() => triggerManual(routine)}
-                    title="Manuell ausführen"
+                    title={i18n.t.tooltips.runManual}
                   >
                     <Zap size={16} />
                   </button>

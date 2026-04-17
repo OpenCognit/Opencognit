@@ -823,6 +823,8 @@ function CompleteModal({
   onCompleted: () => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
+  const m = t.meetings;
   const [ergebnis, setErgebnis] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -854,7 +856,7 @@ function CompleteModal({
         padding: '1.75rem', boxShadow: '0 24px 80px rgba(0,0,0,0.7)',
       }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-          <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#f1f5f9', margin: 0 }}>Meeting abschließen</h2>
+          <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#f1f5f9', margin: 0 }}>{m.completeModalTitle}</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', display: 'flex' }}><X size={16} /></button>
         </div>
         <p style={{ fontSize: '0.8125rem', color: '#64748b', marginBottom: '1rem' }}>
@@ -862,12 +864,12 @@ function CompleteModal({
         </p>
         <label>
           <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '0.375rem', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-            CEO-Synthese / Ergebnis (optional)
+            {m.completeModalLabel}
           </span>
           <textarea
             value={ergebnis}
             onChange={e => setErgebnis(e.target.value)}
-            placeholder="Fasst die Diskussion zusammen und gibt eine Entscheidung oder nächste Schritte vor…"
+            placeholder={m.completeModalPlaceholder}
             rows={4}
             style={{
               width: '100%', boxSizing: 'border-box', padding: '0.75rem',
@@ -879,7 +881,7 @@ function CompleteModal({
         </label>
         <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
           <button onClick={onClose} style={{ padding: '0.625rem 1.25rem', borderRadius: '10px', cursor: 'pointer', fontSize: '0.875rem', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: '#64748b' }}>
-            Abbrechen
+            {m.cancel}
           </button>
           <button onClick={save} disabled={saving} style={{
             padding: '0.625rem 1.25rem', borderRadius: '10px', cursor: saving ? 'wait' : 'pointer',
@@ -888,7 +890,7 @@ function CompleteModal({
             display: 'flex', alignItems: 'center', gap: '0.5rem',
           }}>
             {saving ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <CheckCircle2 size={13} />}
-            {saving ? 'Wird gespeichert…' : 'Abschließen'}
+            {saving ? m.completeModalSaving : m.completeModalSave}
           </button>
         </div>
       </div>

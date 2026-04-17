@@ -600,7 +600,7 @@ export function OrgChart() {
                 </button>
                 <button
                   onClick={() => { setZoom(1); setPan({ x: 60, y: 60 }); }}
-                  title="Zoom zurücksetzen"
+                  title={i18n.t.tooltips.resetZoom}
                   style={{ background: 'none', border: 'none', color: '#23CDCB', cursor: 'pointer', fontSize: '11px', fontWeight: 700, padding: '0 6px', fontFamily: 'monospace', minWidth: 36, textAlign: 'center' }}
                 >
                   {Math.round(zoom * 100)}%
