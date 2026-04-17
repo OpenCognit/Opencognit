@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Plus, ArrowRight, Loader2, MessageSquare, Sparkles, Zap, ZapOff,
-  Settings2, Crown, Play, ShieldAlert, Activity, Terminal, X,
+  Settings2, Crown, Play, Pause, ShieldAlert, Activity, Terminal, X,
   Users, CheckCircle2, Target, Wallet, AlertCircle, CornerDownRight,
 } from 'lucide-react';
 import { PageHelp } from '../components/PageHelp';
@@ -347,6 +347,7 @@ export function Experts() {
   const [editingExpert, setEditingExpert] = useState<ExperteType | null>(null);
   const [activeChatExpert, setActiveChatExpert] = useState<ExperteType | null>(null);
   const [wakingUp, setWakingUp] = useState<Set<string>>(new Set());
+  const [pausingAgents, setPausingAgents] = useState<Set<string>>(new Set());
 
   type QualityEntry = {
     expertId: string; name: string; totalRuns: number; approvedRuns: number;
@@ -504,6 +505,31 @@ export function Experts() {
         setWakingUp(prev => { const s = new Set(prev); s.delete(expertId); return s; });
         reload();
       }, 1500);
+    }
+  };
+
+  // ── pause / resume ────────────────────────────────────────────────────────
+  const togglePause = async (expert: ExperteType) => {
+    const isPaused = expert.status === 'paused';
+    setPausingAgents(prev => new Set(prev).add(expert.id));
+    try {
+      const endpoint = isPaused ? `/api/mitarbeiter/${expert.id}/fortsetzen` : `/api/mitarbeiter/${expert.id}/pausieren`;
+      await authFetch(endpoint, { method: 'POST' });
+      toast.agent(
+        isPaused
+          ? (de ? `${expert.name} fortgesetzt` : `${expert.name} resumed`)
+          : (de ? `${expert.name} pausiert` : `${expert.name} paused`),
+        isPaused
+          ? (de ? 'Agent ist wieder aktiv' : 'Agent is active again')
+          : (de ? 'Agent pausiert — kein Auto-Zyklus' : 'Agent paused — no auto-cycle'),
+      );
+    } catch (e: any) {
+      toast.error(de ? 'Fehler' : 'Error', e.message);
+    } finally {
+      setTimeout(() => {
+        setPausingAgents(prev => { const s = new Set(prev); s.delete(expert.id); return s; });
+        reload();
+      }, 1000);
     }
   };
 
@@ -862,6 +888,16 @@ export function Experts() {
                         onMouseLeave={e => { e.currentTarget.style.color = '#71717a'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; }}
                       >
                         <Terminal size={14} />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); togglePause(m); }}
+                        disabled={pausingAgents.has(m.id)}
+                        title={m.status === 'paused' ? (de ? 'Fortsetzen' : 'Resume') : (de ? 'Pausieren' : 'Pause')}
+                        style={{ display: 'flex', alignItems: 'center', padding: '0.5rem 0.625rem', backgroundColor: m.status === 'paused' ? 'rgba(234,179,8,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${m.status === 'paused' ? 'rgba(234,179,8,0.3)' : 'rgba(255,255,255,0.08)'}`, borderRadius: '8px', color: m.status === 'paused' ? '#eab308' : '#71717a', fontSize: '0.8125rem', cursor: pausingAgents.has(m.id) ? 'default' : 'pointer', transition: 'all 0.2s' }}
+                        onMouseEnter={e => { if (!pausingAgents.has(m.id)) { e.currentTarget.style.backgroundColor = 'rgba(234,179,8,0.1)'; e.currentTarget.style.color = '#eab308'; } }}
+                        onMouseLeave={e => { if (!pausingAgents.has(m.id) && m.status !== 'paused') { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = '#71717a'; } }}
+                      >
+                        {pausingAgents.has(m.id) ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : m.status === 'paused' ? <Play size={14} /> : <Pause size={14} />}
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); triggerWakeup(m.id); }}

@@ -5,7 +5,7 @@ import {
   AlertCircle, Clock, Radio, Activity, Building2,
   Target, FolderOpen, Cpu, TrendingUp, TrendingDown, Minus,
   Brain, ChevronRight, MonitorPlay, Sparkles, RefreshCw,
-  Bot, PlayCircle, BookOpen, X as XIcon, ChevronDown, ChevronUp, Key, Crown,
+  Bot, PlayCircle, BookOpen, X as XIcon, ChevronDown, ChevronUp, Key, Crown, Pause, Play,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
@@ -1068,19 +1068,22 @@ interface LiveAgent {
 }
 
 function AgentMissionCard({
-  agent, lang, onChat, onWakeup, waking,
+  agent, lang, onChat, onWakeup, waking, onPause, pausing,
 }: {
   agent: LiveAgent; lang: string;
   onChat: (id: string) => void;
   onWakeup: (id: string) => void;
   waking: boolean;
+  onPause: (id: string, isPaused: boolean) => void;
+  pausing: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const isRunning = agent.status === 'running';
   const isError   = agent.status === 'error';
   const isCEO     = agent.isOrchestrator === true;
-  const statusColor = isRunning ? '#23CDCB' : isError ? '#ef4444' : agent.status === 'active' || agent.status === 'idle' ? '#22c55e' : '#475569';
-  const statusLabel = isRunning ? (lang === 'de' ? 'Arbeitet' : 'Working') : isError ? (lang === 'de' ? 'Fehler' : 'Error') : (lang === 'de' ? 'Bereit' : 'Ready');
+  const isPaused = agent.status === 'paused';
+  const statusColor = isRunning ? '#23CDCB' : isError ? '#ef4444' : isPaused ? '#eab308' : agent.status === 'active' || agent.status === 'idle' ? '#22c55e' : '#475569';
+  const statusLabel = isRunning ? (lang === 'de' ? 'Arbeitet' : 'Working') : isError ? (lang === 'de' ? 'Fehler' : 'Error') : isPaused ? (lang === 'de' ? 'Pausiert' : 'Paused') : (lang === 'de' ? 'Bereit' : 'Ready');
   const traceCfg = agent.lastTrace ? (TRACE_CFG[agent.lastTrace.typ] || TRACE_CFG.info) : null;
 
   const borderColor = isCEO
@@ -1208,6 +1211,13 @@ function AgentMissionCard({
             style={{ padding: '0.25rem', background: 'none', border: 'none', color: '#71717a', cursor: 'pointer', display: 'flex', alignItems: 'center', transition: 'color 0.2s' }}>
             <MessageSquare size={14} />
           </button>
+          <button onClick={(e) => { e.stopPropagation(); onPause(agent.id, agent.status === 'paused'); }} disabled={pausing}
+            onMouseEnter={e => { if (!pausing) (e.currentTarget as HTMLElement).style.color = agent.status === 'paused' ? '#22c55e' : '#eab308'; }}
+            onMouseLeave={e => { if (!pausing) (e.currentTarget as HTMLElement).style.color = '#71717a'; }}
+            title={agent.status === 'paused' ? (lang === 'de' ? 'Fortsetzen' : 'Resume') : (lang === 'de' ? 'Pausieren' : 'Pause')}
+            style={{ padding: '0.25rem', background: 'none', border: 'none', color: agent.status === 'paused' ? '#eab308' : '#71717a', cursor: pausing ? 'default' : 'pointer', display: 'flex', alignItems: 'center', transition: 'color 0.2s' }}>
+            {pausing ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : agent.status === 'paused' ? <Play size={14} /> : <Pause size={14} />}
+          </button>
           <button onClick={(e) => { e.stopPropagation(); onWakeup(agent.id); }} disabled={waking}
             onMouseEnter={e => { if (!waking) (e.currentTarget as HTMLElement).style.color = '#22c55e'; }}
             onMouseLeave={e => { if (!waking) (e.currentTarget as HTMLElement).style.color = '#71717a'; }}
@@ -1305,6 +1315,7 @@ function MissionControl({
 }) {
   const [agents, setAgents] = useState<LiveAgent[]>(initialAgents);
   const [waking, setWaking] = useState<Set<string>>(new Set());
+  const [pausing, setPausing] = useState<Set<string>>(new Set());
   const wsRef = useRef<WebSocket | null>(null);
 
   // Sync when parent reloads
@@ -1378,6 +1389,22 @@ function MissionControl({
     setTimeout(() => {
       setWaking(prev => { const s = new Set(prev); s.delete(agentId); return s; });
     }, 2000);
+  };
+
+  const handlePause = async (agentId: string, isPaused: boolean) => {
+    setPausing(prev => new Set(prev).add(agentId));
+    const token = localStorage.getItem('opencognit_token');
+    const endpoint = isPaused ? `/api/mitarbeiter/${agentId}/fortsetzen` : `/api/mitarbeiter/${agentId}/pausieren`;
+    await fetch(endpoint, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).catch(() => {});
+    setAgents(prev => prev.map(a =>
+      a.id === agentId ? { ...a, status: isPaused ? 'idle' : 'paused' } : a
+    ));
+    setTimeout(() => {
+      setPausing(prev => { const s = new Set(prev); s.delete(agentId); return s; });
+    }, 1000);
   };
 
   const runningCount = agents.filter(a => a.status === 'running').length;
@@ -1455,6 +1482,8 @@ function MissionControl({
               onChat={onChat}
               onWakeup={handleWakeup}
               waking={waking.has(agent.id)}
+              onPause={handlePause}
+              pausing={pausing.has(agent.id)}
             />
           ))}
         </div>

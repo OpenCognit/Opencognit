@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, Users, ListTodo,
+  LayoutDashboard, Users, ListTodo, Building2,
   Wallet, ShieldCheck, Activity,
   Settings, LogOut, Globe, Brain,
   ChevronLeft, ChevronRight, ChevronDown, Clock, FolderOpen, MessagesSquare, Target, Zap, BarChart3, Package, GitBranch, BookOpen,
@@ -51,6 +51,7 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
     // ── Tägliche Nutzung ──
     { section: de ? 'Betrieb' : 'Operations', items: [
       { to: '/',              icon: LayoutDashboard, label: t.nav.dashboard },
+      { to: '/companies',     icon: Building2,       label: t.nav.unternehmen },
       { to: '/experts',       icon: Users,           label: t.nav.experten },
       { to: '/skill-library', icon: BookOpen,        label: t.nav.skillLibrary },
       { to: '/approvals',     icon: ShieldCheck,     label: t.nav.genehmigungen },
