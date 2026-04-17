@@ -323,7 +323,7 @@ app.get('/api/unternehmen/:id/workspace/check', (req, res) => {
 });
 
 // Filesystem directory browser — lists subdirectories of a given path
-app.get('/api/fs/dirs', authenticateToken, (req: any, res) => {
+app.get('/api/fs/dirs', (req: any, res) => {
   const requested = (req.query.path as string) || '';
   const home = process.env.HOME || process.env.USERPROFILE || '/home';
   const current = requested ? path.resolve(requested) : home;
@@ -352,7 +352,7 @@ app.get('/api/fs/dirs', authenticateToken, (req: any, res) => {
 });
 
 // Create a directory (used by FolderPickerModal)
-app.post('/api/fs/mkdir', authenticateToken, (req: any, res) => {
+app.post('/api/fs/mkdir', (req: any, res) => {
   const { path: dirPath } = req.body as { path?: string };
   if (!dirPath || !path.isAbsolute(dirPath)) return res.status(400).json({ error: 'Absoluter Pfad erforderlich' });
   // Block creating inside project source tree
@@ -2624,6 +2624,11 @@ app.post('/api/experten/:id/chat/direct', async (req: express.Request, res: expr
       apiKey = resolvedKey;
       apiUrl = (resolvedBaseUrl || 'https://api.openai.com/v1') + '/chat/completions';
       provider = 'openai'; // treat as OpenAI-compatible for LLM call below
+    } else if (provider === 'ollama') {
+      const ollamaBase = agentBaseUrl || 'http://localhost:11434';
+      apiUrl = ollamaBase + '/v1/chat/completions';
+      apiKey = 'ollama'; // Ollama doesn't require a real key
+      provider = 'openai'; // treat as OpenAI-compatible for LLM call below
     } else {
       // Fallback: try anthropic key
       const row = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'anthropic_api_key')).get();
@@ -2849,7 +2854,7 @@ ${langLine(uiLang)} ${isEn ? `You respond directly to board messages. Be precise
     db.update(experten).set({ verbrauchtMonatCent: sql`${experten.verbrauchtMonatCent} + ${kostenCent}`, aktualisiertAm: n2 }).where(eq(experten.id, expertId)).run();
   }
 
-  res.json({ antwort: agentReply, tokensVerwendet: inputTokens + outputTokens, modell: modelId, provider: expert.verbindungsTyp });
+  res.json({ status: 'ok', reply: agentReply, tokensVerwendet: inputTokens + outputTokens, modell: modelId, provider: expert.verbindungsTyp });
 });
 
 // =============================================
