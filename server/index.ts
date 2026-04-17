@@ -955,6 +955,7 @@ app.post('/api/genehmigungen/:id/genehmigen', async (req, res) => {
   }).where(eq(genehmigungen.id, req.params.id)).run();
 
   logAktivitaet(genehm.unternehmenId, 'board', 'board', 'Board', `hat „${genehm.titel}" genehmigt`, 'genehmigung', genehm.id);
+  broadcastUpdate('approval_updated', { unternehmenId: genehm.unternehmenId, id: genehm.id, status: 'approved' });
   const updated = db.select().from(genehmigungen).where(eq(genehmigungen.id, req.params.id)).get();
   res.json(updated);
 });
@@ -972,6 +973,7 @@ app.post('/api/genehmigungen/:id/ablehnen', (req, res) => {
   }).where(eq(genehmigungen.id, req.params.id)).run();
 
   logAktivitaet(genehm.unternehmenId, 'board', 'board', 'Board', `hat „${genehm.titel}" abgelehnt`, 'genehmigung', genehm.id);
+  broadcastUpdate('approval_updated', { unternehmenId: genehm.unternehmenId, id: genehm.id, status: 'rejected' });
   const updated = db.select().from(genehmigungen).where(eq(genehmigungen.id, req.params.id)).get();
   res.json(updated);
 });

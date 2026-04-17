@@ -42,7 +42,12 @@ export function useApprovalNotifier() {
         const msg = JSON.parse(event.data);
         if (msg.data?.unternehmenId && msg.data.unternehmenId !== aktivesUnternehmen.id) return;
 
-        if (msg.type === 'approval_created') {
+        if (msg.type === 'approval_updated') {
+          // Re-fetch the real count after an approve/reject decision
+          fetchCount();
+        }
+
+        else if (msg.type === 'approval_created') {
           setGlobalCount(globalCount + 1);
           const agentName = msg.data?.agentName || 'Ein Agent';
           const actionName = msg.data?.action || 'eine Aktion';

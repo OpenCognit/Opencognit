@@ -1,4 +1,5 @@
-import { Check, X, Clock, Loader2, Sparkles, ShieldCheck, Briefcase, Layers, MessageSquare, Terminal } from 'lucide-react';
+import { useState } from 'react';
+import { Check, X, Clock, Loader2, Sparkles, ShieldCheck, Briefcase, MessageSquare, Terminal, ChevronDown } from 'lucide-react';
 import { PageHelp } from '../components/PageHelp';
 import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 import { useI18n } from '../i18n';
@@ -10,6 +11,7 @@ import { GlassCard } from '../components/GlassCard';
 
 export function Approvals() {
   const i18n = useI18n();
+  const [showAllDone, setShowAllDone] = useState(false);
   const { aktivesUnternehmen } = useCompany();
   useBreadcrumbs([aktivesUnternehmen?.name ?? '', i18n.t.nav.genehmigungen]);
   const typLabels: Record<string, string> = {
@@ -244,19 +246,25 @@ export function Approvals() {
           {/* Completed */}
           {erledigt.length > 0 && (
             <div>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                marginBottom: '1rem',
-              }}>
-                <Check size={18} style={{ color: '#22c55e' }} />
-                <h2 style={{ fontSize: '0.75rem', fontWeight: 600, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  {i18n.t.genehmigungen.done}
-                </h2>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Check size={18} style={{ color: '#22c55e' }} />
+                  <h2 style={{ fontSize: '0.75rem', fontWeight: 600, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    {i18n.t.genehmigungen.done} ({erledigt.length})
+                  </h2>
+                </div>
+                {erledigt.length > 10 && (
+                  <button
+                    onClick={() => setShowAllDone(v => !v)}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'none', border: 'none', color: '#52525b', fontSize: '0.75rem', cursor: 'pointer' }}
+                  >
+                    {showAllDone ? (i18n.language === 'de' ? 'Weniger' : 'Show less') : (i18n.language === 'de' ? `Alle ${erledigt.length} anzeigen` : `Show all ${erledigt.length}`)}
+                    <ChevronDown size={13} style={{ transform: showAllDone ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                  </button>
+                )}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {erledigt.map((g) => (
+                {(showAllDone ? erledigt : erledigt.slice(0, 10)).map((g) => (
                   <GlassCard
                     key={g.id}
                     accent={g.status === 'approved' ? '#22c55e' : '#ef4444'}

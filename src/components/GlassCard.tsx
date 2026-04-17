@@ -33,7 +33,9 @@ export function GlassCard({
         background: on ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.04)',
         backdropFilter: 'blur(24px) saturate(160%)',
         borderRadius: '20px',
-        border: `1px solid ${on ? `${accent}30` : 'rgba(255,255,255,0.09)'}`,
+        borderWidth: '1px',
+        borderStyle: 'solid',
+        borderColor: on ? `${accent}30` : 'rgba(255,255,255,0.09)',
         boxShadow: on
           ? `inset 0 1px 0 rgba(255,255,255,0.18), 0 12px 40px rgba(0,0,0,0.35), 0 0 0 1px ${accent}15`
           : 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
