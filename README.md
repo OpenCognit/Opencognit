@@ -271,6 +271,7 @@ The only outbound connections are the LLM API calls you configure.
 | Self-hosted, no cloud | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Local models (Ollama) | ✅ | ⚠️ | ✅ | ✅ | ✅ |
 | Claude Code CLI integration | ✅ | ❌ | ❌ | ❌ | ❌ |
+| OpenClaw agent bridge | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Free forever | ✅ | ✅ | ✅ | ✅ | ⚠️ |
 
 > Looking for an **AutoGPT alternative**, **CrewAI alternative**, or **open-source multi-agent system**? OpenCognit adds a full org chart, persistent memory, and a built-in quality loop on top.
