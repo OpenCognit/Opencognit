@@ -545,11 +545,21 @@ export function OrgChart() {
     aktualisiertAm: new Date().toISOString(),
   };
 
-  const finalTree: OrgNodeData[] = baum.length > 1 ? [{
-    experte: virtualHub,
-    kinder: baum,
-    depth: -1
-  }] : baum;
+  // If an orchestrator agent exists as a root node, it *is* the CEO — no virtual
+  // hub needed. Any other root-level agents (no reportsTo set) are shown as its
+  // direct reports in the chart, so nothing is hidden.
+  const orchestratorRoot = baum.find(n => n.experte.isOrchestrator);
+  const finalTree: OrgNodeData[] = orchestratorRoot
+    ? [{
+        ...orchestratorRoot,
+        kinder: [
+          ...orchestratorRoot.kinder,
+          ...baum.filter(n => !n.experte.isOrchestrator),
+        ],
+      }]
+    : baum.length > 1
+      ? [{ experte: virtualHub, kinder: baum, depth: -1 }]
+      : baum;
 
   return (
     <>
