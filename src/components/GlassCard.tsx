@@ -35,14 +35,14 @@ export function GlassCard({
         style={{
           position: 'relative',
           overflow: 'hidden',
-          background: on ? 'rgba(255,255,255,0.09)' : 'rgba(255,255,255,0.05)',
-          borderRadius: '20px',
+          background: on ? 'rgba(255,255,255,0.11)' : 'rgba(30,30,40,0.9)',
+          borderRadius: '14px',
           borderWidth: '1px',
           borderStyle: 'solid',
-          borderColor: on ? `${accent}40` : 'rgba(255,255,255,0.09)',
+          borderColor: on ? `${accent}50` : 'rgba(255,255,255,0.12)',
           boxShadow: on
-            ? `0 4px 16px rgba(0,0,0,0.3), 0 0 0 1px ${accent}20`
-            : '0 2px 8px rgba(0,0,0,0.15)',
+            ? `0 4px 20px rgba(0,0,0,0.4), 0 0 0 1px ${accent}25`
+            : '0 1px 4px rgba(0,0,0,0.3)',
           transition: 'background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease',
           cursor: onClick ? 'pointer' : 'default',
           ...style,
