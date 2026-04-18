@@ -404,39 +404,40 @@ function KnowledgeGraphPanel({ facts, unternehmenId, onRefresh }: { facts: KgFac
   if (facts.length === 0 && !addOpen) return null;
 
   return (
-    <div style={{ marginBottom: '2rem', background: 'rgba(34,197,94,0.03)', border: '1px solid rgba(34,197,94,0.15)', borderRadius: '16px', overflow: 'hidden' }}>
+    <div style={{ marginBottom: '2rem', background: '#000', border: '1px solid rgba(35,205,202,0.3)', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 0 40px rgba(35,205,202,0.06), 0 0 0 1px rgba(35,205,202,0.08)' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.875rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.05)', flexWrap: 'wrap', gap: '0.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#22c55e', fontWeight: 700, fontSize: '0.9375rem' }}>
-          <Network size={16} /> Knowledge Graph
-          <span style={{ fontSize: '0.75rem', color: '#475569', fontWeight: 400, background: 'rgba(34,197,94,0.08)', padding: '0.15rem 0.5rem', borderRadius: '999px' }}>{facts.length} {de ? 'Fakten' : 'facts'}</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.875rem 1.25rem', borderBottom: '1px solid rgba(35,205,202,0.1)', flexWrap: 'wrap', gap: '0.5rem', background: 'rgba(35,205,202,0.03)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.9375rem' }}>
+          <Network size={16} style={{ color: '#23CDCB' }} />
+          <span style={{ background: 'linear-gradient(90deg, #23CDCB, #a855f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Neural Knowledge Graph</span>
+          <span style={{ fontSize: '0.6875rem', color: '#23CDCB', fontWeight: 400, background: 'rgba(35,205,202,0.08)', border: '1px solid rgba(35,205,202,0.2)', padding: '0.1rem 0.5rem', borderRadius: '999px', fontFamily: 'monospace' }}>{facts.length} nodes</span>
         </div>
         <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center' }}>
           <div style={{ position: 'relative' }}>
-            <Search size={11} style={{ position: 'absolute', left: 7, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
+            <Search size={11} style={{ position: 'absolute', left: 7, top: '50%', transform: 'translateY(-50%)', color: '#23CDCB', opacity: 0.5 }} />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder={de ? 'Suchen…' : 'Search…'}
-              style={{ paddingLeft: 22, paddingRight: 8, paddingTop: 4, paddingBottom: 4, borderRadius: 7, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)', color: '#e2e8f0', fontSize: '0.75rem', width: 120, outline: 'none' }} />
+              style={{ paddingLeft: 22, paddingRight: 8, paddingTop: 4, paddingBottom: 4, borderRadius: 7, border: '1px solid rgba(35,205,202,0.2)', background: 'rgba(35,205,202,0.05)', color: '#23CDCB', fontSize: '0.75rem', width: 120, outline: 'none' }} />
           </div>
-          <button onClick={() => setAddOpen(o => !o)} style={{ padding: '0.25rem 0.625rem', borderRadius: 7, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', border: '1px solid rgba(34,197,94,0.3)', background: addOpen ? 'rgba(34,197,94,0.15)' : 'transparent', color: '#22c55e', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button onClick={() => setAddOpen(o => !o)} style={{ padding: '0.25rem 0.625rem', borderRadius: 7, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', border: `1px solid rgba(35,205,202,${addOpen ? '0.5' : '0.25'})`, background: addOpen ? 'rgba(35,205,202,0.12)' : 'transparent', color: '#23CDCB', display: 'flex', alignItems: 'center', gap: 4 }}>
             <Plus size={11} /> {de ? 'Fakt' : 'Fact'}
           </button>
           {(['graph', 'list'] as const).map(v => (
-            <button key={v} onClick={() => setView(v)} style={{ padding: '0.25rem 0.75rem', borderRadius: 7, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', border: 'none', background: view === v ? 'rgba(34,197,94,0.15)' : 'transparent', color: view === v ? '#22c55e' : '#475569' }}>{v === 'graph' ? 'Graph' : (de ? 'Tabelle' : 'Table')}</button>
+            <button key={v} onClick={() => setView(v)} style={{ padding: '0.25rem 0.75rem', borderRadius: 7, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', border: `1px solid ${view === v ? 'rgba(35,205,202,0.3)' : 'rgba(255,255,255,0.06)'}`, background: view === v ? 'rgba(35,205,202,0.1)' : 'transparent', color: view === v ? '#23CDCB' : '#475569' }}>{v === 'graph' ? 'Graph' : (de ? 'Tabelle' : 'Table')}</button>
           ))}
         </div>
       </div>
 
       {/* Stats bar */}
-      <div style={{ display: 'flex', gap: '1.5rem', padding: '0.4rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: '0.6875rem', color: '#475569', alignItems: 'center' }}>
-        <span><span style={{ color: '#22c55e', fontWeight: 700 }}>{uniqueSubjects}</span> {de ? 'Subjekte' : 'Subjects'}</span>
-        <span><span style={{ color: '#a855f7', fontWeight: 700 }}>{uniquePredicates}</span> {de ? 'Prädikate' : 'Predicates'}</span>
-        <span><span style={{ color: '#23CDCB', fontWeight: 700 }}>{uniqueObjects}</span> {de ? 'Objekte' : 'Objects'}</span>
-        {focused && <span style={{ marginLeft: 'auto', color: '#22c55e', cursor: 'pointer', fontSize: '0.625rem' }} onClick={() => setFocused(null)}>✕ {de ? 'Fokus aufheben' : 'Clear focus'}</span>}
+      <div style={{ display: 'flex', gap: '1.5rem', padding: '0.4rem 1.25rem', borderBottom: '1px solid rgba(35,205,202,0.06)', fontSize: '0.6875rem', color: '#334155', alignItems: 'center', fontFamily: 'monospace' }}>
+        <span><span style={{ color: '#22c55e', fontWeight: 700 }}>{uniqueSubjects}</span> <span style={{ color: '#22c55e88' }}>{de ? 'Subjekte' : 'subjects'}</span></span>
+        <span><span style={{ color: '#a855f7', fontWeight: 700 }}>{uniquePredicates}</span> <span style={{ color: '#a855f788' }}>{de ? 'Prädikate' : 'predicates'}</span></span>
+        <span><span style={{ color: '#23CDCB', fontWeight: 700 }}>{uniqueObjects}</span> <span style={{ color: '#23CDCB88' }}>{de ? 'Objekte' : 'objects'}</span></span>
+        {focused && <span style={{ marginLeft: 'auto', color: '#23CDCB', cursor: 'pointer', fontSize: '0.625rem', border: '1px solid rgba(35,205,202,0.3)', padding: '0.1rem 0.4rem', borderRadius: 4 }} onClick={() => setFocused(null)}>✕ clear focus</span>}
       </div>
 
       {/* Add Fact form */}
       {addOpen && (
-        <div style={{ padding: '0.625rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ padding: '0.625rem 1.25rem', borderBottom: '1px solid rgba(35,205,202,0.08)', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', background: 'rgba(35,205,202,0.02)' }}>
           {([
             { val: newSubject, set: setNewSubject, ph: de ? 'Subjekt' : 'Subject', color: '#22c55e' },
             { val: newPredicate, set: setNewPredicate, ph: de ? 'Prädikat' : 'Predicate', color: '#a855f7' },
@@ -444,9 +445,9 @@ function KnowledgeGraphPanel({ facts, unternehmenId, onRefresh }: { facts: KgFac
           ] as const).map(({ val, set, ph, color }) => (
             <input key={ph} value={val} onChange={e => set(e.target.value)} placeholder={ph}
               onKeyDown={e => e.key === 'Enter' && addFact()}
-              style={{ flex: 1, minWidth: 90, padding: '0.35rem 0.6rem', borderRadius: 7, border: `1px solid ${color}40`, background: 'rgba(255,255,255,0.03)', color, fontSize: '0.8rem', outline: 'none' }} />
+              style={{ flex: 1, minWidth: 90, padding: '0.35rem 0.6rem', borderRadius: 7, border: `1px solid ${color}50`, background: `${color}08`, color, fontSize: '0.8rem', outline: 'none', fontFamily: 'monospace' }} />
           ))}
-          <button onClick={addFact} disabled={saving} style={{ padding: '0.35rem 0.875rem', borderRadius: 7, border: 'none', background: 'rgba(34,197,94,0.15)', color: '#22c55e', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>
+          <button onClick={addFact} disabled={saving} style={{ padding: '0.35rem 0.875rem', borderRadius: 7, border: '1px solid rgba(35,205,202,0.3)', background: 'rgba(35,205,202,0.1)', color: '#23CDCB', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>
             {saving ? '…' : (de ? 'Speichern' : 'Save')}
           </button>
           <button onClick={() => setAddOpen(false)} style={{ padding: '0.35rem 0.625rem', borderRadius: 7, border: 'none', background: 'transparent', color: '#475569', fontSize: '0.8rem', cursor: 'pointer' }}>✕</button>
@@ -454,27 +455,75 @@ function KnowledgeGraphPanel({ facts, unternehmenId, onRefresh }: { facts: KgFac
       )}
 
       {view === 'graph' ? (
-        <div style={{ padding: '0.5rem', overflowX: 'auto' }}>
-          <style>{`@keyframes kg-flow{from{stroke-dashoffset:24}to{stroke-dashoffset:0}}`}</style>
+        <div style={{ padding: '0', overflowX: 'auto', background: '#000' }}>
+          <style>{`
+            @keyframes kg-flow { from { stroke-dashoffset: 20 } to { stroke-dashoffset: 0 } }
+            @keyframes kg-pulse { 0%,100% { opacity: 0.15; r: 0 } 50% { opacity: 0.5 } }
+            @keyframes kg-spin { from { stroke-dashoffset: 0 } to { stroke-dashoffset: -60 } }
+            @keyframes kg-node-pulse { 0%,100% { opacity: 0.4 } 50% { opacity: 0.9 } }
+          `}</style>
           <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} width="100%"
-            style={{ display: 'block', minWidth: 360, cursor: dragRef.current ? 'grabbing' : 'default' }}
+            style={{ display: 'block', minWidth: 360, cursor: dragRef.current ? 'grabbing' : 'default', background: '#000' }}
             onMouseMove={onSvgMouseMove} onMouseUp={onSvgMouseUp} onMouseLeave={onSvgMouseUp}
             onClick={() => setFocused(null)}>
             <defs>
-              <marker id="kg-arrow" markerWidth="8" markerHeight="8" refX="18" refY="3" orient="auto">
-                <path d="M0,0 L0,6 L8,3 z" fill="rgba(148,163,184,0.4)" />
-              </marker>
-              <filter id="kg-glow" x="-30%" y="-30%" width="160%" height="160%">
-                <feGaussianBlur stdDeviation="4" result="blur" />
+              {/* Glow filters */}
+              <filter id="kg-glow-strong" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="6" result="blur1" />
+                <feGaussianBlur stdDeviation="3" result="blur2" in="SourceGraphic" />
+                <feMerge><feMergeNode in="blur1" /><feMergeNode in="blur2" /><feMergeNode in="SourceGraphic" /></feMerge>
+              </filter>
+              <filter id="kg-glow-med" x="-40%" y="-40%" width="180%" height="180%">
+                <feGaussianBlur stdDeviation="3.5" result="blur" />
                 <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
               </filter>
-              <filter id="kg-glow-soft" x="-20%" y="-20%" width="140%" height="140%">
+              <filter id="kg-glow-soft" x="-30%" y="-30%" width="160%" height="160%">
                 <feGaussianBlur stdDeviation="2" result="blur" />
                 <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
               </filter>
+              {/* Arrows per color — we use a single white-ish arrow */}
+              <marker id="kg-arrow" markerWidth="7" markerHeight="7" refX="16" refY="3.5" orient="auto">
+                <path d="M0,0 L0,7 L7,3.5 z" fill="rgba(35,205,202,0.7)" />
+              </marker>
+              <marker id="kg-arrow-dim" markerWidth="6" markerHeight="6" refX="14" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="rgba(255,255,255,0.15)" />
+              </marker>
+              {/* Scanline overlay */}
+              <pattern id="kg-scan" x="0" y="0" width="700" height="4" patternUnits="userSpaceOnUse">
+                <rect width="700" height="1" y="3" fill="rgba(35,205,202,0.025)" />
+              </pattern>
+              {/* Dot grid */}
+              <pattern id="kg-grid" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+                <circle cx="0" cy="0" r="0.6" fill="rgba(35,205,202,0.12)" />
+                <circle cx="40" cy="0" r="0.6" fill="rgba(35,205,202,0.12)" />
+                <circle cx="0" cy="40" r="0.6" fill="rgba(35,205,202,0.12)" />
+                <circle cx="40" cy="40" r="0.6" fill="rgba(35,205,202,0.12)" />
+              </pattern>
             </defs>
 
-            {/* Edges */}
+            {/* Background layers */}
+            <rect width={W} height={H} fill="#000" />
+            <rect width={W} height={H} fill="url(#kg-grid)" />
+            <rect width={W} height={H} fill="url(#kg-scan)" />
+
+            {/* Edge glow halos (wide, dim — rendered first so they're behind) */}
+            {edges.map(e => {
+              const s = nodesRef.current.get(e.source), t = nodesRef.current.get(e.target);
+              if (!s || !t) return null;
+              const isConn = !connectedIds || (connectedIds.has(e.source) && connectedIds.has(e.target));
+              const hit = sq === '' || matchNode(e.source) || matchNode(e.target) || e.label.toLowerCase().includes(sq);
+              if (!isConn || !hit) return null;
+              const dx = t.x - s.x, dy = t.y - s.y, len = Math.max(Math.sqrt(dx*dx+dy*dy), 1);
+              const mx = (s.x+t.x)/2, my = (s.y+t.y)/2;
+              const cx = mx+(-dy/len)*22, cy = my+(dx/len)*22;
+              return (
+                <path key={`halo-${e.id}`} d={`M ${s.x} ${s.y} Q ${cx} ${cy} ${t.x} ${t.y}`}
+                  fill="none" stroke={e.color} strokeWidth={8} strokeOpacity={0.06}
+                  filter="url(#kg-glow-soft)" />
+              );
+            })}
+
+            {/* Edges — main layer */}
             {edges.map(e => {
               const s = nodesRef.current.get(e.source), t = nodesRef.current.get(e.target);
               if (!s || !t) return null;
@@ -485,18 +534,27 @@ function KnowledgeGraphPanel({ facts, unternehmenId, onRefresh }: { facts: KgFac
               const mx = (s.x+t.x)/2, my = (s.y+t.y)/2;
               const nx = -dy/len, ny = dx/len;
               const cx = mx+nx*22, cy = my+ny*22;
+              const path = `M ${s.x} ${s.y} Q ${cx} ${cy} ${t.x} ${t.y}`;
               return (
-                <g key={e.id} style={{ opacity: active ? 1 : 0.05, transition: 'opacity 0.25s' }}>
-                  <path d={`M ${s.x} ${s.y} Q ${cx} ${cy} ${t.x} ${t.y}`}
-                    fill="none" stroke={e.color} strokeWidth={active ? 1.5 : 1}
-                    strokeDasharray="6 6" strokeOpacity={active ? 0.65 : 0.2}
+                <g key={e.id} style={{ opacity: active ? 1 : 0.04, transition: 'opacity 0.3s' }}>
+                  {/* dim base line */}
+                  <path d={path} fill="none" stroke={e.color} strokeWidth={1.5} strokeOpacity={0.25} />
+                  {/* animated particle stream */}
+                  <path d={path} fill="none" stroke={e.color} strokeWidth={1.5}
+                    strokeDasharray="4 16" strokeOpacity={0.85}
                     markerEnd="url(#kg-arrow)"
-                    style={{ animation: active ? 'kg-flow 0.9s linear infinite' : 'none' }} />
+                    style={{ animation: active ? 'kg-flow 1.1s linear infinite' : 'none' }} />
+                  {/* bright center line */}
+                  <path d={path} fill="none" stroke={e.color} strokeWidth={0.5} strokeOpacity={active ? 1 : 0} />
+                  {/* label */}
                   {active && (
-                    <text x={cx} y={cy-6} textAnchor="middle" fontSize="8" fill={e.color}
-                      style={{ pointerEvents: 'none', fontFamily: 'monospace' }} opacity={0.9}>
-                      {e.label.length > 18 ? e.label.slice(0,18)+'…' : e.label}
-                    </text>
+                    <g>
+                      <rect x={cx - Math.min(e.label.length, 18) * 2.8} y={cy - 15} width={Math.min(e.label.length, 18) * 5.6} height={11} rx={3} fill="rgba(0,0,0,0.75)" />
+                      <text x={cx} y={cy - 7} textAnchor="middle" fontSize="7.5" fill={e.color}
+                        style={{ pointerEvents: 'none', fontFamily: 'monospace', letterSpacing: '0.03em' }} opacity={1}>
+                        {e.label.length > 18 ? e.label.slice(0,18)+'…' : e.label}
+                      </text>
+                    </g>
                   )}
                 </g>
               );
@@ -508,53 +566,83 @@ function KnowledgeGraphPanel({ facts, unternehmenId, onRefresh }: { facts: KgFac
               const hit = matchNode(n.id);
               const active = isConn && hit;
               const isFoc = focused === n.id;
-              const r = Math.min(14 + n.degree * 4, 35);
+              const r = Math.min(13 + n.degree * 4, 32);
               const isSubj = facts.some(f => f.subject === n.id);
               const color = isSubj ? '#22c55e' : '#23CDCB';
+              const glowId = isFoc ? 'kg-glow-strong' : active ? 'kg-glow-med' : undefined;
               return (
                 <g key={n.id} transform={`translate(${n.x},${n.y})`}
-                  onMouseDown={e => onNodeMouseDown(e, n.id)}
-                  onClick={e => { e.stopPropagation(); setFocused(focused === n.id ? null : n.id); }}
-                  style={{ cursor: 'grab', opacity: active ? 1 : 0.1, transition: 'opacity 0.25s' }}>
-                  {isFoc && <circle r={r+9} fill="none" stroke={color} strokeWidth={1} strokeDasharray="3 3" opacity={0.45} style={{ animation: 'kg-flow 1.4s linear infinite' }} />}
+                  onMouseDown={ev => onNodeMouseDown(ev, n.id)}
+                  onClick={ev => { ev.stopPropagation(); setFocused(focused === n.id ? null : n.id); }}
+                  style={{ cursor: 'grab', opacity: active ? 1 : 0.06, transition: 'opacity 0.3s' }}>
+                  {/* outer pulse ring */}
+                  {isFoc && <circle r={r + 14} fill="none" stroke={color} strokeWidth={1} strokeOpacity={0.2}
+                    strokeDasharray="3 5"
+                    style={{ animation: 'kg-spin 3s linear infinite' }} />}
+                  {/* mid orbit ring */}
+                  {active && <circle r={r + 7} fill="none" stroke={color} strokeWidth={0.5} strokeOpacity={isFoc ? 0.35 : 0.15}
+                    strokeDasharray="2 8"
+                    style={{ animation: active ? 'kg-spin 5s linear infinite reverse' : 'none' }} />}
+                  {/* outer glow disc */}
+                  <circle r={r + 2} fill={`${color}06`} filter={glowId} />
+                  {/* main node circle */}
                   <circle r={r}
-                    fill={isFoc ? `${color}28` : `${color}12`}
-                    stroke={isFoc ? color : active ? `${color}70` : `${color}30`}
-                    strokeWidth={isFoc ? 2 : 1}
-                    filter={isFoc ? 'url(#kg-glow)' : active ? 'url(#kg-glow-soft)' : undefined}
-                    style={{ transition: 'all 0.2s' }} />
-                  <text textAnchor="middle" dominantBaseline="middle"
-                    fontSize={Math.max(7, Math.min(9, r*0.58))}
-                    fill={active ? (isFoc ? color : '#e2e8f0') : '#2d3748'}
+                    fill={isFoc ? `${color}1a` : `${color}0d`}
+                    stroke={color}
+                    strokeWidth={isFoc ? 1.5 : 0.8}
+                    strokeOpacity={isFoc ? 1 : active ? 0.7 : 0.3}
+                    filter={glowId} />
+                  {/* inner bright dot */}
+                  <circle r={Math.max(2, r * 0.18)} fill={color} opacity={isFoc ? 0.9 : 0.5} />
+                  {/* label */}
+                  <text textAnchor="middle" y={r + 11}
+                    fontSize="7.5"
+                    fill={active ? (isFoc ? color : '#c4c4cc') : '#334155'}
                     fontWeight={isSubj ? '700' : '400'}
+                    fontFamily="monospace"
+                    letterSpacing="0.02em"
                     style={{ pointerEvents: 'none', userSelect: 'none' }}>
                     {n.label.length > 14 ? n.label.slice(0,14)+'…' : n.label}
                   </text>
+                  {/* degree badge for high-degree nodes */}
+                  {n.degree >= 3 && (
+                    <text textAnchor="middle" dominantBaseline="middle" fontSize="6" fill={color} opacity={0.6} fontFamily="monospace">
+                      ×{n.degree}
+                    </text>
+                  )}
                 </g>
               );
             })}
+
+            {/* Corner decorations */}
+            <text x={8} y={H - 7} fontSize="7" fill="rgba(35,205,202,0.2)" fontFamily="monospace">NEURAL GRAPH v2</text>
+            <text x={W - 8} y={H - 7} fontSize="7" fill="rgba(35,205,202,0.2)" fontFamily="monospace" textAnchor="end">{facts.length} FACTS · {nodes.length} NODES</text>
           </svg>
 
-          <div style={{ display: 'flex', gap: '1rem', padding: '0.375rem 0.75rem', fontSize: '0.625rem', color: '#334155', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '1.5rem', padding: '0.5rem 0.875rem', fontSize: '0.625rem', color: '#1e293b', flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid rgba(35,205,202,0.06)', fontFamily: 'monospace' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'rgba(34,197,94,0.3)', border: '1px solid #22c55e', display: 'inline-block' }} /> {de ? 'Subjekt' : 'Subject'}
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'rgba(34,197,94,0.25)', border: '1px solid #22c55e', display: 'inline-block', boxShadow: '0 0 4px #22c55e' }} />
+              <span style={{ color: '#22c55e88' }}>{de ? 'Subjekt' : 'Subject'}</span>
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'rgba(35,205,202,0.2)', border: '1px solid #23CDCB', display: 'inline-block' }} /> {de ? 'Objekt' : 'Object'}
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'rgba(35,205,202,0.2)', border: '1px solid #23CDCB', display: 'inline-block', boxShadow: '0 0 4px #23CDCB' }} />
+              <span style={{ color: '#23CDCB88' }}>{de ? 'Objekt' : 'Object'}</span>
             </span>
-            <span style={{ color: '#2d3748' }}>{de ? 'Größe = Grad · Klick = Fokus · Ziehen = Position' : 'Size = Degree · Click = Focus · Drag = Position'}</span>
+            <span style={{ color: '#1e3a4a' }}>{de ? 'Größe = Grad · Klick = Fokus · Ziehen = bewegen' : 'Size = Degree · Click = Focus · Drag = move'}</span>
           </div>
         </div>
       ) : (
-        <div style={{ padding: '0.75rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+        <div style={{ padding: '0.75rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', background: '#000' }}>
           {facts.filter(f => sq === '' || f.subject.toLowerCase().includes(sq) || f.predicate.toLowerCase().includes(sq) || f.object.toLowerCase().includes(sq)).map(f => (
-            <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', borderRadius: 8, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', fontSize: '0.8125rem' }}>
-              <span style={{ color: '#22c55e', fontWeight: 600 }}>{f.subject}</span>
+            <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', borderRadius: 8, background: 'rgba(35,205,202,0.03)', border: '1px solid rgba(35,205,202,0.1)', fontSize: '0.8125rem', fontFamily: 'monospace' }}>
+              <span style={{ color: '#22c55e', fontWeight: 700 }}>{f.subject}</span>
+              <span style={{ color: '#475569', fontSize: '0.6875rem' }}>→</span>
               <span style={{ color: predicateColor(f.predicate), fontStyle: 'italic', fontSize: '0.75rem' }}>{f.predicate}</span>
-              <span style={{ color: '#e2e8f0', fontWeight: 500 }}>{f.object}</span>
+              <span style={{ color: '#475569', fontSize: '0.6875rem' }}>→</span>
+              <span style={{ color: '#23CDCB', fontWeight: 500 }}>{f.object}</span>
               {f.validFrom && <span style={{ marginLeft: 'auto', fontSize: '0.6875rem', color: '#334155', flexShrink: 0 }}>{de ? 'seit' : 'since'} {f.validFrom}</span>}
               <button onClick={() => deleteFact(f.id)} disabled={deleting === f.id}
-                style={{ marginLeft: f.validFrom ? '0.5rem' : 'auto', padding: '0.15rem 0.375rem', borderRadius: 5, border: 'none', background: 'transparent', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                style={{ marginLeft: f.validFrom ? '0.5rem' : 'auto', padding: '0.15rem 0.375rem', borderRadius: 5, border: 'none', background: 'transparent', color: '#334155', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
                 {deleting === f.id ? '…' : <Trash2 size={11} />}
               </button>
             </div>
