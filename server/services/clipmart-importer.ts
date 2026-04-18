@@ -2321,6 +2321,7 @@ export function getAvailableTemplates() {
     agentCount: t.agents.length,
     routinenCount: t.routinen?.length || 0,
     configFields: t.configFields || [],
+    agentRoles: t.agents.slice(0, 6).map(a => ({ name: a.name, isOrchestrator: a.isOrchestrator || false })),
   }));
 }
 
