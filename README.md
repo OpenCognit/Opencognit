@@ -1,4 +1,3 @@
-<img width="1726" height="1203" alt="Bildschirmfoto_20260412_165900" src="https://github.com/user-attachments/assets/9c358d92-b425-4ef6-b8ae-2c5a6cfb68e5" />
 <div align="center">
 
 <img src="public/banner.png" alt="OpenCognit" width="100%" />
