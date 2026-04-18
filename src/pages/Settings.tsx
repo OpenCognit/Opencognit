@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
-import { Save, RotateCcw, Globe, Shield, Bell, Database, Loader2, Key, Sparkles, Download, Upload, CheckCircle2, AlertCircle, Trash2, AlertTriangle, FolderOpen, Send, Terminal, RefreshCw, Zap, Plus, X, ChevronDown } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Save, RotateCcw, Globe, Shield, Bell, Database, Loader2, Key, Sparkles, Download, Upload, CheckCircle2, AlertCircle, Trash2, AlertTriangle, FolderOpen, Send, Terminal, RefreshCw, Zap, Plus, X, ChevronDown, Cpu, Wifi, WifiOff } from 'lucide-react';
 
 interface CustomConnection {
   id: string;
@@ -72,6 +72,9 @@ export function Settings() {
   const [openaiKey, setOpenaiKey] = useState('');
   const [openrouterKey, setOpenrouterKey] = useState('');
   const [ollamaUrl, setOllamaUrl] = useState('');
+  const [ollamaStatus, setOllamaStatus] = useState<'idle' | 'checking' | 'online' | 'offline'>('idle');
+  const [ollamaModels, setOllamaModels] = useState<{ id: string; name: string; size?: number }[]>([]);
+  const [ollamaDefaultModel, setOllamaDefaultModel] = useState('');
   const [customConnections, setCustomConnections] = useState<CustomConnection[]>([]);
   const [defaultModel, setDefaultModel] = useState('openrouter/auto');
   const [orModels, setOrModels] = useState<{id: string; name: string}[]>([]);
@@ -155,6 +158,7 @@ export function Settings() {
         setOpenrouterKey(data.openrouter_api_key || '');
         setDefaultModel(data.openrouter_default_model || 'openrouter/auto');
         setOllamaUrl(data.ollama_base_url || '');
+        setOllamaDefaultModel(data.ollama_default_model || '');
         // Load custom connections — migrate from legacy single-connection fields if list is empty
         let conns: CustomConnection[] = [];
         try { conns = JSON.parse(data.custom_connections || '[]'); } catch {}
@@ -377,6 +381,7 @@ export function Settings() {
         ['openrouter_api_key', openrouterKey],
         ['openrouter_default_model', defaultModel],
         ['ollama_base_url', ollamaUrl],
+        ['ollama_default_model', ollamaDefaultModel],
         ['custom_connections', JSON.stringify(customConnections)],
         ['budget_pause_threshold', String(budgetPauseThreshold)],
         ['approval_required', String(approvalRequired)],
@@ -908,7 +913,6 @@ export function Settings() {
                   { label: 'Anthropic API Key', placeholder: 'sk-ant-api03-...', hint: i18n.t.einstellungen.anthropicHint, type: 'password', value: anthropicKey, onChange: setAnthropicKey },
                   { label: 'OpenAI API Key', placeholder: 'sk-proj-...', hint: i18n.t.einstellungen.openaiHint, type: 'password', value: openaiKey, onChange: setOpenaiKey },
                   { label: 'OpenRouter API Key', placeholder: 'sk-or-v1-...', hint: i18n.t.einstellungen.openrouterHint, type: 'password', value: openrouterKey, onChange: setOpenrouterKey },
-                  { label: 'Ollama Base URL', placeholder: 'http://127.0.0.1:11434', hint: i18n.t.einstellungen.ollamaHint, type: 'text', value: ollamaUrl, onChange: setOllamaUrl },
                 ] as const).map(({ label, placeholder, hint, type, value, onChange }) => (
                   <div key={label}>
                     <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, color: '#d4d4d8', marginBottom: '0.5rem' }}>
@@ -935,6 +939,117 @@ export function Settings() {
                     <p style={{ fontSize: '0.75rem', color: '#71717a', marginTop: '0.375rem' }}>{hint}</p>
                   </div>
                 ))}
+
+                {/* ── Ollama Local / Private ── */}
+                <div style={{
+                  borderRadius: 14, padding: '1rem',
+                  background: 'linear-gradient(135deg, rgba(34,197,94,0.06) 0%, rgba(6,182,212,0.04) 100%)',
+                  border: `1px solid ${ollamaStatus === 'online' ? 'rgba(34,197,94,0.3)' : ollamaStatus === 'offline' ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.08)'}`,
+                }}>
+                  {/* Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <Cpu size={16} style={{ color: '#22c55e' }} />
+                    <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#d4d4d8' }}>Ollama</span>
+                    <span style={{ fontSize: 10, fontWeight: 800, padding: '1px 7px', borderRadius: 20, background: 'rgba(34,197,94,0.12)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.25)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                      Local · Kostenlos
+                    </span>
+                    {/* Status badge */}
+                    {ollamaStatus === 'online' && (
+                      <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#22c55e', fontWeight: 600 }}>
+                        <Wifi size={12} /> Online · {ollamaModels.length} {ollamaModels.length === 1 ? 'Modell' : 'Modelle'}
+                      </span>
+                    )}
+                    {ollamaStatus === 'offline' && (
+                      <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#ef4444', fontWeight: 600 }}>
+                        <WifiOff size={12} /> Nicht erreichbar
+                      </span>
+                    )}
+                    {ollamaStatus === 'checking' && (
+                      <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#64748b' }}>
+                        <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Prüfe...
+                      </span>
+                    )}
+                  </div>
+
+                  {/* URL + Test Button */}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                    <input
+                      type="text"
+                      placeholder="http://127.0.0.1:11434"
+                      value={ollamaUrl}
+                      onChange={e => { setOllamaUrl(e.target.value); setOllamaStatus('idle'); setOllamaModels([]); }}
+                      style={{
+                        flex: 1, maxWidth: 340,
+                        padding: '0.5rem 0.75rem',
+                        backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 10, color: '#fff', fontSize: '0.875rem', outline: 'none',
+                      }}
+                    />
+                    <button
+                      onClick={async () => {
+                        const base = ollamaUrl.trim() || 'http://localhost:11434';
+                        setOllamaStatus('checking');
+                        setOllamaModels([]);
+                        try {
+                          const r = await authFetch(`/api/ollama/models?baseUrl=${encodeURIComponent(base)}`);
+                          if (!r.ok) { setOllamaStatus('offline'); return; }
+                          const data = await r.json();
+                          setOllamaModels(data.models || []);
+                          setOllamaStatus('online');
+                          if (!ollamaDefaultModel && data.models?.length > 0) {
+                            setOllamaDefaultModel(data.models[0].id);
+                          }
+                        } catch { setOllamaStatus('offline'); }
+                      }}
+                      style={{
+                        padding: '0.5rem 0.875rem', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                        background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', color: '#22c55e',
+                        display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
+                      }}
+                    >
+                      <RefreshCw size={12} /> Verbinden
+                    </button>
+                  </div>
+
+                  <p style={{ fontSize: '0.75rem', color: '#52525b', marginBottom: ollamaModels.length > 0 ? 10 : 0 }}>
+                    {i18n.language === 'de' ? 'Lokale Modelle — 100% privat, kein API-Key nötig.' : 'Local models — 100% private, no API key needed.'}
+                    {' '}
+                    <span style={{ color: '#334155' }}>Installieren: <code style={{ fontSize: 11, color: '#94a3b8' }}>ollama pull llama3.2</code></span>
+                  </p>
+
+                  {/* Installed model list */}
+                  {ollamaModels.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>
+                        {i18n.language === 'de' ? 'Installierte Modelle' : 'Installed Models'}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 10 }}>
+                        {ollamaModels.map(m => (
+                          <button
+                            key={m.id}
+                            onClick={() => setOllamaDefaultModel(m.id)}
+                            style={{
+                              padding: '3px 10px', borderRadius: 20, fontSize: 11, cursor: 'pointer',
+                              background: ollamaDefaultModel === m.id ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.04)',
+                              border: `1px solid ${ollamaDefaultModel === m.id ? 'rgba(34,197,94,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                              color: ollamaDefaultModel === m.id ? '#22c55e' : '#64748b',
+                              fontWeight: ollamaDefaultModel === m.id ? 700 : 400,
+                            }}
+                          >
+                            {m.name}
+                            {m.size ? ` · ${(m.size / 1e9).toFixed(1)}GB` : ''}
+                          </button>
+                        ))}
+                      </div>
+                      {ollamaDefaultModel && (
+                        <div style={{ fontSize: 11, color: '#475569' }}>
+                          <span style={{ color: '#22c55e', fontWeight: 700 }}>{ollamaDefaultModel}</span>
+                          {' '}{i18n.language === 'de' ? 'als Standard-Modell gesetzt' : 'set as default model'}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 {/* Custom Connections — dynamic list */}
                 <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '1rem' }}>
@@ -1051,6 +1166,7 @@ export function Settings() {
                 ['openrouter_api_key', openrouterKey],
                 ['openrouter_default_model', defaultModel],
                 ['ollama_base_url', ollamaUrl],
+                ['ollama_default_model', ollamaDefaultModel],
                 ['custom_connections', JSON.stringify(customConnections)],
               ])} />
               </>}
