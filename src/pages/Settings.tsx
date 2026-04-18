@@ -951,22 +951,22 @@ export function Settings() {
                     <Cpu size={16} style={{ color: '#22c55e' }} />
                     <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#d4d4d8' }}>Ollama</span>
                     <span style={{ fontSize: 10, fontWeight: 800, padding: '1px 7px', borderRadius: 20, background: 'rgba(34,197,94,0.12)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.25)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                      Local · Kostenlos
+                      {i18n.t.einstellungen.ollamaLocalBadge}
                     </span>
                     {/* Status badge */}
                     {ollamaStatus === 'online' && (
                       <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#22c55e', fontWeight: 600 }}>
-                        <Wifi size={12} /> Online · {ollamaModels.length} {ollamaModels.length === 1 ? 'Modell' : 'Modelle'}
+                        <Wifi size={12} /> {i18n.t.einstellungen.ollamaOnline} · {ollamaModels.length} {ollamaModels.length === 1 ? 'Modell' : 'Modelle'}
                       </span>
                     )}
                     {ollamaStatus === 'offline' && (
                       <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#ef4444', fontWeight: 600 }}>
-                        <WifiOff size={12} /> Nicht erreichbar
+                        <WifiOff size={12} /> {i18n.t.einstellungen.ollamaOffline}
                       </span>
                     )}
                     {ollamaStatus === 'checking' && (
                       <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#64748b' }}>
-                        <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Prüfe...
+                        <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> {i18n.t.einstellungen.ollamaChecking}
                       </span>
                     )}
                   </div>
@@ -1007,21 +1007,21 @@ export function Settings() {
                         display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
                       }}
                     >
-                      <RefreshCw size={12} /> Verbinden
+                      <RefreshCw size={12} /> {i18n.t.einstellungen.ollamaConnect}
                     </button>
                   </div>
 
                   <p style={{ fontSize: '0.75rem', color: '#52525b', marginBottom: ollamaModels.length > 0 ? 10 : 0 }}>
-                    {i18n.language === 'de' ? 'Lokale Modelle — 100% privat, kein API-Key nötig.' : 'Local models — 100% private, no API key needed.'}
+                    {i18n.t.einstellungen.ollamaPrivateHint}
                     {' '}
-                    <span style={{ color: '#334155' }}>Installieren: <code style={{ fontSize: 11, color: '#94a3b8' }}>ollama pull llama3.2</code></span>
+                    <span style={{ color: '#334155' }}>{i18n.t.einstellungen.ollamaInstallHint} <code style={{ fontSize: 11, color: '#94a3b8' }}>ollama pull llama3.2</code></span>
                   </p>
 
                   {/* Installed model list */}
                   {ollamaModels.length > 0 && (
                     <div>
                       <div style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>
-                        {i18n.language === 'de' ? 'Installierte Modelle' : 'Installed Models'}
+                        {i18n.t.einstellungen.ollamaInstalledModels}
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 10 }}>
                         {ollamaModels.map(m => (
@@ -1044,7 +1044,7 @@ export function Settings() {
                       {ollamaDefaultModel && (
                         <div style={{ fontSize: 11, color: '#475569' }}>
                           <span style={{ color: '#22c55e', fontWeight: 700 }}>{ollamaDefaultModel}</span>
-                          {' '}{i18n.language === 'de' ? 'als Standard-Modell gesetzt' : 'set as default model'}
+                          {' '}{i18n.t.einstellungen.ollamaDefaultSet}
                         </div>
                       )}
                     </div>
