@@ -1027,6 +1027,7 @@ ul, ol { list-style: none; }
   margin-bottom: var(--space-2);
   transition: all var(--transition-fast);
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .kanban-card:hover {

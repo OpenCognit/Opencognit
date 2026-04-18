@@ -658,6 +658,7 @@ export function Tasks() {
                               cursor: 'grab',
                               opacity: isBeingDragged ? 0.5 : 1,
                               userSelect: 'none',
+                              flexShrink: 0,
                             }}
                           >
                             {/* Checkbox overlay */}
