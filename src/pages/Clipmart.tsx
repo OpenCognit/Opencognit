@@ -15,7 +15,7 @@ interface TemplateInfo {
   name: string;
   beschreibung: string;
   version: string;
-  kategorie: string;
+  kategorie: 'automation' | 'team' | 'content' | 'dev' | 'research' | 'ecommerce' | 'integrations' | 'company';
   icon: string;
   accentColor: string;
   tags: string[];
@@ -36,14 +36,15 @@ interface ImportResult {
 // ── Category Config ────────────────────────────────────────────────────────────
 
 const CATEGORIES: Record<string, { label: string; labelDe: string; color: string }> = {
-  all:          { label: 'All',          labelDe: 'Alle',          color: '#94a3b8' },
-  integrations: { label: 'Integrations', labelDe: 'Integrationen', color: '#23CDCB' },
-  automation:   { label: 'Automation',   labelDe: 'Automation',    color: '#06b6d4' },
-  team:         { label: 'Teams',        labelDe: 'Teams',         color: '#f59e0b' },
-  content:      { label: 'Content',      labelDe: 'Content',       color: '#a855f7' },
-  dev:          { label: 'Dev',          labelDe: 'Entwicklung',   color: '#3b82f6' },
-  research:     { label: 'Research',     labelDe: 'Research',      color: '#f97316' },
-  ecommerce:    { label: 'E-Commerce',   labelDe: 'E-Commerce',    color: '#22c55e' },
+  all:          { label: 'All',          labelDe: 'Alle',               color: '#94a3b8' },
+  company:      { label: 'Companies',    labelDe: 'Unternehmen',        color: '#f59e0b' },
+  integrations: { label: 'Integrations', labelDe: 'Integrationen',      color: '#23CDCB' },
+  automation:   { label: 'Automation',   labelDe: 'Automation',         color: '#06b6d4' },
+  team:         { label: 'Teams',        labelDe: 'Teams',              color: '#6366f1' },
+  content:      { label: 'Content',      labelDe: 'Content',            color: '#a855f7' },
+  dev:          { label: 'Dev',          labelDe: 'Entwicklung',        color: '#3b82f6' },
+  research:     { label: 'Research',     labelDe: 'Research',           color: '#f97316' },
+  ecommerce:    { label: 'E-Commerce',   labelDe: 'E-Commerce',         color: '#22c55e' },
 };
 
 // ── Install Modal ──────────────────────────────────────────────────────────────
@@ -291,7 +292,10 @@ function TemplateCard({ template, onInstall, de }: { template: TemplateInfo; onI
       {/* Footer */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
-          <span style={{ fontSize: 11, color: '#475569', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4,
+            color: template.kategorie === 'company' ? template.accentColor : '#475569',
+            fontWeight: template.kategorie === 'company' ? 700 : 400,
+          }}>
             <Users size={11} /> {template.agentCount} {de ? 'Agents' : 'agents'}
           </span>
           {template.routinenCount > 0 && (
