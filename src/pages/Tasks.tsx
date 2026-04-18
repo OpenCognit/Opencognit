@@ -90,6 +90,10 @@ export function Tasks() {
     return () => document.removeEventListener('keydown', handler);
   }, []);
 
+  // Kanban column pagination — how many cards to show per column
+  const [columnLimit, setColumnLimit] = useState<Record<string, number>>({});
+  const COLUMN_PAGE_SIZE = 30;
+
   // Batch selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchLoading, setBatchLoading] = useState(false);
@@ -592,6 +596,9 @@ export function Tasks() {
             }}>
               {getKanbanSpalten().map((spalte) => {
                 const spaltenAufgaben = filteredAufgaben.filter(a => a.status === spalte.key);
+                const limit = columnLimit[spalte.key] ?? COLUMN_PAGE_SIZE;
+                const visibleAufgaben = spaltenAufgaben.slice(0, limit);
+                const hiddenCount = spaltenAufgaben.length - visibleAufgaben.length;
                 const isDragTarget = dragOverCol === spalte.key;
                 return (
                   <GlassCard
@@ -631,7 +638,7 @@ export function Tasks() {
                       }}>{spaltenAufgaben.length}</span>
                     </div>
                     <div className="kanban-column-body">
-                      {spaltenAufgaben.map((a) => {
+                      {visibleAufgaben.map((a) => {
                         const expert = findExpert(a.zugewiesenAn);
                         const isBeingDragged = draggedId === a.id;
                         const isChecked = selectedIds.has(a.id);
@@ -753,6 +760,23 @@ export function Tasks() {
                           </GlassCard>
                         );
                       })}
+                      {hiddenCount > 0 && (
+                        <button
+                          onClick={() => setColumnLimit(prev => ({ ...prev, [spalte.key]: (prev[spalte.key] ?? COLUMN_PAGE_SIZE) + COLUMN_PAGE_SIZE }))}
+                          style={{
+                            width: '100%', padding: '0.5rem',
+                            background: 'rgba(255,255,255,0.04)',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            borderRadius: '10px',
+                            color: '#71717a', fontSize: '0.8125rem', cursor: 'pointer',
+                            transition: 'color 0.15s, border-color 0.15s',
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.color = '#d4d4d8'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.color = '#71717a'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; }}
+                        >
+                          + {hiddenCount} {i18n.language === 'de' ? 'weitere' : 'more'}
+                        </button>
+                      )}
                     </div>
                   </GlassCard>
                 );
