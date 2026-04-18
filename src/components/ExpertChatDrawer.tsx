@@ -1583,7 +1583,8 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                       </div>
                       <div>
                         <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', display: 'block', marginBottom: 6 }}>{de ? 'Modell / URL' : 'Model / URL'}</label>
-                        {editForm.verbindungsTyp === 'openrouter' ? (
+                        {(() => { const vt = editForm.verbindungsTyp as string; return (
+                        vt === 'openrouter' ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                             {!editForm.modell && (
                               <div style={{
@@ -1613,23 +1614,14 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                               </div>
                             )}
                           </div>
-                        ) : (editForm.verbindungsTyp === 'ollama') ? (
+                        ) : vt === 'ollama' ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                               {ollamaModels.length > 0 ? (
                                 <select
                                   value={editForm.modell}
                                   onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))}
-                                  style={{
-                                    flex: 1,
-                                    padding: '8px 12px',
-                                    borderRadius: 10,
-                                    border: '1px solid rgba(255,255,255,0.1)',
-                                    background: 'rgba(255,255,255,0.05)',
-                                    color: 'var(--color-text-primary)',
-                                    fontSize: 14,
-                                    cursor: 'pointer',
-                                  }}
+                                  style={{ flex: 1, padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'var(--color-text-primary)', fontSize: 14, cursor: 'pointer' }}
                                 >
                                   {ollamaModels.map(m => (
                                     <option key={m.id} value={m.id} style={{ background: '#1a1a2e' }}>
@@ -1638,29 +1630,9 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                                   ))}
                                 </select>
                               ) : (
-                                <input
-                                  className="input"
-                                  style={{ flex: 1 }}
-                                  value={editForm.modell}
-                                  placeholder={loadingOllamaModels ? 'Lade Ollama-Modelle...' : 'z.B. qwen3.5:latest'}
-                                  onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))}
-                                />
+                                <input className="input" style={{ flex: 1 }} value={editForm.modell} placeholder={loadingOllamaModels ? 'Lade Ollama-Modelle...' : 'z.B. qwen3.5:latest'} onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))} />
                               )}
-                              <button
-                                onClick={() => loadOllamaModels(editForm.baseUrl)}
-                                disabled={loadingOllamaModels}
-                                title={de ? 'Modelle aktualisieren' : 'Refresh models'}
-                                style={{
-                                  padding: '8px 12px',
-                                  borderRadius: 10,
-                                  border: '1px solid rgba(255,255,255,0.1)',
-                                  background: 'rgba(255,255,255,0.05)',
-                                  color: 'var(--color-accent)',
-                                  cursor: loadingOllamaModels ? 'wait' : 'pointer',
-                                  fontSize: 16,
-                                  lineHeight: 1,
-                                }}
-                              >
+                              <button onClick={() => loadOllamaModels(editForm.baseUrl)} disabled={loadingOllamaModels} title={de ? 'Modelle aktualisieren' : 'Refresh models'} style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'var(--color-accent)', cursor: loadingOllamaModels ? 'wait' : 'pointer', fontSize: 16, lineHeight: 1 }}>
                                 {loadingOllamaModels ? '⏳' : '🔄'}
                               </button>
                             </div>
@@ -1669,51 +1641,60 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                                 {de ? '⚠ Ollama nicht erreichbar — URL prüfen & aktualisieren' : '⚠ Ollama not reachable — check URL & refresh'}
                               </div>
                             )}
-                            {ollamaModels.length > 0 && (
-                              <div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>
-                                {ollamaModels.length} {de ? 'lokale Modelle gefunden' : 'local models found'}
-                              </div>
-                            )}
+                            {ollamaModels.length > 0 && <div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>{ollamaModels.length} {de ? 'lokale Modelle gefunden' : 'local models found'}</div>}
                           </div>
-                        ) : (editForm.verbindungsTyp === 'claude-code') ? (
+                        ) : vt === 'claude-code' ? (
                           <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '8px 12px', borderRadius: 8, background: 'rgba(35,205,202,0.07)', border: '1px solid rgba(35,205,202,0.15)' }}>
                             ⚡ {de ? 'Nutzt dein Claude Pro/Max-Abo — kein API Key nötig' : 'Uses your Claude Pro/Max plan — no API key needed'}
                           </div>
-                        ) : (editForm.verbindungsTyp === 'anthropic') ? (
-                          <select
-                            value={editForm.modell}
-                            onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))}
-                            style={{ width: '100%', padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'var(--color-text-primary)', fontSize: 14, cursor: 'pointer' }}
-                          >
+                        ) : vt === 'anthropic' ? (
+                          <select value={editForm.modell} onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))} style={{ width: '100%', padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'var(--color-text-primary)', fontSize: 14, cursor: 'pointer' }}>
                             <option value="claude-haiku-4-5-20251001" style={{ background: '#1a1a2e' }}>⚡ Claude Haiku 4.5 — schnell &amp; günstig</option>
                             <option value="claude-sonnet-4-6" style={{ background: '#1a1a2e' }}>✨ Claude Sonnet 4.6 — ausgewogen (empfohlen)</option>
                             <option value="claude-opus-4-6" style={{ background: '#1a1a2e' }}>🧠 Claude Opus 4.6 — stärkste Reasoning</option>
                             <option value="claude-3-5-sonnet-20241022" style={{ background: '#1a1a2e' }}>claude-3-5-sonnet-20241022</option>
                             <option value="claude-3-5-haiku-20241022" style={{ background: '#1a1a2e' }}>claude-3-5-haiku-20241022</option>
                           </select>
-                        ) : (editForm.verbindungsTyp === 'openai') ? (
-                          <select
-                            value={editForm.modell}
-                            onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))}
-                            style={{ width: '100%', padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'var(--color-text-primary)', fontSize: 14, cursor: 'pointer' }}
-                          >
+                        ) : vt === 'openai' ? (
+                          <select value={editForm.modell} onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))} style={{ width: '100%', padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'var(--color-text-primary)', fontSize: 14, cursor: 'pointer' }}>
                             <option value="gpt-4o-mini" style={{ background: '#1a1a2e' }}>⚡ GPT-4o mini — schnell &amp; günstig</option>
                             <option value="gpt-4o" style={{ background: '#1a1a2e' }}>✨ GPT-4o — ausgewogen (empfohlen)</option>
                             <option value="o4-mini" style={{ background: '#1a1a2e' }}>🧠 o4-mini — Reasoning</option>
                             <option value="o3" style={{ background: '#1a1a2e' }}>🔬 o3 — stärkstes Reasoning</option>
                             <option value="gpt-4-turbo" style={{ background: '#1a1a2e' }}>gpt-4-turbo</option>
                           </select>
-                        ) : (editForm.verbindungsTyp === 'custom') ? (
-                          <input
-                            className="input"
-                            style={{ width: '100%' }}
-                            placeholder="z.B. llama3-70b-8192, mistral-large-latest, …"
-                            value={editForm.modell}
-                            onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))}
-                          />
+                        ) : vt === 'ollama_cloud' ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                              <input className="input" style={{ flex: 1 }} value={editForm.modell} placeholder="z.B. llama3.2:latest, mistral:7b" onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))} />
+                              <button
+                                onClick={() => loadOllamaModels(editForm.baseUrl)}
+                                disabled={loadingOllamaModels || !editForm.baseUrl}
+                                title={editForm.baseUrl ? (de ? 'Modelle von Remote laden' : 'Fetch remote models') : (de ? 'Erst URL unten eintragen' : 'Enter URL below first')}
+                                style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: editForm.baseUrl ? 'rgba(168,85,247,0.1)' : 'rgba(255,255,255,0.03)', color: editForm.baseUrl ? '#a855f7' : '#475569', cursor: editForm.baseUrl && !loadingOllamaModels ? 'pointer' : 'not-allowed', fontSize: 16, lineHeight: 1 }}
+                              >
+                                {loadingOllamaModels ? '⏳' : '🔄'}
+                              </button>
+                            </div>
+                            {ollamaModels.length > 0 && (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                {ollamaModels.map(m => (
+                                  <button key={m.id} onClick={() => setEditForm(f => ({ ...f, modell: m.id }))} style={{ padding: '2px 9px', borderRadius: 20, fontSize: 11, cursor: 'pointer', background: editForm.modell === m.id ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.04)', border: `1px solid ${editForm.modell === m.id ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.08)'}`, color: editForm.modell === m.id ? '#a855f7' : '#64748b', fontWeight: editForm.modell === m.id ? 700 : 400 }}>
+                                    {m.name}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            <div style={{ fontSize: 10, color: '#64748b' }}>
+                              {de ? '☁️ Remote Ollama — URL unten eintragen, dann 🔄 drücken' : '☁️ Remote Ollama — enter URL below, then press 🔄'}
+                            </div>
+                          </div>
+                        ) : vt === 'custom' ? (
+                          <input className="input" style={{ width: '100%' }} placeholder="z.B. llama3-70b-8192, mistral-large-latest, …" value={editForm.modell} onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))} />
                         ) : (
                           <input className="input" style={{ width: '100%' }} value={editForm.modell} onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))} />
-                        )}
+                        )
+                        ); })()}
                       </div>
                     </div>
 
@@ -1723,32 +1704,48 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                       </div>
                     )}
 
-                    {(editForm.verbindungsTyp === 'ollama' || editForm.verbindungsTyp === 'openai' || editForm.verbindungsTyp === 'custom') && (
-                      <div style={{ marginTop: 16, padding: '12px 16px', borderRadius: 12, background: 'rgba(56, 189, 248, 0.05)', border: '1px solid rgba(56, 189, 248, 0.1)' }}>
+                    {(() => { const vt2 = editForm.verbindungsTyp as string; return (vt2 === 'ollama' || vt2 === 'ollama_cloud' || vt2 === 'openai' || vt2 === 'custom') && (
+                      <div style={{
+                        marginTop: 16, padding: '12px 16px', borderRadius: 12,
+                        background: vt2 === 'ollama_cloud' ? 'rgba(168,85,247,0.05)' : 'rgba(56,189,248,0.05)',
+                        border: `1px solid ${vt2 === 'ollama_cloud' ? 'rgba(168,85,247,0.15)' : 'rgba(56,189,248,0.1)'}`,
+                      }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                          <Globe size={14} style={{ color: 'var(--color-accent)' }} />
+                          <Globe size={14} style={{ color: vt2 === 'ollama_cloud' ? '#a855f7' : 'var(--color-accent)' }} />
                           <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: 1 }}>
-                            {editForm.verbindungsTyp === 'custom'
-                              ? (de ? 'API Base URL' : 'API Base URL')
-                              : (de ? 'Basis-URL (Optional für Relay/Cloud)' : 'Base URL (Optional for Relay/Cloud)')}
+                            {vt2 === 'custom'
+                              ? 'API Base URL'
+                              : vt2 === 'ollama_cloud'
+                                ? (de ? '☁️ Remote Ollama Server URL' : '☁️ Remote Ollama Server URL')
+                                : (de ? 'Basis-URL (Optional für Relay/Cloud)' : 'Base URL (Optional for Relay/Cloud)')}
                           </label>
                         </div>
                         <input
                           className="input"
                           style={{ width: '100%' }}
-                          placeholder={editForm.verbindungsTyp === 'custom' ? (globalCustomBaseUrl ? `${globalCustomBaseUrl} (Global)` : 'https://api.groq.com/openai/v1') : editForm.verbindungsTyp === 'openai' ? 'z.B. https://api.groq.com/openai/v1' : 'z.B. http://1.2.3.4:11434'}
+                          placeholder={
+                            vt2 === 'custom'
+                              ? (globalCustomBaseUrl ? `${globalCustomBaseUrl} (Global)` : 'https://api.groq.com/openai/v1')
+                              : vt2 === 'openai'
+                                ? 'z.B. https://api.groq.com/openai/v1'
+                                : vt2 === 'ollama_cloud'
+                                  ? 'z.B. http://192.168.1.100:11434 oder https://mein-server.com:11434'
+                                  : 'z.B. http://1.2.3.4:11434'
+                          }
                           value={editForm.baseUrl}
                           onChange={e => setEditForm(f => ({ ...f, baseUrl: e.target.value }))}
                         />
                         <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 6 }}>
-                          {editForm.verbindungsTyp === 'custom'
+                          {vt2 === 'custom'
                             ? (globalCustomBaseUrl && !editForm.baseUrl
                                 ? <span style={{ color: '#23CDCB' }}>{de ? `Globale URL aktiv: ${globalCustomBaseUrl}` : `Using global URL: ${globalCustomBaseUrl}`}</span>
                                 : (de ? 'OpenAI-kompatibler Endpunkt. Leer = Wert aus den globalen Einstellungen.' : 'OpenAI-compatible endpoint. Empty = value from global Settings.'))
-                            : (de ? 'Leer lassen, um den Standard-Endpoint zu nutzen.' : 'Leave empty to use the default endpoint.')}
+                            : vt2 === 'ollama_cloud'
+                              ? (de ? 'IP/Domain deines Ollama-Servers. Port 11434 ist der Standard.' : 'IP/domain of your Ollama server. Port 11434 is the default.')
+                              : (de ? 'Leer lassen, um den Standard-Endpoint zu nutzen.' : 'Leave empty to use the default endpoint.')}
                         </div>
                       </div>
-                    )}
+                    ); })()}
                   </div>
 
                   {/* --- HIERARCHIE & AUTONOMIE --- */}

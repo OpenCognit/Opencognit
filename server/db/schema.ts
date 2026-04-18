@@ -35,7 +35,7 @@ export const experten = sqliteTable('experten', {
   status: text('status', { enum: ['active', 'paused', 'idle', 'running', 'error', 'terminated'] }).notNull().default('idle'),
   reportsTo: text('reports_to').references((): any => experten.id),
   faehigkeiten: text('faehigkeiten'),
-  verbindungsTyp: text('verbindungs_typ', { enum: ['claude', 'claude-code', 'anthropic', 'openai', 'openrouter', 'ollama', 'codex', 'codex-cli', 'gemini-cli', 'cursor', 'http', 'bash', 'ceo', 'custom', 'openclaw'] }).notNull().default('openrouter'),
+  verbindungsTyp: text('verbindungs_typ', { enum: ['claude', 'claude-code', 'anthropic', 'openai', 'openrouter', 'ollama', 'ollama_cloud', 'codex', 'codex-cli', 'gemini-cli', 'cursor', 'http', 'bash', 'ceo', 'custom', 'openclaw'] }).notNull().default('openrouter'),
   verbindungsConfig: text('verbindungs_config'), // JSON string
   avatar: text('avatar'),
   avatarFarbe: text('avatar_farbe').notNull().default('#23CDCA'),
