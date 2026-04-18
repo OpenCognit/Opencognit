@@ -639,6 +639,7 @@ export function Tasks() {
                           <GlassCard
                             key={a.id}
                             className="kanban-card"
+                            noBlur
                             draggable
                             onDragStart={e => { setDraggedId(a.id); e.dataTransfer.effectAllowed = 'move'; }}
                             onDragEnd={() => { setDraggedId(null); setDragOverCol(null); }}

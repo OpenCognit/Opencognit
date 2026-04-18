@@ -4,6 +4,8 @@ interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {
   accent?: string;
   /** Persistent hover (always show glow) */
   active?: boolean;
+  /** Skip backdrop-filter blur — use for high-density lists (kanban cards, etc.) */
+  noBlur?: boolean;
 }
 
 export function GlassCard({
@@ -12,6 +14,7 @@ export function GlassCard({
   accent = '#23CDCB',
   onClick,
   active = false,
+  noBlur = false,
   className,
   onMouseEnter,
   onMouseLeave,
@@ -31,7 +34,7 @@ export function GlassCard({
         position: 'relative',
         overflow: 'hidden',
         background: on ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.04)',
-        backdropFilter: 'blur(24px) saturate(160%)',
+        ...(noBlur ? {} : { backdropFilter: 'blur(24px) saturate(160%)' }),
         borderRadius: '20px',
         borderWidth: '1px',
         borderStyle: 'solid',

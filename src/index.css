@@ -1262,7 +1262,7 @@ ul, ol { list-style: none; }
   flex-direction: column;
   gap: 0.75rem;
   min-height: 40px;
-  max-height: 460px;
+  max-height: calc(100vh - 320px);
   overflow-y: auto;
   padding-right: 4px;
   /* thin custom scrollbar */
