@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Brain, Sparkles, Trash2, Save, X, CheckCircle, TrendingUp, Cpu, Key,
-  ChevronDown, ChevronUp, Zap, Clock, BookOpen, Terminal, GitBranch, Calendar, Plus, Archive, RefreshCw, Radio, Search, Network } from 'lucide-react';
+  ChevronDown, ChevronUp, Zap, Clock, BookOpen, Terminal, GitBranch, Calendar, Plus, Archive, RefreshCw, Radio, Search, Network, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 import { useI18n } from '../i18n';
 import { useCompany } from '../hooks/useCompany';
@@ -277,7 +277,18 @@ function KnowledgeGraphPanel({ facts, unternehmenId, onRefresh }: { facts: KgFac
   const rafRef = useRef<number>(0);
   const [, setTick] = useState(0);
 
-  const W = 700, H = 360;
+  // Pan + Zoom (canvas navigation, like OrgChart)
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1.0);
+  const viewPanRef = useRef({ x: 0, y: 0 });
+  const viewZoomRef = useRef(1.0);
+  viewPanRef.current = pan;
+  viewZoomRef.current = zoom;
+  const isPanRef = useRef(false);
+  const panStartRef = useRef({ mx: 0, my: 0, px: 0, py: 0 });
+  const hasPannedRef = useRef(false);
+
+  const W = 700, H = 480;
 
   // Build edge list + degree map from facts
   const { edges, degrees } = useMemo(() => {
@@ -337,8 +348,8 @@ function KnowledgeGraphPanel({ facts, unternehmenId, onRefresh }: { facts: KgFac
         for (const n of ns) { n.vx += (W/2-n.x)*0.018; n.vy += (H/2-n.y)*0.018; }
         for (const n of ns) {
           if (dragRef.current?.id === n.id) continue;
-          n.x = Math.max(40, Math.min(W-40, n.x + n.vx*0.4));
-          n.y = Math.max(35, Math.min(H-35, n.y + n.vy*0.4));
+          n.x = Math.max(-1500, Math.min(W+1500, n.x + n.vx*0.4));
+          n.y = Math.max(-1000, Math.min(H+1000, n.y + n.vy*0.4));
           n.vx *= 0.65; n.vy *= 0.65;
         }
         setTick(t => t+1);
@@ -349,16 +360,80 @@ function KnowledgeGraphPanel({ facts, unternehmenId, onRefresh }: { facts: KgFac
     return () => { running = false; cancelAnimationFrame(rafRef.current); };
   }, [edges]);
 
-  // SVG drag
-  const onSvgMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!dragRef.current || !svgRef.current) return;
-    const rect = svgRef.current.getBoundingClientRect();
-    const svgX = (e.clientX - rect.left) * (W / rect.width);
-    const svgY = (e.clientY - rect.top) * (H / rect.height);
-    const n = nodesRef.current.get(dragRef.current.id);
-    if (n) { n.x = Math.max(40, Math.min(W-40, svgX)); n.y = Math.max(35, Math.min(H-35, svgY)); n.vx = 0; n.vy = 0; }
+  // Wheel: zoom toward cursor
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      const sx = (e.clientX - rect.left) * (W / rect.width);
+      const sy = (e.clientY - rect.top) * (H / rect.height);
+      const factor = e.deltaY < 0 ? 1.12 : 0.89;
+      const newZ = Math.min(4, Math.max(0.15, viewZoomRef.current * factor));
+      const ratio = newZ / viewZoomRef.current;
+      setPan(p => ({ x: sx - (sx - p.x) * ratio, y: sy - (sy - p.y) * ratio }));
+      setZoom(newZ);
+    };
+    svg.addEventListener('wheel', onWheel, { passive: false });
+    return () => svg.removeEventListener('wheel', onWheel);
+  }, []);
+
+  // Fit all nodes into view
+  const fitView = () => {
+    const ns = Array.from(nodesRef.current.values());
+    if (ns.length === 0) { setPan({ x: 0, y: 0 }); setZoom(1); return; }
+    const minX = Math.min(...ns.map(n => n.x)) - 60;
+    const maxX = Math.max(...ns.map(n => n.x)) + 60;
+    const minY = Math.min(...ns.map(n => n.y)) - 60;
+    const maxY = Math.max(...ns.map(n => n.y)) + 60;
+    const gW = maxX - minX, gH = maxY - minY;
+    const z = Math.min(3, Math.max(0.15, Math.min(W / gW, H / gH) * 0.85));
+    setPan({ x: (W - gW * z) / 2 - minX * z, y: (H - gH * z) / 2 - minY * z });
+    setZoom(z);
   };
-  const onSvgMouseUp = () => { dragRef.current = null; };
+
+  // SVG mouse: pan canvas or drag node
+  const toSvgCoords = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = svgRef.current!.getBoundingClientRect();
+    return { sx: (e.clientX - rect.left) * (W / rect.width), sy: (e.clientY - rect.top) * (H / rect.height) };
+  };
+
+  const onBgMouseDown = (e: React.MouseEvent<SVGRectElement>) => {
+    isPanRef.current = true;
+    hasPannedRef.current = false;
+    const rect = svgRef.current!.getBoundingClientRect();
+    panStartRef.current = {
+      mx: (e.clientX - rect.left) * (W / rect.width),
+      my: (e.clientY - rect.top) * (H / rect.height),
+      px: viewPanRef.current.x,
+      py: viewPanRef.current.y,
+    };
+  };
+
+  const onSvgMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!svgRef.current) return;
+    const { sx, sy } = toSvgCoords(e);
+    if (dragRef.current) {
+      const n = nodesRef.current.get(dragRef.current.id);
+      if (n) {
+        n.x = (sx - viewPanRef.current.x) / viewZoomRef.current;
+        n.y = (sy - viewPanRef.current.y) / viewZoomRef.current;
+        n.vx = 0; n.vy = 0;
+      }
+    } else if (isPanRef.current) {
+      const dx = sx - panStartRef.current.mx;
+      const dy = sy - panStartRef.current.my;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) hasPannedRef.current = true;
+      setPan({ x: panStartRef.current.px + dx, y: panStartRef.current.py + dy });
+    }
+  };
+
+  const onSvgMouseUp = (e: React.MouseEvent<SVGSVGElement>) => {
+    dragRef.current = null;
+    isPanRef.current = false;
+  };
+
   const onNodeMouseDown = (e: React.MouseEvent, id: string) => { e.stopPropagation(); dragRef.current = { id }; };
 
   // Focus ring: which nodes are connected to the focused node
@@ -424,6 +499,15 @@ function KnowledgeGraphPanel({ facts, unternehmenId, onRefresh }: { facts: KgFac
           {(['graph', 'list'] as const).map(v => (
             <button key={v} onClick={() => setView(v)} style={{ padding: '0.25rem 0.75rem', borderRadius: 7, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', border: `1px solid ${view === v ? 'rgba(35,205,202,0.3)' : 'rgba(255,255,255,0.06)'}`, background: view === v ? 'rgba(35,205,202,0.1)' : 'transparent', color: view === v ? '#23CDCB' : '#475569' }}>{v === 'graph' ? 'Graph' : (de ? 'Tabelle' : 'Table')}</button>
           ))}
+          {view === 'graph' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 1, background: 'rgba(35,205,202,0.04)', border: '1px solid rgba(35,205,202,0.15)', borderRadius: 7, padding: '0 2px', marginLeft: 2 }}>
+              <button onClick={() => { const nz = Math.max(0.15, viewZoomRef.current * 0.85); const ratio = nz/viewZoomRef.current; const cx = W/2, cy = H/2; setPan(p=>({x: cx-(cx-p.x)*ratio, y: cy-(cy-p.y)*ratio})); setZoom(nz); }} title="Rauszoomen" style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', padding: '3px 4px' }}><ZoomOut size={11} /></button>
+              <button onClick={() => { setZoom(1); setPan({x:0,y:0}); }} title="Zoom zurücksetzen" style={{ background: 'none', border: 'none', color: '#23CDCB', cursor: 'pointer', fontSize: '0.6rem', fontWeight: 700, padding: '0 4px', fontFamily: 'monospace', minWidth: 30, textAlign: 'center' }}>{Math.round(zoom*100)}%</button>
+              <button onClick={() => { const nz = Math.min(4, viewZoomRef.current * 1.18); const ratio = nz/viewZoomRef.current; const cx = W/2, cy = H/2; setPan(p=>({x: cx-(cx-p.x)*ratio, y: cy-(cy-p.y)*ratio})); setZoom(nz); }} title="Reinzoomen" style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', padding: '3px 4px' }}><ZoomIn size={11} /></button>
+              <div style={{ width: 1, height: 12, background: 'rgba(35,205,202,0.15)', margin: '0 1px' }} />
+              <button onClick={fitView} title="Alle anzeigen" style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', padding: '3px 4px' }}><Maximize2 size={11} /></button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -463,9 +547,9 @@ function KnowledgeGraphPanel({ facts, unternehmenId, onRefresh }: { facts: KgFac
             @keyframes kg-node-pulse { 0%,100% { opacity: 0.4 } 50% { opacity: 0.9 } }
           `}</style>
           <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} width="100%"
-            style={{ display: 'block', minWidth: 360, cursor: dragRef.current ? 'grabbing' : 'default', background: '#000' }}
+            style={{ display: 'block', minWidth: 360, cursor: isPanRef.current ? 'grabbing' : dragRef.current ? 'grabbing' : 'default', background: '#000' }}
             onMouseMove={onSvgMouseMove} onMouseUp={onSvgMouseUp} onMouseLeave={onSvgMouseUp}
-            onClick={() => setFocused(null)}>
+            onClick={(e) => { if (!hasPannedRef.current) setFocused(null); }}>
             <defs>
               {/* Glow filters */}
               <filter id="kg-glow-strong" x="-50%" y="-50%" width="200%" height="200%">
@@ -501,10 +585,15 @@ function KnowledgeGraphPanel({ facts, unternehmenId, onRefresh }: { facts: KgFac
               </pattern>
             </defs>
 
-            {/* Background layers */}
+            {/* Fixed background */}
             <rect width={W} height={H} fill="#000" />
-            <rect width={W} height={H} fill="url(#kg-grid)" />
-            <rect width={W} height={H} fill="url(#kg-scan)" />
+            <rect width={W} height={H} fill="url(#kg-grid)" style={{ pointerEvents: 'none' }} />
+            <rect width={W} height={H} fill="url(#kg-scan)" style={{ pointerEvents: 'none' }} />
+            {/* Transparent hit area for pan — must be above background, below nodes */}
+            <rect width={W} height={H} fill="transparent" onMouseDown={onBgMouseDown as any} />
+
+            {/* Zoomable/pannable content */}
+            <g transform={`translate(${pan.x},${pan.y}) scale(${zoom})`}>
 
             {/* Edge glow halos (wide, dim — rendered first so they're behind) */}
             {edges.map(e => {
@@ -614,9 +703,12 @@ function KnowledgeGraphPanel({ facts, unternehmenId, onRefresh }: { facts: KgFac
               );
             })}
 
-            {/* Corner decorations */}
+            </g>{/* end zoomable content */}
+
+            {/* Fixed corner decorations */}
             <text x={8} y={H - 7} fontSize="7" fill="rgba(35,205,202,0.2)" fontFamily="monospace">NEURAL GRAPH v2</text>
             <text x={W - 8} y={H - 7} fontSize="7" fill="rgba(35,205,202,0.2)" fontFamily="monospace" textAnchor="end">{facts.length} FACTS · {nodes.length} NODES</text>
+            <text x={8} y={H - 17} fontSize="6" fill="rgba(35,205,202,0.12)" fontFamily="monospace">Scroll = Zoom · Ziehen = Pan · Node-Drag = Bewegen</text>
           </svg>
 
           <div style={{ display: 'flex', gap: '1.5rem', padding: '0.5rem 0.875rem', fontSize: '0.625rem', color: '#1e293b', flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid rgba(35,205,202,0.06)', fontFamily: 'monospace' }}>
@@ -628,7 +720,7 @@ function KnowledgeGraphPanel({ facts, unternehmenId, onRefresh }: { facts: KgFac
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'rgba(35,205,202,0.2)', border: '1px solid #23CDCB', display: 'inline-block', boxShadow: '0 0 4px #23CDCB' }} />
               <span style={{ color: '#23CDCB88' }}>{de ? 'Objekt' : 'Object'}</span>
             </span>
-            <span style={{ color: '#1e3a4a' }}>{de ? 'Größe = Grad · Klick = Fokus · Ziehen = bewegen' : 'Size = Degree · Click = Focus · Drag = move'}</span>
+            <span style={{ color: '#1e3a4a' }}>{de ? 'Größe = Grad · Klick = Fokus · Node-Drag = bewegen · Hintergrund-Drag = Pan · Scroll = Zoom' : 'Size = Degree · Click = Focus · Node-Drag = move · Bg-Drag = Pan · Scroll = Zoom'}</span>
           </div>
         </div>
       ) : (
