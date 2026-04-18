@@ -1,3 +1,4 @@
+<img width="1726" height="1203" alt="Bildschirmfoto_20260412_165900" src="https://github.com/user-attachments/assets/9c358d92-b425-4ef6-b8ae-2c5a6cfb68e5" />
 <div align="center">
 
 <img src="public/banner.png" alt="OpenCognit" width="100%" />
@@ -34,6 +35,8 @@ You → Goal → CEO Agent → Dev Agent → Writer Agent → Researcher Agent
                  ↑               ↓              ↓
           Persistent Memory ←── Critic ←── Results ←────┘
 ```
+
+<img width="1726" height="1203" alt="Bildschirmfoto_20260412_165900" src="https://github.com/user-attachments/assets/fda831f4-e466-4760-984e-8042b2dbdb2b" />
 
 ---
 
