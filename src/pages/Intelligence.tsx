@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Brain, Sparkles, Trash2, Save, X, CheckCircle, TrendingUp, Cpu, Key,
-  ChevronDown, ChevronUp, Zap, Clock, BookOpen, Terminal, GitBranch, Calendar, Plus, Archive, RefreshCw, Radio, Search, Network, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+  ChevronDown, ChevronUp, Zap, Clock, BookOpen, Terminal, GitBranch, Calendar, Plus, Archive, RefreshCw, Radio, Search, Network, ZoomIn, ZoomOut, Maximize2, ListTodo } from 'lucide-react';
 import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 import { useI18n } from '../i18n';
 import { useCompany } from '../hooks/useCompany';
@@ -65,6 +65,15 @@ interface SummaryInfo {
   komprimierteTurns: number;
   aktualisiertAm: string;
   inhalt: string;
+}
+
+interface RecentTask {
+  id: string;
+  titel: string;
+  status: string;
+  prioritaet: string;
+  erstelltAm: string;
+  beschreibung: string | null;
 }
 
 interface TraceEvent {
@@ -807,7 +816,8 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
   const [diary, setDiary] = useState<DiaryEntry[]>([]);
   const [summary, setSummary] = useState<SummaryInfo | null>(null);
   const [activeRoom, setActiveRoom] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'rooms' | 'diary' | 'summary' | 'live'>('rooms');
+  const [activeTab, setActiveTab] = useState<'rooms' | 'diary' | 'summary' | 'live' | 'tasks'>('rooms');
+  const [recentTasks, setRecentTasks] = useState<RecentTask[]>([]);
   const [loading, setLoading] = useState(false);
   const [showWriteForm, setShowWriteForm] = useState(false);
   const [consolidating, setConsolidating] = useState(false);
@@ -821,14 +831,16 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
     if (!expanded) return;
     setLoading(true);
     try {
-      const [roomsRes, diaryRes, summaryRes] = await Promise.all([
+      const [roomsRes, diaryRes, summaryRes, statsRes] = await Promise.all([
         authFetch(`/api/palace/${expert.id}/rooms`).then(r => r.json()),
         authFetch(`/api/palace/${expert.id}/diary`).then(r => r.json()),
         authFetch(`/api/palace/${expert.id}/summary`).then(r => r.json()).catch(() => null),
+        authFetch(`/api/experten/${expert.id}/stats`).then(r => r.json()).catch(() => null),
       ]);
       setRooms(roomsRes.rooms || []);
       setDiary(Array.isArray(diaryRes) ? diaryRes : []);
       setSummary(summaryRes);
+      setRecentTasks(statsRes?.recentTasks || []);
       if (roomsRes.rooms?.length > 0 && !activeRoom) {
         setActiveRoom(roomsRes.rooms[0].room);
       }
@@ -926,6 +938,7 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
               {/* Tab Bar: Rooms | Diary | Summary */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '1rem', marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '0.5rem', flexWrap: 'wrap' }}>
                 {[
+                  { key: 'tasks' as const, label: `Tasks (${recentTasks.length})`, icon: ListTodo },
                   { key: 'rooms' as const, label: `Rooms (${rooms.length})`, icon: BookOpen },
                   { key: 'diary' as const, label: `Diary (${diary.length})`, icon: Calendar },
                   { key: 'summary' as const, label: summary ? `Summary v${summary.version}` : 'Summary', icon: Archive },
@@ -968,6 +981,44 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
               {showWriteForm && (
                 <WriteMemoryForm expertId={expert.id} onSaved={() => { setShowWriteForm(false); loadData(); }} t={t} />
               )}
+
+              {/* Tasks Tab */}
+              {activeTab === 'tasks' && (() => {
+                const active = recentTasks.filter(t => t.status === 'in_progress');
+                const rest = recentTasks.filter(t => t.status !== 'in_progress');
+                const priColor = (p: string) => p === 'critical' ? '#ef4444' : p === 'high' ? '#f97316' : p === 'medium' ? '#eab308' : '#52525b';
+                const statusColor = (s: string) => s === 'done' ? '#22c55e' : s === 'in_progress' ? '#23CDCB' : s === 'blocked' ? '#ef4444' : '#52525b';
+                if (recentTasks.length === 0) return (
+                  <div style={{ textAlign: 'center', padding: '2rem', color: '#3f3f46', fontSize: '0.8125rem' }}>
+                    <ListTodo size={28} style={{ opacity: 0.2, marginBottom: '0.5rem' }} />
+                    <div>Noch keine Tasks zugewiesen</div>
+                  </div>
+                );
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '380px', overflow: 'auto' }}>
+                    {active.map(task => (
+                      <div key={task.id} style={{ padding: '0.875rem', borderRadius: '10px', background: 'rgba(35,205,202,0.05)', border: '1px solid rgba(35,205,202,0.2)', position: 'relative' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.375rem' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0.1rem 0.5rem', borderRadius: '999px', background: 'rgba(35,205,202,0.12)', border: '1px solid rgba(35,205,202,0.3)', fontSize: '0.6rem', color: '#23CDCB', fontWeight: 700, fontFamily: 'monospace', animation: 'pulse 1.5s ease-in-out infinite' }}>
+                            <Zap size={9} /> AKTIV
+                          </span>
+                          <span style={{ fontSize: '0.6rem', color: priColor(task.prioritaet), fontWeight: 700, textTransform: 'uppercase', fontFamily: 'monospace' }}>{task.prioritaet}</span>
+                        </div>
+                        <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#e4e4e7', lineHeight: 1.4 }}>{task.titel}</div>
+                        {task.beschreibung && <div style={{ fontSize: '0.75rem', color: '#71717a', marginTop: '0.25rem', lineHeight: 1.4, maxHeight: 48, overflow: 'hidden' }}>{task.beschreibung.slice(0, 120)}{task.beschreibung.length > 120 ? '…' : ''}</div>}
+                      </div>
+                    ))}
+                    {rest.map(task => (
+                      <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem 0.875rem', borderRadius: '8px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: statusColor(task.status), flexShrink: 0 }} />
+                        <span style={{ flex: 1, fontSize: '0.8125rem', color: task.status === 'done' ? '#52525b' : '#a1a1aa', textDecoration: task.status === 'done' ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.titel}</span>
+                        <span style={{ fontSize: '0.6rem', color: priColor(task.prioritaet), fontWeight: 700, fontFamily: 'monospace', flexShrink: 0 }}>{task.prioritaet}</span>
+                        <span style={{ fontSize: '0.6rem', color: '#3f3f46', flexShrink: 0 }}>{new Date(task.erstelltAm).toLocaleDateString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
 
               {/* Live Trace Tab */}
               {activeTab === 'live' && (

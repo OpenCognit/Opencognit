@@ -77,6 +77,7 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
       { to: '/approvals',     icon: ShieldCheck,     label: t.nav.genehmigungen },
       { to: '/costs',         icon: Wallet,          label: t.nav.kosten },
       { to: '/org-chart',     icon: GitBranch,       label: t.nav.organigramm },
+      { to: '/intelligence',  icon: Brain,           label: t.nav.intelligence },
     ]},
     // ── Setup-Reihenfolge: was zuerst gemacht werden muss ──
     { section: de ? 'Einrichten' : 'Setup', items: [
@@ -89,7 +90,6 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
     // ── Alles weitere ──
     { section: de ? 'Mehr' : 'More', items: [
       { to: '/goals',        icon: Target,         label: t.nav.ziele },
-      { to: '/intelligence', icon: Brain,          label: t.nav.intelligence },
       { to: '/meetings',     icon: MessagesSquare, label: t.nav.meetings },
       { to: '/activity',     icon: Activity,       label: t.nav.aktivitaet },
       { to: '/weekly-report',icon: BarChart3,      label: t.nav.weeklyReport },
