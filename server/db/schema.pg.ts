@@ -472,6 +472,20 @@ export const openclawTokens = pgTable('openclaw_tokens', {
   letzterJoin: text('letzter_join'),
 });
 
+// ===== CEO Decision Log =====
+export const ceoDecisionLog = pgTable('ceo_decision_log', {
+  id: text('id').primaryKey(),
+  expertId: text('expert_id').notNull().references(() => experten.id),
+  unternehmenId: text('unternehmen_id').notNull().references(() => unternehmen.id),
+  runId: text('run_id').notNull(),
+  erstelltAm: text('erstellt_am').notNull(),
+  focusSummary: text('focus_summary').notNull(),
+  actionsJson: text('actions_json').notNull(),
+  goalsSnapshot: text('goals_snapshot'),
+  pendingTaskCount: integer('pending_task_count').notNull().default(0),
+  teamSummary: text('team_summary'),
+});
+
 // ===== Expert Config History =====
 export const expertConfigHistory = pgTable('expert_config_history', {
   id: text('id').primaryKey(),
