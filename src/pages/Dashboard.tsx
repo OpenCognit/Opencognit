@@ -17,6 +17,7 @@ import { ExpertChatDrawer } from '../components/ExpertChatDrawer';
 import { StandupPanel } from '../components/StandupPanel';
 import { SetupWizard } from '../components/SetupWizard';
 import { authFetch } from '../utils/api';
+import { translateTrace } from '../utils/translateTrace';
 import { BentoGrid, type BentoItem } from '../components/BentoGrid';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -728,7 +729,7 @@ function SystemPulse({ unternehmenId, initialTrace, lang }: { unternehmenId: str
                   </span>
                 )}
                 <span style={{ fontSize: '0.6875rem', color: isTask ? '#94a3b8' : '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {ev.titel}
+                  {translateTrace(ev.titel, lang)}
                 </span>
               </div>
               <span style={{ fontSize: '0.625rem', color: '#334155', flexShrink: 0 }}>

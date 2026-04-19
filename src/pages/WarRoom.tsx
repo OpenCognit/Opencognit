@@ -9,6 +9,7 @@ import { useCompany } from '../hooks/useCompany';
 import { useI18n } from '../i18n';
 import { apiDashboard, type DashboardData } from '../api/client';
 import { GlassCard } from '../components/GlassCard';
+import { translateTrace } from '../utils/translateTrace';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -134,7 +135,7 @@ function ElapsedTimer({ since }: { since: string | null }) {
 
 // ── Trace row — shown inside AgentCard and LogPanel ───────────────────────────
 
-function TraceRow({ ev, showDetails = true }: { ev: TraceEvent; showDetails?: boolean }) {
+function TraceRow({ ev, showDetails = true, lang = 'de' }: { ev: TraceEvent; showDetails?: boolean; lang?: string }) {
   const tc = TRACE_CFG[ev.typ] || TRACE_CFG.info;
   const [open, setOpen] = useState(false);
   const hasDetails = !!ev.details?.trim();
@@ -160,7 +161,7 @@ function TraceRow({ ev, showDetails = true }: { ev: TraceEvent; showDetails?: bo
             overflow: 'hidden', display: '-webkit-box',
             WebkitLineClamp: open ? 99 : 2, WebkitBoxOrient: 'vertical',
           }}>
-            {ev.titel}
+            {translateTrace(ev.titel, lang)}
           </div>
           {/* details preview — first line when collapsed */}
           {hasDetails && showDetails && !open && (
@@ -309,7 +310,7 @@ function AgentLogPanel({
               {de ? 'Noch keine Aktivität aufgezeichnet' : 'No activity recorded yet'}
             </div>
           ) : [...traces].reverse().map((ev) => (
-            <TraceRow key={ev.id} ev={ev} showDetails={true} />
+            <TraceRow key={ev.id} ev={ev} showDetails={true} lang={language} />
           ))}
           <div ref={logEndRef} />
         </div>
@@ -489,7 +490,7 @@ function AgentCard({ agent, traces, onWakeup, waking, language, onOpenLog }: {
       {visibleTraces.length > 0 && (
         <div style={{ padding: '0 14px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
           {visibleTraces.map((ev) => (
-            <TraceRow key={ev.id} ev={ev} showDetails={false} />
+            <TraceRow key={ev.id} ev={ev} showDetails={false} lang={language} />
           ))}
         </div>
       )}
@@ -576,7 +577,7 @@ function PulseEntry({ ev, isNew, de }: { ev: TraceEvent & { expertName?: string 
             overflow: 'hidden', display: '-webkit-box',
             WebkitLineClamp: open ? 99 : 1, WebkitBoxOrient: 'vertical',
           }}>
-            {ev.titel}
+            {translateTrace(ev.titel, de ? 'de' : 'en')}
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>

@@ -107,6 +107,9 @@ export const genehmigungen = pgTable('genehmigungen', {
   entschiedenAm: text('entschieden_am'),
   erstelltAm: text('erstellt_am').notNull(),
   aktualisiertAm: text('aktualisiert_am').notNull(),
+  telegramChatId: text('telegram_chat_id'),
+  telegramMessageId: integer('telegram_message_id'),
+  notifiedAt: text('notified_at'),
 });
 
 // ===== Kostenbuchungen =====
@@ -494,4 +497,20 @@ export const expertConfigHistory = pgTable('expert_config_history', {
   changedBy: text('changed_by'),
   configJson: text('config_json').notNull(),
   note: text('note'),
+});
+
+// ===== Worker Nodes (Multi-Node Worker Pool) =====
+export const workerNodes = pgTable('worker_nodes', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  hostname: text('hostname'),
+  capabilities: text('capabilities').notNull(),
+  tokenHash: text('token_hash').notNull(),
+  status: text('status').notNull().default('online'),
+  maxConcurrency: integer('max_concurrency').notNull().default(1),
+  activeRuns: integer('active_runs').notNull().default(0),
+  totalRuns: integer('total_runs').notNull().default(0),
+  lastHeartbeatAt: text('last_heartbeat_at'),
+  registriertAm: text('registriert_am').notNull(),
+  aktualisiertAm: text('aktualisiert_am').notNull(),
 });

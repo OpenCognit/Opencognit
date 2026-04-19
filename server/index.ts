@@ -23,6 +23,8 @@ import { cleanupService } from './services/cleanup.js';
 import { backupService } from './services/backup.js';
 import { initializePluginSystem, shutdownPluginSystem, pluginManager } from './plugins/index.js';
 import { runClaudeDirectChat } from './adapters/claude-code.js';
+import { adapterRegistry } from './adapters/registry.js';
+import { ensureWorkspace, listeWorkspaces, raeumeWorkspaceAuf, schliesseWorkspace } from './services/execution-workspaces.js';
 
 import { messagingService, buildConfigContext, executeConfigAction, getUiLanguage, langLine } from './services/messaging.js';
 import { appEvents } from './events.js';
@@ -993,6 +995,185 @@ app.get('/api/aufgaben/:id/work-products', (req, res) => {
   res.json(products);
 });
 
+// ===== Timeline (Time-Travel-View) =====
+// Unified chronological timeline for a task: creation, status changes, comments,
+// arbeitszyklen (work cycles), trace events, approvals, cost bookings, activity log.
+app.get('/api/aufgaben/:id/timeline', (req, res) => {
+  const taskId = req.params.id;
+  const task = db.select().from(aufgaben).where(eq(aufgaben.id, taskId)).get();
+  if (!task) return res.status(404).json({ error: 'Aufgabe nicht gefunden' });
+
+  type TimelineEvent = {
+    id: string;
+    at: string;
+    kind: string;
+    title: string;
+    actor?: string | null;
+    runId?: string | null;
+    data?: any;
+  };
+  const events: TimelineEvent[] = [];
+
+  // Task lifecycle
+  events.push({
+    id: `task-created-${task.id}`,
+    at: task.erstelltAm,
+    kind: 'task_created',
+    title: 'Task created',
+    actor: task.erstelltVon || null,
+    data: { titel: task.titel, prioritaet: task.prioritaet, typ: task.typ },
+  });
+  if (task.gestartetAm) {
+    events.push({ id: `task-started-${task.id}`, at: task.gestartetAm, kind: 'task_started', title: 'Task started', actor: task.zugewiesenAn || null });
+  }
+  if (task.abgeschlossenAm) {
+    events.push({ id: `task-completed-${task.id}`, at: task.abgeschlossenAm, kind: 'task_completed', title: 'Task completed', actor: task.zugewiesenAn || null, data: { status: task.status } });
+  }
+  if (task.abgebrochenAm) {
+    events.push({ id: `task-cancelled-${task.id}`, at: task.abgebrochenAm, kind: 'task_cancelled', title: 'Task cancelled' });
+  }
+
+  // Kommentare
+  const comments = db.select().from(kommentare).where(eq(kommentare.aufgabeId, taskId)).all();
+  for (const c of comments) {
+    events.push({
+      id: `comment-${c.id}`,
+      at: c.erstelltAm,
+      kind: 'comment',
+      title: c.autorTyp === 'agent' ? 'Agent output' : 'Comment',
+      actor: c.autorExpertId || c.autorTyp,
+      data: { inhalt: c.inhalt, autorTyp: c.autorTyp },
+    });
+  }
+
+  // Kostenbuchungen (also source for runIds)
+  const kb = db.select().from(kostenbuchungen).where(eq(kostenbuchungen.aufgabeId, taskId)).all();
+  for (const k of kb) {
+    events.push({
+      id: `cost-${k.id}`,
+      at: k.zeitpunkt || k.erstelltAm,
+      kind: 'cost',
+      title: `Cost: ${k.modell}`,
+      actor: k.expertId,
+      data: { anbieter: k.anbieter, modell: k.modell, inputTokens: k.inputTokens, outputTokens: k.outputTokens, kostenCent: k.kostenCent },
+    });
+  }
+
+  // Arbeitszyklen for this task — match via context_snapshot (JSON) containing taskId/issueId
+  const allRuns = db.select().from(arbeitszyklen)
+    .where(eq(arbeitszyklen.unternehmenId, task.unternehmenId))
+    .all();
+  const runs = allRuns.filter(r => {
+    if (!r.contextSnapshot) return false;
+    try {
+      const ctx = JSON.parse(r.contextSnapshot);
+      return ctx.taskId === taskId || ctx.issueId === taskId || ctx.aufgabeId === taskId;
+    } catch { return false; }
+  });
+  const runIds = new Set<string>(runs.map(r => r.id));
+  for (const r of runs) {
+    if (r.gestartetAm) {
+      events.push({
+        id: `run-start-${r.id}`,
+        at: r.gestartetAm,
+        kind: 'run_started',
+        title: 'Work cycle started',
+        actor: r.expertId,
+        runId: r.id,
+        data: { quelle: r.quelle, invocationSource: r.invocationSource, triggerDetail: r.triggerDetail },
+      });
+    }
+    if (r.beendetAm) {
+      let usage: any = null;
+      try { usage = r.usageJson ? JSON.parse(r.usageJson) : null; } catch {}
+      events.push({
+        id: `run-end-${r.id}`,
+        at: r.beendetAm,
+        kind: r.status === 'succeeded' ? 'run_succeeded' : 'run_failed',
+        title: r.status === 'succeeded' ? 'Work cycle succeeded' : `Work cycle ${r.status}`,
+        actor: r.expertId,
+        runId: r.id,
+        data: { status: r.status, exitCode: r.exitCode, fehler: r.fehler, usage, resultJson: r.resultJson },
+      });
+    }
+  }
+
+  // Trace events for these runs (+ fallback: trace with aufgabeId in details JSON)
+  if (runIds.size > 0) {
+    const traces = db.select().from(traceEreignisse)
+      .where(inArray(traceEreignisse.runId, Array.from(runIds)))
+      .all();
+    for (const t of traces) {
+      events.push({
+        id: `trace-${t.id}`,
+        at: t.erstelltAm,
+        kind: `trace_${t.typ}`,
+        title: t.titel,
+        actor: t.expertId || null,
+        runId: t.runId || null,
+        data: t.details ? safeParse(t.details) : null,
+      });
+    }
+  }
+
+  // Genehmigungen referencing this task (best-effort: payload contains taskId)
+  const approvals = db.select().from(genehmigungen)
+    .where(eq(genehmigungen.unternehmenId, task.unternehmenId))
+    .all();
+  for (const g of approvals) {
+    let matches = false;
+    try {
+      if (g.payload) {
+        const p = JSON.parse(g.payload);
+        if (p.taskId === taskId || p.aufgabeId === taskId || p.issueId === taskId) matches = true;
+      }
+    } catch {}
+    if (!matches) continue;
+    events.push({
+      id: `approval-${g.id}`,
+      at: g.erstelltAm,
+      kind: 'approval_requested',
+      title: `Approval requested: ${g.titel}`,
+      actor: g.angefordertVon,
+      data: { typ: g.typ, status: g.status, beschreibung: g.beschreibung },
+    });
+    if (g.entschiedenAm) {
+      events.push({
+        id: `approval-decided-${g.id}`,
+        at: g.entschiedenAm,
+        kind: `approval_${g.status}`,
+        title: `Approval ${g.status}`,
+        data: { entscheidungsnotiz: g.entscheidungsnotiz },
+      });
+    }
+  }
+
+  // Aktivitätslog for this task entity
+  const logs = db.select().from(aktivitaetslog)
+    .where(and(eq(aktivitaetslog.entitaetTyp, 'aufgabe'), eq(aktivitaetslog.entitaetId, taskId)))
+    .all();
+  for (const l of logs) {
+    events.push({
+      id: `log-${l.id}`,
+      at: l.erstelltAm,
+      kind: `log_${l.aktion}`,
+      title: l.aktion,
+      actor: l.akteurName || l.akteurId,
+      data: l.details ? safeParse(l.details) : null,
+    });
+  }
+
+  events.sort((a, b) => (a.at || '').localeCompare(b.at || ''));
+
+  res.json({
+    task: { id: task.id, titel: task.titel, status: task.status, unternehmenId: task.unternehmenId, zugewiesenAn: task.zugewiesenAn },
+    events,
+    runs: runs.map(r => ({ id: r.id, status: r.status, gestartetAm: r.gestartetAm, beendetAm: r.beendetAm })),
+  });
+});
+
+function safeParse(s: string) { try { return JSON.parse(s); } catch { return s; } }
+
 // Company-level work products gallery
 app.get('/api/unternehmen/:id/work-products', authMiddleware, (req, res) => {
   const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
@@ -1095,6 +1276,17 @@ app.post('/api/genehmigungen/:id/ablehnen', (req, res) => {
 // =============================================
 // KOSTEN
 // =============================================
+
+// Budget forecast — projected spend trajectory per active policy
+app.get('/api/unternehmen/:unternehmenId/budget/forecast', async (req, res) => {
+  try {
+    const { getForecasts } = await import('./services/budget-forecast.js');
+    res.json({ forecasts: getForecasts(req.params.unternehmenId) });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/unternehmen/:unternehmenId/kosten/zusammenfassung', (req, res) => {
   const agenten = db.select().from(experten).where(eq(experten.unternehmenId, req.params.unternehmenId)).all();
 
@@ -1447,6 +1639,29 @@ app.post('/api/experten/:id/wakeup', async (req, res) => {
     res.json({ ok: true, wakeupId, message: `Agent "${expert.name}" wird aufgeweckt` });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ===== Agent Performance (Self-Evolving Agents) =====
+app.get('/api/experten/:id/performance', async (req, res) => {
+  try {
+    const days = Math.max(1, Math.min(180, parseInt(req.query.days as string) || 30));
+    const { getAgentPerformance } = await import('./services/agent-performance.js');
+    const result = getAgentPerformance(req.params.id, days);
+    if (!result) return res.status(404).json({ error: 'Agent nicht gefunden' });
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/unternehmen/:id/performance/leaderboard', async (req, res) => {
+  try {
+    const days = Math.max(1, Math.min(180, parseInt(req.query.days as string) || 30));
+    const { getCompanyLeaderboard } = await import('./services/agent-performance.js');
+    res.json({ days, agents: getCompanyLeaderboard(req.params.id, days) });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -2043,6 +2258,177 @@ app.post('/api/routinen/:id/trigger', (req, res) => {
 
   const execution = db.select().from(routineAusfuehrung).where(eq(routineAusfuehrung.id, executionId)).get();
   res.status(201).json(execution);
+});
+
+// =============================================
+// WORKSPACES (Isolation via git worktree)
+// =============================================
+app.get('/api/unternehmen/:id/workspaces', (req, res) => {
+  try {
+    res.json(listeWorkspaces(req.params.id));
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message });
+  }
+});
+
+app.post('/api/aufgaben/:id/workspace', (req, res) => {
+  try {
+    const task = db.select().from(aufgaben).where(eq(aufgaben.id, req.params.id)).get();
+    if (!task) return res.status(404).json({ error: 'Aufgabe nicht gefunden' });
+    if (!task.zugewiesenAn) return res.status(400).json({ error: 'Aufgabe hat keinen zugewiesenen Agenten' });
+    const ws = ensureWorkspace(task.unternehmenId, task.id, task.zugewiesenAn);
+    res.json(ws);
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message });
+  }
+});
+
+app.post('/api/workspaces/:id/close', (req, res) => {
+  try {
+    schliesseWorkspace(req.params.id);
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message });
+  }
+});
+
+app.delete('/api/workspaces/:id', (req, res) => {
+  try {
+    const force = String(req.query.force || '') === 'true';
+    const result = raeumeWorkspaceAuf(req.params.id, force);
+    res.status(result.ok ? 200 : 400).json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message });
+  }
+});
+
+// =============================================
+// ADAPTER-PLUGINS (Ökosystem)
+// =============================================
+app.get('/api/adapters', (_req, res) => {
+  res.json({
+    registered: adapterRegistry.getRegisteredAdapters(),
+    plugins: adapterRegistry.getLoadedPlugins(),
+  });
+});
+
+// Plugin Registry — browse, install, uninstall
+app.get('/api/plugin-registry', authMiddleware, async (req, res) => {
+  try {
+    const { fetchRegistry, listInstalled } = await import('./services/plugin-registry.js');
+    const url = (req.query.url as string) || undefined;
+    const manifest = await fetchRegistry(url);
+    const installed = new Set(listInstalled().map(x => x.id));
+    res.json({
+      plugins: manifest.plugins.map(p => ({ ...p, installed: installed.has(p.id) })),
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/plugin-registry/installed', authMiddleware, async (_req, res) => {
+  try {
+    const { listInstalled } = await import('./services/plugin-registry.js');
+    res.json({ installed: listInstalled() });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/plugin-registry/install', authMiddleware, async (req, res) => {
+  try {
+    const entry = req.body;
+    if (!entry || !entry.id || !entry.source) {
+      return res.status(400).json({ error: 'entry with id and source required' });
+    }
+    const { installPlugin } = await import('./services/plugin-registry.js');
+    const result = await installPlugin(entry);
+    res.json(result);
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/plugin-registry/uninstall', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.body;
+    if (!id) return res.status(400).json({ error: 'id required' });
+    const { uninstallPlugin } = await import('./services/plugin-registry.js');
+    await uninstallPlugin(id);
+    res.json({ uninstalled: id });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// =============================================
+// WORKER POOL (Multi-Node)
+// =============================================
+function workerAuthMiddleware(req: any, res: any, next: any) {
+  const id = req.headers['x-worker-id'] as string;
+  const token = req.headers['x-worker-token'] as string;
+  if (!id || !token) return res.status(401).json({ error: 'missing worker credentials' });
+  // Lazy load to break module init cycle
+  import('./services/worker-pool.js').then(({ authenticateWorker }) => {
+    if (!authenticateWorker(id, token)) return res.status(401).json({ error: 'invalid worker credentials' });
+    req.workerId = id;
+    next();
+  }).catch(e => res.status(500).json({ error: e.message }));
+}
+
+app.get('/api/workers', authMiddleware, async (_req, res) => {
+  try {
+    const { listWorkers } = await import('./services/worker-pool.js');
+    res.json({ workers: listWorkers() });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/workers/register', authMiddleware, async (req, res) => {
+  try {
+    const { name, hostname, capabilities, maxConcurrency, id } = req.body;
+    if (!name || !Array.isArray(capabilities)) {
+      return res.status(400).json({ error: 'name and capabilities[] required' });
+    }
+    const { registerWorker } = await import('./services/worker-pool.js');
+    const w = registerWorker({ name, hostname, capabilities, maxConcurrency, id });
+    res.json(w); // includes plaintext token — shown once
+  } catch (e: any) { res.status(400).json({ error: e.message }); }
+});
+
+app.post('/api/workers/:id/disable', authMiddleware, async (req, res) => {
+  try {
+    const { disableWorker } = await import('./services/worker-pool.js');
+    disableWorker(req.params.id);
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// Worker-authenticated endpoints (worker sends X-Worker-Id + X-Worker-Token)
+app.post('/api/worker/heartbeat', workerAuthMiddleware, async (req: any, res) => {
+  try {
+    const { heartbeat } = await import('./services/worker-pool.js');
+    res.json(heartbeat(req.workerId));
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/worker/claim', workerAuthMiddleware, async (req: any, res) => {
+  try {
+    const { claimWork } = await import('./services/worker-pool.js');
+    const capability = (req.body?.capability as string) || null;
+    const claim = claimWork(req.workerId, capability);
+    if (!claim) return res.json({ claim: null });
+    res.json({ claim });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/worker/submit', workerAuthMiddleware, async (req: any, res) => {
+  try {
+    const { wakeupId, success, error } = req.body;
+    if (!wakeupId) return res.status(400).json({ error: 'wakeupId required' });
+    const { submitResult } = await import('./services/worker-pool.js');
+    res.json(submitResult(req.workerId, wakeupId, !!success, error));
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
 // =============================================
@@ -6196,6 +6582,14 @@ async function start() {
     console.error('⚠️ Fehler bei der Initialisierung des Plugin-Systems:', error);
   }
 
+  // Load external adapter plugins from plugins/adapters/*
+  try {
+    const n = await adapterRegistry.loadPlugins();
+    if (n > 0) console.log(`🧩 ${n} externe Adapter-Plugin(s) aktiv\n`);
+  } catch (error) {
+    console.error('⚠️ Fehler beim Laden der Adapter-Plugins:', error);
+  }
+
   // Start Telegram Polling (Gateway Mode)
   messagingService.startPolling().catch(console.error);
 
@@ -6209,6 +6603,13 @@ async function start() {
     console.log('📡 Channel-Registry Inbound-Handler verdrahtet');
   } catch (e: any) {
     console.warn('⚠️ Channel-Registry konnte nicht initialisiert werden:', e.message);
+  }
+
+  try {
+    const { startApprovalNotifier } = await import('./services/approval-notifier.js');
+    startApprovalNotifier();
+  } catch (e: any) {
+    console.warn('⚠️ Approval notifier konnte nicht gestartet werden:', e.message);
   }
 
   server.listen(PORT, () => {

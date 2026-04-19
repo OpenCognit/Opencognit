@@ -366,7 +366,26 @@ export const apiBudget = {
   createPolicy: (uid: string, data: Partial<BudgetPolicy>) =>
     request<{ id: string }>(`/unternehmen/${uid}/budget-policies`, { method: 'POST', body: JSON.stringify(data) }),
   incidents: (uid: string) => request<BudgetIncident[]>(`/unternehmen/${uid}/budget-incidents`),
+  forecast: (uid: string) => request<{ forecasts: BudgetForecast[] }>(`/unternehmen/${uid}/budget/forecast`),
 };
+
+export interface BudgetForecast {
+  policyId: string;
+  scope: 'company' | 'project' | 'agent';
+  scopeId: string;
+  scopeLabel: string;
+  limitCent: number;
+  spentCent: number;
+  percentUsed: number;
+  fenster: 'monatlich' | 'lifetime';
+  burnRateCentPerDay: number;
+  daysObserved: number;
+  projectedHitAt: string | null;
+  daysToHit: number | null;
+  willExceedThisWindow: boolean;
+  warnProzent: number;
+  triggered: 'none' | 'warn' | 'hard';
+}
 
 // Company Portability
 export const apiPortability = {

@@ -145,6 +145,9 @@ export const genehmigungen = sqliteTable('genehmigungen', {
   entschiedenAm: text('entschieden_am'),
   erstelltAm: text('erstellt_am').notNull(),
   aktualisiertAm: text('aktualisiert_am').notNull(),
+  telegramChatId: text('telegram_chat_id'),
+  telegramMessageId: integer('telegram_message_id'),
+  notifiedAt: text('notified_at'),
 });
 
 // ===== Kostenbuchungen =====
@@ -546,6 +549,26 @@ export const expertConfigHistory = sqliteTable('expert_config_history', {
   idxExpertHistory: index('expert_config_history_expert_idx').on(t.expertId, t.changedAt),
 }));
 
+// ===== Worker Nodes (Multi-Node Agent Worker Pool) =====
+// Persistent registry of worker processes that can claim and run agent work.
+// Workers authenticate via a shared token and send periodic heartbeats.
+export const workerNodes = sqliteTable('worker_nodes', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),                 // human-readable
+  hostname: text('hostname'),
+  capabilities: text('capabilities').notNull(), // JSON string array: ['claude-code','bash','ollama']
+  tokenHash: text('token_hash').notNull(),      // sha256 of auth token
+  status: text('status', { enum: ['online', 'offline', 'disabled'] }).notNull().default('online'),
+  maxConcurrency: integer('max_concurrency').notNull().default(1),
+  activeRuns: integer('active_runs').notNull().default(0),
+  totalRuns: integer('total_runs').notNull().default(0),
+  lastHeartbeatAt: text('last_heartbeat_at'),
+  registriertAm: text('registriert_am').notNull(),
+  aktualisiertAm: text('aktualisiert_am').notNull(),
+}, (t) => ({
+  idxStatus: index('worker_nodes_status_idx').on(t.status, t.lastHeartbeatAt),
+}));
+
 // Export helper for all tables
 export const allTables = {
   benutzer,
@@ -583,4 +606,5 @@ export const allTables = {
   openclawTokens,
   expertConfigHistory,
   ceoDecisionLog,
+  workerNodes,
 };

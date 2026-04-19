@@ -20,7 +20,8 @@ export interface HelpContent {
 type PageId =
   | 'agents' | 'tasks' | 'goals' | 'projects' | 'intelligence'
   | 'costs' | 'routines' | 'approvals' | 'meetings' | 'orgchart'
-  | 'skill-library' | 'activity' | 'settings' | 'dashboard' | 'focus';
+  | 'skill-library' | 'activity' | 'settings' | 'dashboard' | 'focus'
+  | 'plugins' | 'workers';
 
 const CONTENT: Record<PageId, { de: HelpContent; en: HelpContent }> = {
 
@@ -359,6 +360,60 @@ const CONTENT: Record<PageId, { de: HelpContent; en: HelpContent }> = {
         { icon: '📁', heading: 'Working directory', text: 'The global working directory is the default workspace for all agents\' file operations.' },
       ],
       tip: 'Tip: Enter in the company goal field what your company does — then all agents always have the right context.',
+    },
+  },
+
+  plugins: {
+    de: {
+      intro: 'Plugins erweitern OpenCognit um neue LLM-Provider, Tools und Integrationen — ohne die Core-Codebase anzufassen. Durchsuche das Registry, installiere per Klick, Hot-Reload ohne Server-Neustart.',
+      items: [
+        { icon: '🔌', heading: 'Was sind Plugins?', text: 'Adapter-Pakete die neue Fähigkeiten registrieren: weitere LLMs (z.B. Groq, Mistral-API), domänenspezifische Tools (GitHub, Slack, Jira) oder Output-Formatter.' },
+        { icon: '📦', heading: 'Registry', text: 'Der Registry zeigt verfügbare Plugins mit Version, Tags und Quelle. Standard-Registry ist das offizielle OpenCognit-Repo — du kannst aber jede Registry-URL angeben.' },
+        { icon: '🛡', heading: 'Sicherheit', text: 'Tarball-Plugins werden per SHA-256-Hash verifiziert. Nur exakt übereinstimmende Pakete werden installiert — Supply-Chain-Angriffe werden blockiert.' },
+        { icon: '⚡', heading: 'Hot-Reload', text: 'Nach Installation werden Plugins ohne Server-Restart geladen. Adapter stehen sofort allen Agenten zur Verfügung.' },
+        { icon: '🧩', heading: 'Anwendung', text: 'Beispiele: LLM-Provider der nicht built-in ist, internes Firmen-API als Tool, Kunden-spezifischer Output-Formatter, Notion/Linear/Jira-Integration.' },
+        { icon: '🏗', heading: 'Eigene bauen', text: 'Ein Plugin ist ein Git-Repo oder Tarball mit einer plugin.json. Du kannst eigene Plugins privat betreiben (eigene Registry-URL).' },
+      ],
+      tip: 'Tipp: Installiere nur Plugins aus Registries denen du vertraust. Ein Plugin läuft mit allen Server-Berechtigungen — wie npm-Pakete.',
+    },
+    en: {
+      intro: 'Plugins extend OpenCognit with new LLM providers, tools, and integrations — without touching the core codebase. Browse the registry, install with one click, hot-reload without a server restart.',
+      items: [
+        { icon: '🔌', heading: 'What are plugins?', text: 'Adapter packages that register new capabilities: additional LLMs (e.g. Groq, Mistral API), domain-specific tools (GitHub, Slack, Jira), or output formatters.' },
+        { icon: '📦', heading: 'Registry', text: 'The registry lists available plugins with version, tags, and source. The default registry is the official OpenCognit repo — but you can point to any URL.' },
+        { icon: '🛡', heading: 'Security', text: 'Tarball plugins are verified via SHA-256 hash. Only exact matches are installed — supply-chain attacks are blocked.' },
+        { icon: '⚡', heading: 'Hot reload', text: 'After install, plugins load without restarting the server. Adapters become immediately available to all agents.' },
+        { icon: '🧩', heading: 'Use cases', text: 'Examples: an LLM provider not built-in, your internal company API as a tool, a customer-specific output formatter, Notion/Linear/Jira integration.' },
+        { icon: '🏗', heading: 'Build your own', text: 'A plugin is a git repo or tarball with a plugin.json. You can run private plugins via your own registry URL.' },
+      ],
+      tip: 'Tip: Only install plugins from registries you trust. A plugin runs with full server permissions — like npm packages.',
+    },
+  },
+
+  workers: {
+    de: {
+      intro: 'Worker-Nodes verteilen Agenten-Ausführung auf mehrere Maschinen. Der Haupt-Server koordiniert, die Worker führen aus — perfekt für Last-Verteilung, GPU-Boxen oder geografische Nähe zum Kunden.',
+      items: [
+        { icon: '🖥', heading: 'Was ist ein Worker?', text: 'Ein Prozess auf einer anderen Maschine der sich beim OpenCognit-Server registriert und Arbeit aus der Queue zieht. Pro Worker definierst du Capabilities (bash, claude-code, ollama...).' },
+        { icon: '🔑', heading: 'Registration', text: 'Klicke "Register Worker", wähle Name und Capabilities — du bekommst einen Token einmalig angezeigt. Setze ihn auf der Worker-Maschine in die .env.' },
+        { icon: '⚖️', heading: 'Capabilities-Matching', text: 'Nur Worker deren Capabilities zum Agenten-Typ passen bekommen die Arbeit. Ein Ollama-Task geht nur an Worker mit "ollama"-Fähigkeit.' },
+        { icon: '🔄', heading: 'Atomic Claim', text: 'Worker wetteifern um Jobs per Compare-and-Swap. Kein Job wird doppelt ausgeführt — auch bei 50 Workern gleichzeitig.' },
+        { icon: '💓', heading: 'Heartbeat', text: 'Jeder Worker pingt alle paar Sekunden. Bleibt ein Heartbeat 90s aus, wird er auf offline gesetzt und bekommt keine neue Arbeit.' },
+        { icon: '🌍', heading: 'Anwendung', text: 'Hoher Durchsatz (parallele Ausführung), GPU-Worker für lokale LLMs, geografische Verteilung (EU-Worker für EU-Kunden), Kosten-Isolation pro Team.' },
+      ],
+      tip: 'Tipp: Der Haupt-Server arbeitet auch ohne externe Worker — die laufen eingebettet. Skaliere erst horizontal wenn du die CPU/GPU-Limits spürst.',
+    },
+    en: {
+      intro: 'Worker nodes distribute agent execution across multiple machines. The main server coordinates, workers execute — perfect for load balancing, GPU boxes, or geographic proximity.',
+      items: [
+        { icon: '🖥', heading: 'What is a worker?', text: 'A process on another machine that registers with the OpenCognit server and pulls work from the queue. You define capabilities per worker (bash, claude-code, ollama...).' },
+        { icon: '🔑', heading: 'Registration', text: 'Click "Register Worker", pick a name and capabilities — a token is shown once. Copy it into the worker machine\'s .env.' },
+        { icon: '⚖️', heading: 'Capability matching', text: 'Only workers whose capabilities match the agent type receive the job. An Ollama task only goes to workers with the "ollama" capability.' },
+        { icon: '🔄', heading: 'Atomic claim', text: 'Workers compete for jobs via compare-and-swap. No job runs twice — even with 50 workers in parallel.' },
+        { icon: '💓', heading: 'Heartbeat', text: 'Every worker pings every few seconds. If no heartbeat for 90s, it\'s marked offline and receives no more work.' },
+        { icon: '🌍', heading: 'Use cases', text: 'High throughput (parallel execution), GPU workers for local LLMs, geographic distribution (EU workers for EU customers), cost isolation per team.' },
+      ],
+      tip: 'Tip: The main server works fine without external workers — they run embedded. Scale horizontally only when you feel CPU/GPU limits.',
     },
   },
 

@@ -87,6 +87,15 @@ export function Performance() {
   const [sortKey, setSortKey] = useState<SortKey>('tasksDone');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [refreshing, setRefreshing] = useState(false);
+  const [evolution, setEvolution] = useState<any[] | null>(null);
+
+  useEffect(() => {
+    if (!aktivesUnternehmen) return;
+    authFetch(`/api/unternehmen/${aktivesUnternehmen.id}/performance/leaderboard?days=30`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setEvolution(d?.agents ?? []))
+      .catch(() => setEvolution([]));
+  }, [aktivesUnternehmen?.id]);
 
   const load = async () => {
     if (!aktivesUnternehmen) return;
@@ -262,6 +271,67 @@ export function Performance() {
           </div>
         ))}
       </div>
+
+      {/* Evolution — Self-Evolving Agents (30d vs previous 30d) */}
+      {evolution && evolution.length > 0 && (
+        <div style={{
+          background: 'rgba(255,255,255,0.02)', border: '1px solid var(--color-border)',
+          borderRadius: 20, padding: '20px 24px', marginBottom: 24,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <TrendingUp size={16} style={{ color: '#23CDCB' }} />
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>
+              {de ? 'Agenten-Evolution' : 'Agent Evolution'}
+            </h2>
+            <span style={{ fontSize: 11, color: 'var(--color-text-muted)', marginLeft: 'auto' }}>
+              {de ? 'Aktuelle 30 Tage vs. vorherige 30 Tage' : 'Last 30 days vs. previous 30 days'}
+            </span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
+            {evolution.slice(0, 8).map((e: any) => {
+              const dur = e.changes.avgDurationPct;
+              const cost = e.changes.avgCostPerTaskPct;
+              const succ = e.changes.successRatePct;
+              const bestSignal = dur !== null ? dur : (succ !== null ? -succ : cost);
+              const color = bestSignal === null ? 'var(--color-text-muted)' :
+                bestSignal < -5 ? '#22c55e' : bestSignal > 5 ? '#ef4444' : 'var(--color-text-muted)';
+              const pill = (label: string, val: number | null, invert = false) => {
+                if (val === null) return null;
+                const good = invert ? val > 0 : val < 0;
+                const c = Math.abs(val) < 1 ? 'var(--color-text-muted)' : good ? '#22c55e' : '#ef4444';
+                return (
+                  <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: `${c}22`, color: c, border: `1px solid ${c}44` }}>
+                    {label} {val > 0 ? '+' : ''}{val.toFixed(0)}%
+                  </span>
+                );
+              };
+              return (
+                <div key={e.current.expertId} style={{
+                  padding: '12px 14px', borderRadius: 12,
+                  background: 'rgba(255,255,255,0.02)', border: '1px solid var(--color-border)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <Bot size={14} style={{ color }} />
+                    <strong style={{ fontSize: 13 }}>{e.current.name}</strong>
+                    <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--color-text-muted)' }}>
+                      {e.current.runsTotal} {de ? 'Zyklen' : 'cycles'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 10, lineHeight: 1.5 }}>
+                    {e.verdict}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {pill(de ? 'Dauer' : 'duration', dur)}
+                    {pill(de ? 'Tokens' : 'tokens', e.changes.avgTokensPct)}
+                    {pill(de ? 'Kosten/Task' : 'cost/task', cost)}
+                    {pill(de ? 'Erfolg' : 'success', succ, true)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Leaderboard */}
       <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--color-border)', borderRadius: 20, overflow: 'hidden' }}>

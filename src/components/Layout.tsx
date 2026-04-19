@@ -145,6 +145,8 @@ function useAgentNotifications() {
   const toast = useToast();
   const navigate = useNavigate();
   const { aktivesUnternehmen } = useCompany();
+  const { language } = useI18n();
+  const de = language === 'de';
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -162,7 +164,9 @@ function useAgentNotifications() {
         switch (msg.type) {
           case 'task_completed':
             toast.agent(
-              msg.agentName ? `${msg.agentName} hat Aufgabe erledigt` : 'Aufgabe abgeschlossen',
+              msg.agentName
+                ? (de ? `${msg.agentName} hat Aufgabe erledigt` : `${msg.agentName} completed a task`)
+                : (de ? 'Aufgabe abgeschlossen' : 'Task completed'),
               msg.taskTitel || undefined,
               () => navigate('/tasks'),
             );
@@ -170,7 +174,9 @@ function useAgentNotifications() {
           case 'task_started':
             toast.toast({
               type: 'agent',
-              title: msg.agentName ? `⚡ ${msg.agentName} arbeitet jetzt` : '⚡ Agent gestartet',
+              title: msg.agentName
+                ? (de ? `⚡ ${msg.agentName} arbeitet jetzt` : `⚡ ${msg.agentName} is working now`)
+                : (de ? '⚡ Agent gestartet' : '⚡ Agent started'),
               message: msg.taskTitel || undefined,
               duration: 10000,
               onClick: () => navigate('/war-room'),
@@ -178,28 +184,32 @@ function useAgentNotifications() {
             break;
           case 'approval_needed':
             toast.warning(
-              'Genehmigung erforderlich',
-              msg.taskTitel || 'Ein Agent wartet auf Freigabe',
+              de ? 'Genehmigung erforderlich' : 'Approval required',
+              msg.taskTitel || (de ? 'Ein Agent wartet auf Freigabe' : 'An agent is waiting for approval'),
               () => navigate('/approvals'),
             );
             break;
           case 'goal_achieved':
             toast.success(
-              msg.zielTitel ? `Ziel erreicht: ${msg.zielTitel}` : 'Ziel erreicht!',
-              'Alle verknüpften Aufgaben wurden abgeschlossen.',
+              msg.zielTitel
+                ? (de ? `Ziel erreicht: ${msg.zielTitel}` : `Goal achieved: ${msg.zielTitel}`)
+                : (de ? 'Ziel erreicht!' : 'Goal achieved!'),
+              de ? 'Alle verknüpften Aufgaben wurden abgeschlossen.' : 'All linked tasks have been completed.',
               () => navigate('/goals'),
             );
             break;
           case 'budget_warning':
             toast.warning(
-              'Budget-Warnung',
-              msg.message || 'Ein Agent nähert sich dem Budget-Limit',
+              de ? 'Budget-Warnung' : 'Budget warning',
+              msg.message || (de ? 'Ein Agent nähert sich dem Budget-Limit' : 'An agent is approaching the budget limit'),
               () => navigate('/costs'),
             );
             break;
           case 'expert_deleted':
             toast.info(
-              msg.name ? `${msg.name} entlassen` : 'Agent entlassen',
+              msg.name
+                ? (de ? `${msg.name} entlassen` : `${msg.name} dismissed`)
+                : (de ? 'Agent entlassen' : 'Agent dismissed'),
               undefined,
               () => navigate('/experts'),
             );
@@ -207,23 +217,23 @@ function useAgentNotifications() {
           case 'tasks_unblocked': {
             const n = msg.taskIds?.length || 0;
             if (n > 0) toast.info(
-              `${n} Aufgabe${n > 1 ? 'n' : ''} entsperrt`,
-              'Blockierte Aufgaben sind wieder verfügbar',
+              de ? `${n} Aufgabe${n > 1 ? 'n' : ''} entsperrt` : `${n} task${n > 1 ? 's' : ''} unblocked`,
+              de ? 'Blockierte Aufgaben sind wieder verfügbar' : 'Blocked tasks are available again',
               () => navigate('/tasks'),
             );
             break;
           }
           case 'meeting_created':
             toast.agent(
-              'Meeting gestartet',
-              msg.titel || 'Agenten halten eine Besprechung',
+              de ? 'Meeting gestartet' : 'Meeting started',
+              msg.titel || (de ? 'Agenten halten eine Besprechung' : 'Agents are holding a meeting'),
               () => navigate('/meetings'),
             );
             break;
           case 'meeting_updated':
             if (msg.status === 'completed') {
               toast.success(
-                'Meeting abgeschlossen',
+                de ? 'Meeting abgeschlossen' : 'Meeting completed',
                 msg.titel || undefined,
                 () => navigate('/meetings'),
               );
@@ -232,7 +242,7 @@ function useAgentNotifications() {
           case 'agents_imported': {
             const count = msg.agentsCreated || 0;
             if (count > 0) toast.success(
-              `${count} Agent${count > 1 ? 'en' : ''} importiert`,
+              de ? `${count} Agent${count > 1 ? 'en' : ''} importiert` : `${count} agent${count > 1 ? 's' : ''} imported`,
               msg.templateName || undefined,
               () => navigate('/experts'),
             );
@@ -240,17 +250,19 @@ function useAgentNotifications() {
           }
           case 'routine_executed':
             toast.info(
-              msg.routineTitel || 'Routine ausgeführt',
+              msg.routineTitel || (de ? 'Routine ausgeführt' : 'Routine executed'),
               msg.result || undefined,
               () => navigate('/routines'),
             );
             break;
           case 'task_escalated':
             toast.warning(
-              `🚨 Task eskaliert`,
+              de ? `🚨 Task eskaliert` : `🚨 Task escalated`,
               msg.taskTitel
-                ? `"${msg.taskTitel}" ist ${msg.failureCount}× fehlgeschlagen${msg.orchestratorName ? ` → ${msg.orchestratorName} informiert` : ''}`
-                : 'Ein Task wurde nach wiederholten Fehlern eskaliert',
+                ? (de
+                    ? `"${msg.taskTitel}" ist ${msg.failureCount}× fehlgeschlagen${msg.orchestratorName ? ` → ${msg.orchestratorName} informiert` : ''}`
+                    : `"${msg.taskTitel}" failed ${msg.failureCount}×${msg.orchestratorName ? ` → ${msg.orchestratorName} notified` : ''}`)
+                : (de ? 'Ein Task wurde nach wiederholten Fehlern eskaliert' : 'A task was escalated after repeated failures'),
               () => navigate('/tasks'),
             );
             break;
@@ -259,7 +271,7 @@ function useAgentNotifications() {
     };
 
     return () => { ws.close(); wsRef.current = null; };
-  }, [aktivesUnternehmen?.id]);
+  }, [aktivesUnternehmen?.id, de]);
 }
 
 export function Layout() {

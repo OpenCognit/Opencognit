@@ -17,6 +17,7 @@ import { ExpertModal } from '../components/ExpertModal';
 import { ExpertChatDrawer } from '../components/ExpertChatDrawer';
 import { useToast } from '../components/ToastProvider';
 import { GlassCard } from '../components/GlassCard';
+import { translateTrace } from '../utils/translateTrace';
 
 const CLI_ADAPTERS = ['codex-cli', 'gemini-cli', 'claude-code'];
 
@@ -118,7 +119,7 @@ function AnimatedNum({ value, suffix = '' }: { value: number; suffix?: string })
 
 // ── System Pulse entry ────────────────────────────────────────────────────────
 
-function PulseEntry({ ev, isNew }: { ev: TraceEvent; isNew: boolean }) {
+function PulseEntry({ ev, isNew, lang = 'de' }: { ev: TraceEvent; isNew: boolean; lang?: string }) {
   const [open, setOpen] = useState(false);
   const tc = TRACE_CFG[ev.typ] || TRACE_CFG.info;
   const hasDetails = !!ev.details?.trim();
@@ -147,7 +148,7 @@ function PulseEntry({ ev, isNew }: { ev: TraceEvent; isNew: boolean }) {
             overflow: 'hidden', display: '-webkit-box',
             WebkitLineClamp: open ? 99 : 1, WebkitBoxOrient: 'vertical',
           }}>
-            {ev.titel}
+            {translateTrace(ev.titel, lang)}
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
@@ -1053,7 +1054,7 @@ export function Experts() {
                       : (ev.typ === 'thinking' || ev.typ === 'planning' || ev.typ === 'info'),
                     );
                 return filtered.map((ev, i) => (
-                  <PulseEntry key={ev.id || i} ev={ev} isNew={now - new Date(ev.erstelltAm).getTime() < 8000} />
+                  <PulseEntry key={ev.id || i} ev={ev} isNew={now - new Date(ev.erstelltAm).getTime() < 8000} lang={language} />
                 ));
               })()}
             </div>

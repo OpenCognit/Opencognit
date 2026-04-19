@@ -36,6 +36,9 @@ const WeeklyReport = lazy(() => import('./pages/WeeklyReport').then(m => ({ defa
 const Clipmart     = lazy(() => import('./pages/Clipmart').then(m => ({ default: m.Clipmart })));
 const Metrics      = lazy(() => import('./pages/Metrics').then(m => ({ default: m.Metrics })));
 const WorkProducts = lazy(() => import('./pages/WorkProducts').then(m => ({ default: m.WorkProducts })));
+const TaskTimeline = lazy(() => import('./pages/TaskTimeline').then(m => ({ default: m.TaskTimeline })));
+const Plugins      = lazy(() => import('./pages/Plugins').then(m => ({ default: m.Plugins })));
+const WorkerNodes  = lazy(() => import('./pages/WorkerNodes').then(m => ({ default: m.WorkerNodes })));
 
 function PageLoader() {
   return (
@@ -72,6 +75,9 @@ function ProtectedRoutes() {
           <Route path="/clipmart" element={<Suspense fallback={<PageLoader />}><Clipmart /></Suspense>} />
           <Route path="/metrics" element={<Suspense fallback={<PageLoader />}><Metrics /></Suspense>} />
           <Route path="/work-products" element={<Suspense fallback={<PageLoader />}><WorkProducts /></Suspense>} />
+          <Route path="/tasks/:id/timeline" element={<Suspense fallback={<PageLoader />}><TaskTimeline /></Suspense>} />
+          <Route path="/plugins" element={<Suspense fallback={<PageLoader />}><Plugins /></Suspense>} />
+          <Route path="/workers" element={<Suspense fallback={<PageLoader />}><WorkerNodes /></Suspense>} />
           <Route path="/settings" element={<Suspense fallback={<PageLoader />}><Settings /></Suspense>} />
           {/* Legacy German routes — redirect to English */}
           <Route path="/unternehmen" element={<Navigate to="/companies" replace />} />

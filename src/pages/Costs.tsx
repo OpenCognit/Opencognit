@@ -5,7 +5,7 @@ import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 import { useI18n } from '../i18n';
 import { useCompany } from '../hooks/useCompany';
 import { useApi } from '../hooks/useApi';
-import { apiKosten, apiBudget, apiExperten, type KostenZusammenfassung, type ProviderKosten, type TimelineTag, type BudgetPolicy, type BudgetIncident, type Experte } from '../api/client';
+import { apiKosten, apiBudget, apiExperten, type KostenZusammenfassung, type ProviderKosten, type TimelineTag, type BudgetPolicy, type BudgetIncident, type Experte, type BudgetForecast } from '../api/client';
 import { GlassCard } from '../components/GlassCard';
 
 function centZuEuro(cent: number, currency: 'EUR' | 'USD' = 'EUR'): string {
@@ -56,6 +56,9 @@ export function Costs() {
   );
   const { data: incidents } = useApi<BudgetIncident[]>(
     () => apiBudget.incidents(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
+  );
+  const { data: forecastData } = useApi<{ forecasts: BudgetForecast[] }>(
+    () => apiBudget.forecast(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
   );
   const { data: alleExperten } = useApi<Experte[]>(
     () => apiExperten.liste(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
@@ -284,6 +287,61 @@ export function Costs() {
 
           {/* Policies Tab */}
           {tab === 'policies' && (
+            <>
+            {/* Budget Forecast Card */}
+            {forecastData && forecastData.forecasts.length > 0 && (
+              <GlassCard style={{ padding: '1.5rem', marginBottom: '1rem', animation: 'fadeInUp 0.3s ease-out' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                  <BarChart3 size={18} color="#23CDCB" />
+                  <span style={{ fontWeight: 600, color: '#d4d4d8' }}>{de ? 'Budget-Forecast' : 'Budget Forecast'}</span>
+                  <span style={{ fontSize: '0.75rem', color: '#71717a' }}>
+                    {de ? '— Projektion basierend auf aktuellem Burn-Rate' : '— Projection based on current burn rate'}
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.75rem' }}>
+                  {forecastData.forecasts.map(f => {
+                    const color = f.triggered === 'hard' ? '#ef4444' : f.triggered === 'warn' ? '#f59e0b' : '#23CDCB';
+                    const hitDate = f.projectedHitAt ? new Date(f.projectedHitAt) : null;
+                    const hitStr = hitDate ? hitDate.toLocaleDateString(de ? 'de-DE' : 'en-US', { day: '2-digit', month: 'short' }) : (de ? 'nie' : 'never');
+                    const daysStr = f.daysToHit !== null ? `${f.daysToHit.toFixed(1)}d` : '—';
+                    return (
+                      <div key={f.policyId} style={{
+                        padding: '0.875rem', borderRadius: '10px',
+                        background: 'rgba(255,255,255,0.03)', border: `1px solid ${color}33`,
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
+                          <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#d4d4d8' }}>
+                            {f.scope === 'company' ? (de ? 'Firma' : 'Company') : f.scopeLabel}
+                          </span>
+                          <span style={{ fontSize: '0.6875rem', padding: '2px 8px', borderRadius: 4, background: `${color}22`, color, border: `1px solid ${color}44` }}>
+                            {f.fenster === 'monatlich' ? (de ? 'monatlich' : 'monthly') : (de ? 'lifetime' : 'lifetime')}
+                          </span>
+                        </div>
+                        <div style={{ height: 6, background: 'rgba(255,255,255,0.05)', borderRadius: 3, overflow: 'hidden', marginBottom: '0.5rem' }}>
+                          <div style={{ width: `${Math.min(100, f.percentUsed)}%`, height: '100%', background: color, transition: 'width 0.3s' }} />
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#a1a1aa' }}>
+                          <span>{centZuEuro(f.spentCent)} / {centZuEuro(f.limitCent)}</span>
+                          <span style={{ color: f.percentUsed >= 80 ? '#f59e0b' : '#71717a' }}>{f.percentUsed.toFixed(0)}%</span>
+                        </div>
+                        <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: '0.75rem', color: '#a1a1aa' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                            <span>{de ? 'Burn-Rate' : 'Burn rate'}:</span>
+                            <strong style={{ color: '#d4d4d8' }}>{centZuEuro(f.burnRateCentPerDay)}/{de ? 'Tag' : 'day'}</strong>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>{de ? 'Limit erreicht' : 'Limit hit'}:</span>
+                            <strong style={{ color: f.willExceedThisWindow ? '#ef4444' : '#22c55e' }}>
+                              {hitStr} ({daysStr})
+                            </strong>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </GlassCard>
+            )}
             <GlassCard style={{ padding: '1.5rem', animation: 'fadeInUp 0.3s ease-out' }}>
               {/* Header + Neu-Button */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -416,6 +474,7 @@ export function Costs() {
                 </div>
               )}
             </GlassCard>
+            </>
           )}
       </div>
     </>

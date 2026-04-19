@@ -94,6 +94,8 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
       { to: '/activity',     icon: Activity,       label: t.nav.aktivitaet },
       { to: '/weekly-report',icon: BarChart3,      label: t.nav.weeklyReport },
       { to: '/clipmart',     icon: Package,        label: 'CognitHub' },
+      { to: '/plugins',      icon: Package,        label: de ? 'Plugins' : 'Plugins' },
+      { to: '/workers',      icon: GitBranch,      label: de ? 'Worker-Nodes' : 'Worker Nodes' },
     ]},
   ];
 

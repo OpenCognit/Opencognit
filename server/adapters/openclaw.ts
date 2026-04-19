@@ -146,7 +146,7 @@ export class OpenClawAdapter implements Adapter {
     const connectMs     = Math.min(timeoutMs, 15_000);
     const waitTimeoutMs = timeoutMs;
 
-    // ── Build wake payload (mirrors Paperclip protocol) ────────────────────────
+    // ── Build wake payload ─────────────────────────────────────────────────────
     const e = context.openclawEnrichment;
 
     const messageParts: string[] = [

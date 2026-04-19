@@ -8,10 +8,41 @@ import { CodexCLIAdapter } from './codex-cli.js';
 import { GeminiCLIAdapter } from './gemini-cli.js';
 import { OpenClawAdapter } from './openclaw.js';
 import { createLLMWrapper } from './llm-wrapper.js';
+import { loadAdapterPlugins, type LoadedAdapterPlugin } from './plugin-loader.js';
 
 export class AdapterRegistry {
   private adapters: Map<string, Adapter> = new Map();
+  private plugins: LoadedAdapterPlugin[] = [];
   private initialized = false;
+
+  /**
+   * Lädt externe Adapter-Plugins aus plugins/adapters/*.
+   * Sollte einmal beim Server-Start aufgerufen werden.
+   */
+  async loadPlugins(): Promise<number> {
+    this.plugins = await loadAdapterPlugins();
+    for (const p of this.plugins) {
+      // Core-Adapter haben Vorrang — Plugins überschreiben nicht versehentlich.
+      if (this.adapters.has(p.manifest.name)) {
+        console.warn(`[AdapterPlugin] ${p.manifest.name}: Name kollidiert mit Core-Adapter — übersprungen`);
+        continue;
+      }
+      this.register(p.manifest.name, p.adapter);
+    }
+    return this.plugins.length;
+  }
+
+  /**
+   * Liefert Metadaten über geladene Plugins (für API/UI).
+   */
+  getLoadedPlugins() {
+    return this.plugins.map(p => ({
+      name: p.manifest.name,
+      version: p.manifest.version,
+      description: p.manifest.description,
+      author: p.manifest.author,
+    }));
+  }
 
   constructor() {
     // CLI / Subscription adapters (implement Adapter interface with execute())

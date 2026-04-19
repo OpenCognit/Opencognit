@@ -729,6 +729,161 @@ export function Settings() {
               )}</>}
             </div>
 
+
+            {/* Integrationen */}
+            <div className="glass-card" style={{
+              padding: '1.5rem',
+              background: 'rgba(255,255,255,0.04)',
+              backdropFilter: 'blur(24px) saturate(160%)',
+              borderRadius: '20px',
+              border: (telegramBotToken && telegramChatId) ? '1px solid rgba(0, 136, 204, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)',
+              animation: 'fadeInUp 0.5s ease-out 0.38s both',
+              position: 'relative',
+              overflow: 'hidden'
+            }}>
+              {/* Blue top glow */}
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, transparent, #0088cc, transparent)' }} />
+              
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: collapsed.has('telegram') ? 0 : '1.5rem' }}>
+                <div onClick={() => toggleSection('telegram')} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, cursor: 'pointer', userSelect: 'none' }}>
+                  <div style={{
+                    width: '32px', height: '32px', borderRadius: '8px',
+                    background: 'rgba(0, 136, 204, 0.1)', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center'
+                  }}>
+                    <Globe size={18} style={{ color: '#0088cc' }} />
+                  </div>
+                  <div>
+                    <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>
+                      {i18n.t.einstellungen.sectionTelegram}
+                    </h2>
+                    <p style={{ fontSize: '0.75rem', color: '#71717a' }}>{i18n.t.einstellungen.telegramDesc}</p>
+                  </div>
+                  <ChevronDown size={16} style={{ color: '#52525b', transition: 'transform 0.2s', transform: collapsed.has('telegram') ? 'rotate(-90deg)' : 'rotate(0deg)' }} />
+                </div>
+
+                <button
+                  onClick={async () => {
+                    if (!aktivesUnternehmen || testSending) return;
+                    setTestSending(true);
+                    try {
+                      const res = await authFetch('/api/test/telegram', {
+                        method: 'POST',
+                        body: JSON.stringify({ unternehmenId: aktivesUnternehmen.id })
+                      });
+                      if (res.ok) alert('✅ Test-Nachricht gesendet! Prüfe dein Telegram.');
+                      else throw new Error('Senden fehlgeschlagen');
+                    } catch (e: any) {
+                      alert('❌ Fehler: ' + e.message);
+                    } finally { setTestSending(false); }
+                  }}
+                  disabled={!telegramBotToken || !telegramChatId || testSending}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    borderRadius: '10px',
+                    background: 'rgba(0, 136, 204, 0.1)',
+                    border: '1px solid rgba(0, 136, 204, 0.2)',
+                    color: '#0088cc',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    cursor: (testSending || !telegramBotToken) ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    transition: 'all 0.2s',
+                    opacity: (!telegramBotToken || !telegramChatId) ? 0.5 : 1
+                  }}
+                >
+                  {testSending ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={14} />}
+                  {i18n.t.einstellungen.telegramTest}
+                </button>
+              </div>
+
+              {!collapsed.has('telegram') && <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.25rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, color: '#d4d4d8', marginBottom: '0.5rem' }}>
+                      {i18n.t.einstellungen.telegramBotToken}
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="548239...:AAH_..."
+                      value={telegramBotToken}
+                      onChange={e => setTelegramBotToken(e.target.value)}
+                      style={{
+                        width: '100%', padding: '0.625rem 0.875rem',
+                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', color: '#ffffff', fontSize: '0.875rem',
+                        outline: 'none', transition: 'border-color 0.2s'
+                      }}
+                    />
+                    <p style={{ fontSize: '0.725rem', color: '#71717a', marginTop: '0.5rem' }}>
+                      {i18n.t.einstellungen.telegramBotCreation.replace('@BotFather', '')}
+                      <a href="https://t.me/botfather" target="_blank" rel="noreferrer" style={{ color: '#0088cc', textDecoration: 'none' }}>@BotFather</a>.
+                    </p>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, color: '#d4d4d8', marginBottom: '0.5rem' }}>
+                      {i18n.t.einstellungen.telegramChatId}
+                    </label>
+                    <input
+                      placeholder="123456789"
+                      value={telegramChatId}
+                      onChange={e => setTelegramChatId(e.target.value)}
+                      style={{
+                        width: '100%', padding: '0.625rem 0.875rem',
+                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', color: '#ffffff', fontSize: '0.875rem',
+                        outline: 'none'
+                      }}
+                    />
+                    <p style={{ fontSize: '0.725rem', color: '#71717a', marginTop: '0.5rem' }}>
+                      {i18n.t.einstellungen.telegramChatIdHint.replace('@userinfobot', '')}
+                      <a href="https://t.me/userinfobot" target="_blank" rel="noreferrer" style={{ color: '#0088cc', textDecoration: 'none' }}>@userinfobot</a>.
+                    </p>
+                  </div>
+                </div>
+
+                {aktivesUnternehmen && (
+                  <div style={{
+                    padding: '1rem', borderRadius: '14px',
+                    background: 'linear-gradient(135deg, rgba(0,136,204,0.08) 0%, rgba(0,136,204,0.03) 100%)',
+                    border: '1px solid rgba(0,136,204,0.15)',
+                    fontSize: '0.75rem', color: '#d4d4d8'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                      <AlertCircle size={14} style={{ color: '#0088cc' }} />
+                      <strong style={{ color: '#ffffff' }}>{i18n.t.einstellungen.telegramWebhookTitle}</strong>
+                    </div>
+                    <div style={{
+                      background: 'rgba(0,0,0,0.2)', padding: '0.5rem',
+                      borderRadius: '8px', fontFamily: 'monospace', color: '#0088cc',
+                      wordBreak: 'break-all', marginBottom: '0.5rem'
+                    }}>
+                      {window.location.origin}/api/webhooks/telegram/{aktivesUnternehmen.id}
+                    </div>
+                    <p style={{ fontSize: '0.6875rem', lineHeight: 1.4, color: '#71717a' }}>
+                      {i18n.t.einstellungen.telegramWebhookHint}
+                    </p>
+                  </div>
+                )}
+
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '0.5rem',
+                  padding: '0.75rem', borderRadius: '12px', background: 'rgba(35, 205, 202, 0.05)',
+                  border: '1px solid rgba(35, 205, 202, 0.1)'
+                }}>
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 10px #22c55e' }} />
+                  <span style={{ fontSize: '0.75rem', fontWeight: 500, color: '#d4d4d8' }}>
+                    {i18n.t.einstellungen.telegramGatewayStatus} <span style={{ color: '#22c55e' }}>{i18n.t.einstellungen.telegramGatewayActive}</span>
+                  </span>
+                </div>
+              </div>}
+              {!collapsed.has('telegram') && <SectionSaveBtn id="telegram" onClick={() => saveSection('telegram', [
+                ['telegram_bot_token', telegramBotToken],
+                ['telegram_chat_id', telegramChatId],
+              ])} />}
+            </div>
             {/* Claude Code Status */}
             <div className="glass-card" style={{
               padding: '1.5rem',
@@ -1386,161 +1541,6 @@ export function Settings() {
               </>}
               </div>
             )}
-
-            {/* Integrationen */}
-            <div className="glass-card" style={{
-              padding: '1.5rem',
-              background: 'rgba(255,255,255,0.04)',
-              backdropFilter: 'blur(24px) saturate(160%)',
-              borderRadius: '20px',
-              border: (telegramBotToken && telegramChatId) ? '1px solid rgba(0, 136, 204, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)',
-              animation: 'fadeInUp 0.5s ease-out 0.38s both',
-              position: 'relative',
-              overflow: 'hidden'
-            }}>
-              {/* Blue top glow */}
-              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, transparent, #0088cc, transparent)' }} />
-              
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: collapsed.has('telegram') ? 0 : '1.5rem' }}>
-                <div onClick={() => toggleSection('telegram')} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, cursor: 'pointer', userSelect: 'none' }}>
-                  <div style={{
-                    width: '32px', height: '32px', borderRadius: '8px',
-                    background: 'rgba(0, 136, 204, 0.1)', display: 'flex',
-                    alignItems: 'center', justifyContent: 'center'
-                  }}>
-                    <Globe size={18} style={{ color: '#0088cc' }} />
-                  </div>
-                  <div>
-                    <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>
-                      {i18n.t.einstellungen.sectionTelegram}
-                    </h2>
-                    <p style={{ fontSize: '0.75rem', color: '#71717a' }}>{i18n.t.einstellungen.telegramDesc}</p>
-                  </div>
-                  <ChevronDown size={16} style={{ color: '#52525b', transition: 'transform 0.2s', transform: collapsed.has('telegram') ? 'rotate(-90deg)' : 'rotate(0deg)' }} />
-                </div>
-
-                <button
-                  onClick={async () => {
-                    if (!aktivesUnternehmen || testSending) return;
-                    setTestSending(true);
-                    try {
-                      const res = await authFetch('/api/test/telegram', {
-                        method: 'POST',
-                        body: JSON.stringify({ unternehmenId: aktivesUnternehmen.id })
-                      });
-                      if (res.ok) alert('✅ Test-Nachricht gesendet! Prüfe dein Telegram.');
-                      else throw new Error('Senden fehlgeschlagen');
-                    } catch (e: any) {
-                      alert('❌ Fehler: ' + e.message);
-                    } finally { setTestSending(false); }
-                  }}
-                  disabled={!telegramBotToken || !telegramChatId || testSending}
-                  style={{
-                    padding: '0.5rem 1rem',
-                    borderRadius: '10px',
-                    background: 'rgba(0, 136, 204, 0.1)',
-                    border: '1px solid rgba(0, 136, 204, 0.2)',
-                    color: '#0088cc',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    cursor: (testSending || !telegramBotToken) ? 'not-allowed' : 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    transition: 'all 0.2s',
-                    opacity: (!telegramBotToken || !telegramChatId) ? 0.5 : 1
-                  }}
-                >
-                  {testSending ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={14} />}
-                  {i18n.t.einstellungen.telegramTest}
-                </button>
-              </div>
-
-              {!collapsed.has('telegram') && <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.25rem' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, color: '#d4d4d8', marginBottom: '0.5rem' }}>
-                      {i18n.t.einstellungen.telegramBotToken}
-                    </label>
-                    <input
-                      type="password"
-                      placeholder="548239...:AAH_..."
-                      value={telegramBotToken}
-                      onChange={e => setTelegramBotToken(e.target.value)}
-                      style={{
-                        width: '100%', padding: '0.625rem 0.875rem',
-                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', color: '#ffffff', fontSize: '0.875rem',
-                        outline: 'none', transition: 'border-color 0.2s'
-                      }}
-                    />
-                    <p style={{ fontSize: '0.725rem', color: '#71717a', marginTop: '0.5rem' }}>
-                      {i18n.t.einstellungen.telegramBotCreation.replace('@BotFather', '')}
-                      <a href="https://t.me/botfather" target="_blank" rel="noreferrer" style={{ color: '#0088cc', textDecoration: 'none' }}>@BotFather</a>.
-                    </p>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, color: '#d4d4d8', marginBottom: '0.5rem' }}>
-                      {i18n.t.einstellungen.telegramChatId}
-                    </label>
-                    <input
-                      placeholder="123456789"
-                      value={telegramChatId}
-                      onChange={e => setTelegramChatId(e.target.value)}
-                      style={{
-                        width: '100%', padding: '0.625rem 0.875rem',
-                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', color: '#ffffff', fontSize: '0.875rem',
-                        outline: 'none'
-                      }}
-                    />
-                    <p style={{ fontSize: '0.725rem', color: '#71717a', marginTop: '0.5rem' }}>
-                      {i18n.t.einstellungen.telegramChatIdHint.replace('@userinfobot', '')}
-                      <a href="https://t.me/userinfobot" target="_blank" rel="noreferrer" style={{ color: '#0088cc', textDecoration: 'none' }}>@userinfobot</a>.
-                    </p>
-                  </div>
-                </div>
-
-                {aktivesUnternehmen && (
-                  <div style={{
-                    padding: '1rem', borderRadius: '14px',
-                    background: 'linear-gradient(135deg, rgba(0,136,204,0.08) 0%, rgba(0,136,204,0.03) 100%)',
-                    border: '1px solid rgba(0,136,204,0.15)',
-                    fontSize: '0.75rem', color: '#d4d4d8'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                      <AlertCircle size={14} style={{ color: '#0088cc' }} />
-                      <strong style={{ color: '#ffffff' }}>{i18n.t.einstellungen.telegramWebhookTitle}</strong>
-                    </div>
-                    <div style={{
-                      background: 'rgba(0,0,0,0.2)', padding: '0.5rem',
-                      borderRadius: '8px', fontFamily: 'monospace', color: '#0088cc',
-                      wordBreak: 'break-all', marginBottom: '0.5rem'
-                    }}>
-                      {window.location.origin}/api/webhooks/telegram/{aktivesUnternehmen.id}
-                    </div>
-                    <p style={{ fontSize: '0.6875rem', lineHeight: 1.4, color: '#71717a' }}>
-                      {i18n.t.einstellungen.telegramWebhookHint}
-                    </p>
-                  </div>
-                )}
-
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: '0.5rem',
-                  padding: '0.75rem', borderRadius: '12px', background: 'rgba(35, 205, 202, 0.05)',
-                  border: '1px solid rgba(35, 205, 202, 0.1)'
-                }}>
-                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 10px #22c55e' }} />
-                  <span style={{ fontSize: '0.75rem', fontWeight: 500, color: '#d4d4d8' }}>
-                    {i18n.t.einstellungen.telegramGatewayStatus} <span style={{ color: '#22c55e' }}>{i18n.t.einstellungen.telegramGatewayActive}</span>
-                  </span>
-                </div>
-              </div>}
-              {!collapsed.has('telegram') && <SectionSaveBtn id="telegram" onClick={() => saveSection('telegram', [
-                ['telegram_bot_token', telegramBotToken],
-                ['telegram_chat_id', telegramChatId],
-              ])} />}
-            </div>
 
             {/* Datenbank */}
             <div className="glass-card" style={{

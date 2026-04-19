@@ -1305,7 +1305,16 @@ ${isEn ? 'ACTIONS (only when explicitly requested, at the end of response):' : '
           if (!isPolling) break;
           if (!s.wert || s.wert.startsWith('enc:error')) continue;
 
-          const token = decryptSetting('telegram_bot_token', s.wert);
+          let token: string;
+          try {
+            token = decryptSetting('telegram_bot_token', s.wert);
+          } catch (err: any) {
+            if (!invalidTokens.has(s.wert)) {
+              invalidTokens.add(s.wert);
+              console.warn(`[Telegram] Token für Unternehmen ${s.unternehmenId || '(global)'} kann nicht entschlüsselt werden (falscher ENCRYPTION_KEY oder korrupter Wert). Übersprungen.`);
+            }
+            continue;
+          }
           let uId = s.unternehmenId;
           if (!uId) {
             const first = db.select({ id: unternehmen.id }).from(unternehmen).orderBy(asc(unternehmen.erstelltAm)).limit(1).get();

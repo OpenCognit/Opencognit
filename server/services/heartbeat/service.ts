@@ -19,11 +19,14 @@ import { wakeupService } from '../wakeup.js';
 import { adapterRegistry } from '../../adapters/registry.js';
 import type { AdapterTask, AdapterContext, CompanyGoal } from '../../adapters/types.js';
 import { createWorkspace, listWorkspaceFiles } from '../workspace.js';
+import { ensureWorkspace } from '../execution-workspaces.js';
 import { isSafeWorkdir } from '../../adapters/workspace-guard.js';
 import { v4 as uuid } from 'uuid';
 import { messagingService } from '../messaging.js';
 import { loadRelevantMemory, autoSaveInsights } from '../memory-auto.js';
 import { decryptSetting } from '../../utils/crypto.js';
+import { routeModel } from '../model-router.js';
+import { recordLearning } from '../agent-performance.js';
 
 // ── Sub-module imports ─────────────────────────────────────────────────────────
 import type { HeartbeatInvocationSource, HeartbeatOptions, HeartbeatRun, HeartbeatService } from './types.js';
@@ -419,6 +422,20 @@ class HeartbeatServiceImpl implements HeartbeatService {
       workspacePath = effectiveWorkDir;
       if (projektWorkDir && isSafeWorkdir(projektWorkDir)) {
         console.log(`  📁 Using project workDir: ${effectiveWorkDir}`);
+      }
+
+      // Opt-in: git-worktree isolation — parallele Tasks bekommen jeweils einen eigenen worktree.
+      try {
+        const worktreeSetting = db.select().from(einstellungen)
+          .where(and(eq(einstellungen.schluessel, 'worktree_isolation'), eq(einstellungen.unternehmenId, unternehmenId)))
+          .get();
+        if (worktreeSetting?.wert === 'true') {
+          const ws = ensureWorkspace(unternehmenId, task.id, expertId, effectiveWorkDir);
+          workspacePath = ws.pfad;
+          console.log(`  🌿 Worktree-Isolation aktiv → ${workspacePath}${ws.branchName ? ` (${ws.branchName})` : ''}`);
+        }
+      } catch (e: any) {
+        console.warn(`[Heartbeat] Worktree-Setup fehlgeschlagen, nutze Basis-Workdir: ${e?.message}`);
       }
     } else {
       if (companyWorkDir && !isSafeWorkdir(companyWorkDir)) {
@@ -839,6 +856,25 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
       }
       // ──────────────────────────────────────────────────────────────────────
 
+      // ─── Auto Model Routing (Economic Control) ──────────────────────────
+      // Only routes when `model_routing_enabled=true` and adapter supports it.
+      // No-op otherwise; always safe.
+      try {
+        const currentModel = heartbeatParsedConfig.model || heartbeatGlobalDefaultModel || '';
+        const decision = routeModel(unternehmenId, effectiveVerbindungsTyp, currentModel, {
+          titel: task.titel, beschreibung: task.beschreibung, prioritaet: task.prioritaet,
+        });
+        if (decision.routed) {
+          heartbeatParsedConfig = { ...heartbeatParsedConfig, model: decision.model };
+          trace(expertId, unternehmenId, 'info',
+            `Auto-routed: ${decision.originalModel || '(default)'} → ${decision.model} (${decision.reason})`,
+            JSON.stringify({ tier: decision.tier, score: decision.score }), runId);
+        }
+      } catch (err: any) {
+        console.warn(`[ModelRouter] skipped: ${err.message}`);
+      }
+      // ────────────────────────────────────────────────────────────────────
+
       const result = await adapterRegistry.executeTask(adapterTask, adapterContext, {
         expertId,
         unternehmenId,
@@ -977,6 +1013,14 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
               task.id, taskFull.titel, taskFull.beschreibung || '', result.output, expertId, unternehmenId
             );
 
+            recordLearning(
+              expertId,
+              taskFull.titel,
+              criticResult.approved ? 'approved' : (criticResult.escalate ? 'escalated' : 'needs_revision'),
+              criticResult.approved
+                ? `Task delivered successfully via ${effectiveVerbindungsTyp}.`
+                : (criticResult.feedback || 'Critic requested revision.'),
+            );
             if (!criticResult.approved) {
               if (criticResult.escalate) {
                 console.log(`  🚨 Critic: escalating task ${task.id} to human review`);
