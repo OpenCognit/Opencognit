@@ -9,6 +9,7 @@ import { AuthProvider, useAuth } from './hooks/useAuth';
 import { useSystemStatus } from './hooks/useSystemStatus';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { BreadcrumbProvider } from './hooks/useBreadcrumbs';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Apply saved theme before first render
 const savedTheme = localStorage.getItem('opencognit_theme');
@@ -48,37 +49,67 @@ function PageLoader() {
   );
 }
 
+function PageErrorFallback() {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      minHeight: '50vh', padding: '2rem', textAlign: 'center', gap: '1rem',
+    }}>
+      <div style={{ fontSize: '2.5rem' }}>⚠️</div>
+      <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>
+        Diese Seite konnte nicht geladen werden
+      </h2>
+      <p style={{ color: 'var(--muted-foreground)', fontSize: '0.875rem', maxWidth: 420, margin: 0 }}>
+        Ein unerwarteter Fehler ist aufgetreten. Andere Seiten funktionieren weiterhin — versuche es neu zu laden oder wechsle über die Seitenleiste.
+      </p>
+      <button className="btn btn-primary" onClick={() => window.location.reload()}>
+        Seite neu laden
+      </button>
+    </div>
+  );
+}
+
+// Per-route wrapper: catches render errors + shows lazy-load spinner.
+// Keeps Layout/Sidebar/navigation alive if a single page crashes.
+function Page({ children }: { children: React.ReactNode }) {
+  return (
+    <ErrorBoundary fallback={<PageErrorFallback />}>
+      <Suspense fallback={<PageLoader />}>{children}</Suspense>
+    </ErrorBoundary>
+  );
+}
+
 function ProtectedRoutes() {
   return (
     <BreadcrumbProvider>
       <CompanyProvider>
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/companies" element={<Suspense fallback={<PageLoader />}><Companies /></Suspense>} />
-          <Route path="/experts" element={<Suspense fallback={<PageLoader />}><Experts /></Suspense>} />
-          <Route path="/tasks" element={<Suspense fallback={<PageLoader />}><Tasks /></Suspense>} />
-          <Route path="/org-chart" element={<Suspense fallback={<PageLoader />}><OrgChart /></Suspense>} />
-          <Route path="/costs" element={<Suspense fallback={<PageLoader />}><Costs /></Suspense>} />
-          <Route path="/approvals" element={<Suspense fallback={<PageLoader />}><Approvals /></Suspense>} />
-          <Route path="/activity" element={<Suspense fallback={<PageLoader />}><Activity /></Suspense>} />
-          <Route path="/projects" element={<Suspense fallback={<PageLoader />}><Projects /></Suspense>} />
-          <Route path="/routines" element={<Suspense fallback={<PageLoader />}><Routines /></Suspense>} />
-          <Route path="/meetings" element={<Suspense fallback={<PageLoader />}><Meetings /></Suspense>} />
-          <Route path="/skill-library" element={<Suspense fallback={<PageLoader />}><SkillLibrary /></Suspense>} />
-          <Route path="/intelligence" element={<Suspense fallback={<PageLoader />}><Intelligence /></Suspense>} />
-          <Route path="/goals" element={<Suspense fallback={<PageLoader />}><Goals /></Suspense>} />
-          <Route path="/performance" element={<Suspense fallback={<PageLoader />}><Performance /></Suspense>} />
-          <Route path="/war-room" element={<Suspense fallback={<PageLoader />}><WarRoom /></Suspense>} />
-          <Route path="/focus" element={<Suspense fallback={<PageLoader />}><Focus /></Suspense>} />
-          <Route path="/weekly-report" element={<Suspense fallback={<PageLoader />}><WeeklyReport /></Suspense>} />
-          <Route path="/clipmart" element={<Suspense fallback={<PageLoader />}><Clipmart /></Suspense>} />
-          <Route path="/metrics" element={<Suspense fallback={<PageLoader />}><Metrics /></Suspense>} />
-          <Route path="/work-products" element={<Suspense fallback={<PageLoader />}><WorkProducts /></Suspense>} />
-          <Route path="/tasks/:id/timeline" element={<Suspense fallback={<PageLoader />}><TaskTimeline /></Suspense>} />
-          <Route path="/plugins" element={<Suspense fallback={<PageLoader />}><Plugins /></Suspense>} />
-          <Route path="/workers" element={<Suspense fallback={<PageLoader />}><WorkerNodes /></Suspense>} />
-          <Route path="/settings" element={<Suspense fallback={<PageLoader />}><Settings /></Suspense>} />
+          <Route path="/" element={<ErrorBoundary fallback={<PageErrorFallback />}><Dashboard /></ErrorBoundary>} />
+          <Route path="/companies" element={<Page><Companies /></Page>} />
+          <Route path="/experts" element={<Page><Experts /></Page>} />
+          <Route path="/tasks" element={<Page><Tasks /></Page>} />
+          <Route path="/org-chart" element={<Page><OrgChart /></Page>} />
+          <Route path="/costs" element={<Page><Costs /></Page>} />
+          <Route path="/approvals" element={<Page><Approvals /></Page>} />
+          <Route path="/activity" element={<Page><Activity /></Page>} />
+          <Route path="/projects" element={<Page><Projects /></Page>} />
+          <Route path="/routines" element={<Page><Routines /></Page>} />
+          <Route path="/meetings" element={<Page><Meetings /></Page>} />
+          <Route path="/skill-library" element={<Page><SkillLibrary /></Page>} />
+          <Route path="/intelligence" element={<Page><Intelligence /></Page>} />
+          <Route path="/goals" element={<Page><Goals /></Page>} />
+          <Route path="/performance" element={<Page><Performance /></Page>} />
+          <Route path="/war-room" element={<Page><WarRoom /></Page>} />
+          <Route path="/focus" element={<Page><Focus /></Page>} />
+          <Route path="/weekly-report" element={<Page><WeeklyReport /></Page>} />
+          <Route path="/clipmart" element={<Page><Clipmart /></Page>} />
+          <Route path="/metrics" element={<Page><Metrics /></Page>} />
+          <Route path="/work-products" element={<Page><WorkProducts /></Page>} />
+          <Route path="/tasks/:id/timeline" element={<Page><TaskTimeline /></Page>} />
+          <Route path="/plugins" element={<Page><Plugins /></Page>} />
+          <Route path="/workers" element={<Page><WorkerNodes /></Page>} />
+          <Route path="/settings" element={<Page><Settings /></Page>} />
           {/* Legacy German routes — redirect to English */}
           <Route path="/unternehmen" element={<Navigate to="/companies" replace />} />
           <Route path="/experten" element={<Navigate to="/experts" replace />} />

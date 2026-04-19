@@ -44,6 +44,20 @@ if (JWT_SECRET === DEV_JWT_SECRET) {
   }
 }
 
+// ── Process-level error safety: log instead of silently crashing ─────────────
+// These catch async errors that escape try/catch blocks in adapters, plugins,
+// timers, or WebSocket handlers. Without these, one unhandled promise takes
+// the whole server down.
+process.on('unhandledRejection', (reason: any, promise) => {
+  console.error('🚨 UnhandledRejection:', reason?.stack || reason, '\n  Promise:', promise);
+});
+process.on('uncaughtException', (err: any) => {
+  console.error('🚨 UncaughtException:', err?.stack || err);
+  // Note: Node recommends exiting after uncaughtException since state may be corrupt.
+  // We log-and-continue here because OpenCognit's heartbeat/cron loops must survive
+  // transient adapter failures. Real fatals (OOM, stack overflow) will still abort.
+});
+
 const app = express();
 const PORT = parseInt(process.env.PORT || '3201');
 const server = http.createServer(app);
@@ -6477,6 +6491,27 @@ app.get('/api/openclaw/agents', (req: any, res: any) => {
     });
 
   res.json(agents);
+});
+
+// ── Global error middleware ───────────────────────────────────────────────────
+// Catches any thrown/unhandled error from API routes and returns a structured,
+// user-friendly JSON response instead of Express' default HTML stack trace.
+app.use('/api', (err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (res.headersSent) return;
+  const status = typeof err?.status === 'number' ? err.status : 500;
+  const code = err?.code || (status === 500 ? 'internal_error' : 'request_error');
+  const message = status >= 500
+    ? 'Ein interner Fehler ist aufgetreten. Versuche es in einem Moment erneut.'
+    : (err?.message || 'Anfrage konnte nicht verarbeitet werden.');
+
+  console.error(`[API ERROR] ${req.method} ${req.path} →`, err?.stack || err);
+
+  res.status(status).json({
+    error: message,
+    code,
+    path: req.path,
+    ...(process.env.NODE_ENV !== 'production' && err?.stack ? { stack: String(err.stack).split('\n').slice(0, 5) } : {}),
+  });
 });
 
 // ── Production: serve built frontend ──────────────────────────────────────────

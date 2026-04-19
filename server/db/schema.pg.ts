@@ -1,4 +1,4 @@
-import { pgTable, text, integer, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, boolean, primaryKey, index } from 'drizzle-orm/pg-core';
 
 // ===== Benutzer =====
 export const benutzer = pgTable('benutzer', {
@@ -7,6 +7,8 @@ export const benutzer = pgTable('benutzer', {
   email: text('email').notNull().unique(),
   passwortHash: text('passwort_hash').notNull(),
   rolle: text('rolle').notNull().default('mitglied'),
+  oauthProvider: text('oauth_provider'),
+  oauthId: text('oauth_id'),
   erstelltAm: text('erstellt_am').notNull(),
   aktualisiertAm: text('aktualisiert_am').notNull(),
 });
@@ -18,6 +20,7 @@ export const unternehmen = pgTable('unternehmen', {
   beschreibung: text('beschreibung'),
   ziel: text('ziel'),
   status: text('status').notNull().default('active'),
+  workDir: text('work_dir'),
   erstelltAm: text('erstellt_am').notNull(),
   aktualisiertAm: text('aktualisiert_am').notNull(),
 });
@@ -42,6 +45,13 @@ export const experten = pgTable('experten', {
   zyklusIntervallSek: integer('zyklus_intervall_sek').default(300),
   zyklusAktiv: boolean('zyklus_aktiv').default(false),
   systemPrompt: text('system_prompt'),
+  isOrchestrator: boolean('is_orchestrator').default(false),
+  advisorId: text('advisor_id').references((): any => experten.id),
+  advisorStrategy: text('advisor_strategy').notNull().default('none'),
+  advisorConfig: text('advisor_config'),
+  soulPath: text('soul_path'),
+  soulVersion: text('soul_version'),
+  nachrichtenCount: integer('nachrichten_count').notNull().default(0),
   erstelltAm: text('erstellt_am').notNull(),
   aktualisiertAm: text('aktualisiert_am').notNull(),
 });
@@ -62,6 +72,7 @@ export const aufgaben = pgTable('aufgaben', {
   executionRunId: text('execution_run_id'),
   executionAgentNameKey: text('execution_agent_name_key'),
   executionLockedAt: text('execution_locked_at'),
+  isMaximizerMode: boolean('is_maximizer_mode').default(false),
   blockedBy: text('blocked_by'),
   workspacePath: text('workspace_path'),
   gestartetAm: text('gestartet_am'),
@@ -69,7 +80,11 @@ export const aufgaben = pgTable('aufgaben', {
   abgebrochenAm: text('abgebrochen_am'),
   erstelltAm: text('erstellt_am').notNull(),
   aktualisiertAm: text('aktualisiert_am').notNull(),
-});
+}, (t) => ({
+  idxZugewiesenAn:      index('aufgaben_zugewiesen_an_idx').on(t.zugewiesenAn),
+  idxUnternehmenStatus: index('aufgaben_unternehmen_status_idx').on(t.unternehmenId, t.status),
+  idxExecutionLocked:   index('aufgaben_execution_locked_idx').on(t.executionLockedAt),
+}));
 
 // ===== Kommentare =====
 export const kommentare = pgTable('kommentare', {
@@ -90,8 +105,13 @@ export const chatNachrichten = pgTable('chat_nachrichten', {
   absenderTyp: text('absender_typ').notNull(),
   nachricht: text('nachricht').notNull(),
   gelesen: boolean('gelesen').notNull().default(false),
+  vonExpertId: text('von_expert_id'),
+  threadId: text('thread_id'),
   erstelltAm: text('erstellt_am').notNull(),
-});
+}, (t) => ({
+  idxExpertGelesen: index('chat_nachrichten_expert_gelesen_idx').on(t.expertId, t.gelesen),
+  idxExpertAm:      index('chat_nachrichten_expert_am_idx').on(t.expertId, t.erstelltAm),
+}));
 
 // ===== Genehmigungen =====
 export const genehmigungen = pgTable('genehmigungen', {
@@ -182,10 +202,13 @@ export const ziele = pgTable('ziele', {
 
 // ===== Einstellungen =====
 export const einstellungen = pgTable('einstellungen', {
-  schluessel: text('schluessel').primaryKey(),
+  schluessel: text('schluessel').notNull(),
+  unternehmenId: text('unternehmen_id').notNull().default(''),
   wert: text('wert').notNull(),
   aktualisiertAm: text('aktualisiert_am').notNull(),
-});
+}, (t) => ({
+  pk: primaryKey({ columns: [t.schluessel, t.unternehmenId] }),
+}));
 
 // ===== Agent Wakeup Requests =====
 export const agentWakeupRequests = pgTable('agent_wakeup_requests', {
@@ -203,7 +226,10 @@ export const agentWakeupRequests = pgTable('agent_wakeup_requests', {
   requestedAt: text('requested_at').notNull(),
   claimedAt: text('claimed_at'),
   finishedAt: text('finished_at'),
-});
+}, (t) => ({
+  idxExpertStatus:      index('wakeup_expert_status_idx').on(t.expertId, t.status),
+  idxUnternehmenStatus: index('wakeup_unternehmen_status_idx').on(t.unternehmenId, t.status),
+}));
 
 // ===== Routinen =====
 export const routinen = pgTable('routinen', {
@@ -268,6 +294,8 @@ export const projekte = pgTable('projekte', {
   farbe: text('farbe').notNull().default('#23CDCB'),
   deadline: text('deadline'),
   fortschritt: integer('fortschritt').notNull().default(0),
+  whiteboardState: text('whiteboard_state'),
+  workDir: text('work_dir'),
   erstelltAm: text('erstellt_am').notNull(),
   aktualisiertAm: text('aktualisiert_am').notNull(),
 });
@@ -326,7 +354,10 @@ export const traceEreignisse = pgTable('trace_ereignisse', {
   titel: text('titel').notNull(),
   details: text('details'),
   erstelltAm: text('erstellt_am').notNull(),
-});
+}, (t) => ({
+  idxExpertAm:      index('trace_expert_am_idx').on(t.expertId, t.erstelltAm),
+  idxUnternehmenAm: index('trace_unternehmen_am_idx').on(t.unternehmenId, t.erstelltAm),
+}));
 
 // ===== Skill Library =====
 export const skillsLibrary = pgTable('skills_library', {
@@ -395,7 +426,10 @@ export const palaceKg = pgTable('palace_kg', {
   validUntil: text('valid_until'),
   erstelltVon: text('erstellt_von'),
   erstelltAm: text('erstellt_am').notNull(),
-});
+}, (t) => ({
+  idxSubjectValid:       index('kg_subject_valid_idx').on(t.subject, t.validUntil),
+  idxUnternehmenSubject: index('kg_unternehmen_subject_idx').on(t.unternehmenId, t.subject),
+}));
 
 // ===== Palace: Summaries =====
 export const palaceSummaries = pgTable('palace_summaries', {
@@ -487,7 +521,9 @@ export const ceoDecisionLog = pgTable('ceo_decision_log', {
   goalsSnapshot: text('goals_snapshot'),
   pendingTaskCount: integer('pending_task_count').notNull().default(0),
   teamSummary: text('team_summary'),
-});
+}, (t) => ({
+  idxCeoLog: index('ceo_decision_log_expert_idx').on(t.expertId, t.erstelltAm),
+}));
 
 // ===== Expert Config History =====
 export const expertConfigHistory = pgTable('expert_config_history', {
@@ -497,7 +533,9 @@ export const expertConfigHistory = pgTable('expert_config_history', {
   changedBy: text('changed_by'),
   configJson: text('config_json').notNull(),
   note: text('note'),
-});
+}, (t) => ({
+  idxExpertHistory: index('expert_config_history_expert_idx').on(t.expertId, t.changedAt),
+}));
 
 // ===== Worker Nodes (Multi-Node Worker Pool) =====
 export const workerNodes = pgTable('worker_nodes', {
@@ -513,4 +551,6 @@ export const workerNodes = pgTable('worker_nodes', {
   lastHeartbeatAt: text('last_heartbeat_at'),
   registriertAm: text('registriert_am').notNull(),
   aktualisiertAm: text('aktualisiert_am').notNull(),
-});
+}, (t) => ({
+  idxStatus: index('worker_nodes_status_idx').on(t.status, t.lastHeartbeatAt),
+}));
