@@ -404,7 +404,7 @@ export function ExpertModal({ expert, onClose, onSaved, isOpen = true }: { exper
         style={{
           background: 'rgba(12, 12, 20, 0.75)', backdropFilter: 'blur(32px)', WebkitBackdropFilter: 'blur(32px)',
           border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '24px', padding: '1.5rem',
-          width: '100%', maxWidth: '480px', position: 'relative',
+          width: '100%', maxWidth: '480px', maxHeight: '90vh', overflowY: 'auto', position: 'relative',
           boxShadow: '0 30px 80px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)',
           animation: 'slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
         }}
