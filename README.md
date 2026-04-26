@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="public/banner.png" alt="OpenCognit" width="100%" />
+<img width="2000" height="600" alt="x_banner" src="https://github.com/user-attachments/assets/186b7ef0-c1a9-415d-9225-72ff028bcdb0" />
 
 # OpenCognit
 
