@@ -40,41 +40,41 @@
     --color-violet: #9b87c8;
     --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
     /* ── Elevation overlay alphas ────────────────────────────── */
-    --elev-0: rgba(14, 12, 9, 0.0);
-    --elev-1: rgba(14, 12, 9, 0.4);
-    --elev-2: rgba(14, 12, 9, 0.6);
-    --elev-3: rgba(14, 12, 9, 0.75);
-    --elev-4: rgba(14, 12, 9, 0.9);
+    --elev-0: rgba(6, 4, 3, 0.0);
+    --elev-1: rgba(6, 4, 3, 0.5);
+    --elev-2: rgba(6, 4, 3, 0.68);
+    --elev-3: rgba(6, 4, 3, 0.82);
+    --elev-4: rgba(6, 4, 3, 0.95);
 
     /* Legacy compatibility for components not yet converted */
-    --color-bg-primary: #0a0a0a;
-    --color-bg-secondary: #0f0f0f;
-    --color-bg-tertiary: #141414;
-    --color-bg-elevated: #1a1a1a;
-    --color-bg-hover: #222222;
-    --color-bg-active: #2a2a2a;
-    --color-surface: rgba(255, 255, 255, 0.03);
-    --color-surface-hover: rgba(255, 255, 255, 0.06);
-    --color-surface-active: rgba(255, 255, 255, 0.09);
-    --color-border: rgba(255, 255, 255, 0.08);
-    --color-border-hover: rgba(255, 255, 255, 0.14);
-    --color-border-focus: rgba(197, 160, 89, 0.5);
-    --color-text-primary: #f8fafc;
-    --color-text-secondary: #94a3b8;
-    --color-text-tertiary: #64748b;
-    --color-text-muted: #475569;
+    --color-bg-primary: #060403;
+    --color-bg-secondary: #080604;
+    --color-bg-tertiary: #0d0906;
+    --color-bg-elevated: #131008;
+    --color-bg-hover: #1b160e;
+    --color-bg-active: #231c12;
+    --color-surface: rgba(197, 160, 89, 0.04);
+    --color-surface-hover: rgba(197, 160, 89, 0.08);
+    --color-surface-active: rgba(197, 160, 89, 0.12);
+    --color-border: rgba(197, 160, 89, 0.12);
+    --color-border-hover: rgba(197, 160, 89, 0.22);
+    --color-border-focus: rgba(197, 160, 89, 0.55);
+    --color-text-primary: #ede5d8;
+    --color-text-secondary: #9a8870;
+    --color-text-tertiary: #6e5e48;
+    --color-text-muted: #4a3e30;
     --color-accent: #c5a059;
     --color-accent-hover: #d4b06a;
     --color-accent-subtle: rgba(197, 160, 89, 0.12);
-    --color-accent-glow: rgba(197, 160, 89, 0.25);
-    --color-success: #22c55e;
-    --color-success-subtle: rgba(34, 197, 94, 0.12);
-    --color-warning: #f59e0b;
-    --color-warning-subtle: rgba(245, 158, 11, 0.12);
-    --color-error: #ef4444;
-    --color-error-subtle: rgba(239, 68, 68, 0.12);
-    --color-info: #3b82f6;
-    --color-info-subtle: rgba(59, 130, 246, 0.12);
+    --color-accent-glow: rgba(197, 160, 89, 0.28);
+    --color-success: #7cb97a;
+    --color-success-subtle: rgba(124, 185, 122, 0.12);
+    --color-warning: #d4a373;
+    --color-warning-subtle: rgba(212, 163, 115, 0.12);
+    --color-error: #c97b7b;
+    --color-error-subtle: rgba(201, 123, 123, 0.12);
+    --color-info: #9b87c8;
+    --color-info-subtle: rgba(155, 135, 200, 0.12);
     --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --font-size-xs: 0.6875rem;
     --font-size-sm: 0.8125rem;
@@ -115,8 +115,8 @@
     --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.6);
     --shadow-glow: 0 0 20px var(--color-accent-glow);
     --shadow-glow-lg: 0 0 40px var(--color-accent-glow);
-    --glass-bg: rgba(16, 13, 9, 0.82);
-    --glass-border: rgba(255, 255, 255, 0.06);
+    --glass-bg: rgba(10, 8, 6, 0.88);
+    --glass-border: rgba(197, 160, 89, 0.10);
     --glass-blur: blur(20px);
     --sidebar-width: 260px;
     --sidebar-collapsed-width: 64px;
@@ -158,7 +158,8 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    background: #060403;
+    color: var(--color-text-primary);
     font-family: var(--font-family);
   }
 }

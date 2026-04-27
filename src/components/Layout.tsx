@@ -32,8 +32,8 @@ function MobileNav() {
       <nav style={{
         position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 200,
         display: 'flex', alignItems: 'stretch',
-        background: 'rgba(10,10,12,0.95)', backdropFilter: 'blur(20px)',
-        borderTop: '1px solid rgba(255,255,255,0.06)',
+        background: 'rgba(8,6,4,0.96)', backdropFilter: 'blur(20px)',
+        borderTop: '1px solid rgba(197,160,89,0.14)',
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}>
         {bottomItems.map(item => (
@@ -67,7 +67,7 @@ function MobileNav() {
         }} onClick={() => setDrawerOpen(false)}>
           <div style={{
             position: 'absolute', bottom: 0, left: 0, right: 0,
-            background: 'rgba(10,10,12,0.98)', borderTop: '1px solid rgba(255,255,255,0.08)',
+            background: 'rgba(8,6,4,0.98)', borderTop: '1px solid rgba(197,160,89,0.14)',
             borderRadius: '0', padding: '1rem 1rem calc(1rem + env(safe-area-inset-bottom))',
           }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -121,7 +121,7 @@ function GlobalBackground() {
       <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} xmlns="http://www.w3.org/2000/svg">
         <defs>
           <pattern id="global-grid" width="60" height="60" patternUnits="userSpaceOnUse">
-            <path d="M 60 0 L 0 0 0 60" fill="none" stroke="rgba(56, 189, 248, 0.06)" strokeWidth="0.5" />
+            <path d="M 60 0 L 0 0 0 60" fill="none" stroke="rgba(197, 160, 89, 0.04)" strokeWidth="0.5" />
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill="url(#global-grid)" />

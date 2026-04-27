@@ -105,7 +105,7 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
     <aside style={{
       width: collapsed ? '80px' : '280px',
       background: 'transparent',
-      borderRight: '1px solid rgba(255, 255, 255, 0.06)',
+      borderRight: '1px solid rgba(197, 160, 89, 0.14)',
       display: 'flex',
       flexDirection: 'column',
       height: '100vh',
@@ -121,7 +121,7 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
         <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.5 }} xmlns="http://www.w3.org/2000/svg">
           <defs>
             <pattern id="sidebar-dash-grid" width="40" height="40" patternUnits="userSpaceOnUse">
-              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(56, 189, 248, 0.06)" strokeWidth="0.5" />
+              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(197, 160, 89, 0.05)" strokeWidth="0.5" />
             </pattern>
           </defs>
           <rect width="100%" height="100%" fill="url(#sidebar-dash-grid)" />
@@ -148,18 +148,18 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
         alignItems: 'center',
         justifyContent: 'center',
         gap: '0.75rem',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+        borderBottom: '1px solid rgba(197, 160, 89, 0.14)',
         position: 'relative',
         zIndex: 1,
       }}>
         {!collapsed && (
           <>
             <span style={{
-              fontSize: '1.25rem',
-              fontWeight: 700,
-              color: '#ffffff',
-              letterSpacing: '-0.02em',
-              background: 'linear-gradient(to right, #c5a059, #ffffff)',
+              fontSize: '1.15rem',
+              fontWeight: 900,
+              fontFamily: "'Merriweather', Georgia, serif",
+              letterSpacing: '-0.01em',
+              background: 'linear-gradient(135deg, #c5a059 0%, #e8d4a8 55%, #c5a059 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
               backgroundClip: 'text',
@@ -209,7 +209,18 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
         {navItems.map((section) => {
           const isCollapsed = !collapsed && collapsedSections.has(section.section);
           const isSetupSection = section.section === 'Einrichten' || section.section === 'Setup';
+          const isMoreSection = section.section === 'Mehr' || section.section === 'More';
           const setupHighlight = isSetupSection && !hasAgents;
+
+          // Section label colors
+          const sectionColor = setupHighlight
+            ? '#c5a059'
+            : isSetupSection
+            ? '#d4a373'
+            : isMoreSection
+            ? '#6e5e48'
+            : '#c5a059'; // Operations
+
           return (
           <div key={section.section} style={{ marginBottom: '1.25rem' }}>
             {!collapsed && (
@@ -241,10 +252,10 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
                   )}
                   <span style={{
                     fontSize: '0.6875rem',
-                    fontWeight: 600,
-                    color: setupHighlight ? '#c5a059' : '#71717a',
+                    fontWeight: 700,
+                    color: sectionColor,
                     textTransform: 'uppercase',
-                    letterSpacing: '0.06em',
+                    letterSpacing: '0.08em',
                   }}>{section.section}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
@@ -260,7 +271,7 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
                   <ChevronDown
                     size={12}
                     style={{
-                      color: setupHighlight ? '#c5a059' : '#71717a',
+                      color: sectionColor,
                       flexShrink: 0,
                       transition: 'transform 0.2s ease',
                       transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
@@ -346,7 +357,7 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
       {/* Bottom Section — order: User → Settings → Language */}
       <div style={{
         padding: collapsed ? '0.75rem' : '1rem',
-        borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+        borderTop: '1px solid rgba(197, 160, 89, 0.14)',
         display: 'flex',
         flexDirection: 'column',
         gap: '0.5rem',

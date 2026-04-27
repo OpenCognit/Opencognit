@@ -274,8 +274,8 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
             alignItems: 'center',
             gap: '0.625rem',
             padding: '0.375rem 0.625rem',
-            background: 'rgba(255, 255, 255, 0.02)',
-            border: '1px solid rgba(255, 255, 255, 0.06)',
+            background: 'rgba(197, 160, 89, 0.04)',
+            border: '1px solid rgba(197, 160, 89, 0.14)',
             borderRadius: 0,
             color: '#71717a',
             fontSize: '0.8125rem',
@@ -291,8 +291,8 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
           <kbd style={{
             fontSize: '9px',
             padding: '1px 4px',
-            background: 'rgba(255,255,255,0.05)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'rgba(197, 160, 89, 0.05)',
+            border: '1px solid rgba(197, 160, 89, 0.14)',
             borderRadius: 0,
             color: '#52525b',
             fontFamily: 'monospace'
@@ -325,7 +325,7 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
               <span style={{
                 position: 'absolute', top: 7, right: 7,
                 minWidth: 8, height: 8, borderRadius: '50%',
-                background: '#ef4444', border: '2px solid #0a0a0f',
+                background: '#ef4444', border: '2px solid #060403',
                 boxShadow: '0 0 10px rgba(239, 68, 68, 0.5)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '0.5rem', fontWeight: 800, color: '#fff',
@@ -340,12 +340,12 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
             <div style={{
               position: 'absolute', top: 'calc(100% + 8px)', right: 0,
               width: 340,
-              background: 'rgba(10, 10, 18, 0.97)',
+              background: 'rgba(8, 6, 4, 0.98)',
               backdropFilter: 'blur(40px)',
               WebkitBackdropFilter: 'blur(40px)',
-              border: '1px solid rgba(255,255,255,0.1)',
+              border: '1px solid rgba(197,160,89,0.18)',
               borderRadius: 0,
-              boxShadow: '0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(197,160,89,0.06)',
               zIndex: 500,
               overflow: 'hidden',
               animation: 'slideDown 0.2s ease',
@@ -353,7 +353,7 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
               {/* Header */}
               <div style={{
                 padding: '0.875rem 1rem',
-                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                borderBottom: '1px solid rgba(197,160,89,0.12)',
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               }}>
                 <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#f4f4f5' }}>
@@ -407,14 +407,14 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
                         key={n.id}
                         style={{
                           padding: '0.75rem 1rem',
-                          borderBottom: '1px solid rgba(255,255,255,0.04)',
+                          borderBottom: '1px solid rgba(197,160,89,0.08)',
                           display: 'flex', gap: '0.625rem', alignItems: 'flex-start',
                           cursor: n.link ? 'pointer' : 'default',
-                          background: n.read ? 'transparent' : 'rgba(255,255,255,0.015)',
+                          background: n.read ? 'transparent' : 'rgba(197,160,89,0.03)',
                           transition: 'background 0.15s',
                         }}
-                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = n.read ? 'transparent' : 'rgba(255,255,255,0.015)'; }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(197,160,89,0.07)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = n.read ? 'transparent' : 'rgba(197,160,89,0.03)'; }}
                         onClick={() => {
                           if (n.link) { navigate(n.link); setBellOpen(false); }
                         }}
@@ -476,7 +476,7 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
               {notifications.length > 0 && (
                 <div style={{
                   padding: '0.625rem 1rem',
-                  borderTop: '1px solid rgba(255,255,255,0.06)',
+                  borderTop: '1px solid rgba(197,160,89,0.12)',
                   display: 'flex', justifyContent: 'center',
                 }}>
                   <button
