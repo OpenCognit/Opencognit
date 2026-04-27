@@ -3949,11 +3949,11 @@ app.post('/api/agents/:id/chat/stream', authMiddleware, async (req: express.Requ
       } else {
         cliReply = await runClaudeDirectChat(cliPrompt, expertId);
       }
-      emit('token', { token: cliReply });
+      emit('text_delta', { text: cliReply });
       const agentMsg2 = { id: uuid(), companyId: unternehmenId, agentId: expertId, senderType: 'agent' as const, message: cliReply, read: false, createdAt: new Date().toISOString() };
       db.insert(chatMessages).values(agentMsg2).run();
       broadcastUpdate('chat_message', agentMsg2);
-      emit('done', { fullText: cliReply });
+      emit('done', { fullReply: cliReply });
     } catch (err: any) {
       emit('error', { message: err.message });
     }
