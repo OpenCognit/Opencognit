@@ -38,18 +38,22 @@ coverage/
 *.tmp
 *.temp
 
-# Database files (local development)
-data/*.db
-data/**/*.db
-data/backups/
-data/sessions/
-data/temp/
+# Database & data directory (local development only)
+data/
 !data/.gitkeep
+
+# Server-side DBs
+server/db/*.db
+server/db/sqlite.db
+server/db/agent_gedaechtnis.db
+
+# Root-level DB files
+*.db
+*.sqlite
+*.sqlite3
 
 # Uploads and generated content
 uploads/
-*.sqlite
-*.sqlite3
 
 # Vite
 .vite/
@@ -72,6 +76,18 @@ opencognit.db
 
 # Temp files
 90
+server_logs.txt
+server_out.txt
+
+# Backup files
+server/index.ts.backup
+*.backup
+
+# Claude Code local data
+.claude/
+
+# Task runner state
+tasks/
 
 # Agent-created deployment configs (belong in project dirs, not here)
 deployments/
