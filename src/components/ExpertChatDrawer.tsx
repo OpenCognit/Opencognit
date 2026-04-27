@@ -332,8 +332,19 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
   const de = i18n.language === 'de';
   const toastCtx = useToast();
   const [expert, setExpert] = useState<Experte>(initialExpert);
-  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+  const TAB_KEY = `expert_drawer_tab_${initialExpert.id}`;
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    // Honour explicit tab request (e.g. edit mode opening on 'einstellungen').
+    // Otherwise restore the tab the user last used for this agent.
+    if (initialTab !== 'überblick') return initialTab;
+    return (localStorage.getItem(`expert_drawer_tab_${initialExpert.id}`) as Tab | null) || 'überblick';
+  });
   const prevInitialTabRef = useRef<Tab>(initialTab);
+
+  const handleTabChange = (tab: Tab) => {
+    setActiveTab(tab);
+    localStorage.setItem(TAB_KEY, tab);
+  };
 
   // Chat state
   const [messages, setMessages] = useState<any[]>([]);
@@ -356,18 +367,20 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
   const fileRef = useRef<HTMLInputElement>(null);
 
   // ── Sync with parent props ─────────────────────────────────────────────────
-  // When parent passes a different expert, sync our local state
   useEffect(() => {
     if (initialExpert.id !== expert.id) {
       setExpert(initialExpert);
+      // Restore saved tab for the newly selected agent
+      const saved = localStorage.getItem(`expert_drawer_tab_${initialExpert.id}`) as Tab | null;
+      const tab = initialTab !== 'überblick' ? initialTab : (saved || 'überblick');
+      setActiveTab(tab);
     }
   }, [initialExpert.id]);
 
-  // Only reset activeTab when initialTab explicitly changes (e.g. edit mode)
-  // NOT when just switching agents — keep the current tab
+  // Only reset activeTab when parent explicitly requests a specific tab (e.g. edit mode)
   useEffect(() => {
-    if (prevInitialTabRef.current !== initialTab) {
-      setActiveTab(initialTab);
+    if (prevInitialTabRef.current !== initialTab && initialTab !== 'überblick') {
+      handleTabChange(initialTab);
       prevInitialTabRef.current = initialTab;
     }
   }, [initialTab]);
@@ -1197,7 +1210,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
             ] as const).map(tab => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabChange(tab.id)}
                 style={{
                   flex: 1, padding: '14px 0', background: 'none', border: 'none', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,

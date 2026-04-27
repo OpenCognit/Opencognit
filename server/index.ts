@@ -3924,6 +3924,42 @@ app.post('/api/agents/:id/chat/stream', authMiddleware, async (req: express.Requ
   let agentBaseUrl = '';
   try { agentBaseUrl = JSON.parse(expert.connectionConfig || '{}').baseUrl || ''; } catch {}
 
+  // CLI providers don't use an API key — run via CLI adapter and emit as SSE
+  const isCliProvider = ['claude-code', 'codex-cli', 'gemini-cli', 'kimi-cli'].includes(provider || '');
+  if (isCliProvider) {
+    const chatHistory2 = db.select().from(chatMessages)
+      .where(and(eq(chatMessages.companyId, unternehmenId), eq(chatMessages.agentId, expertId)))
+      .orderBy(desc(chatMessages.createdAt)).limit(12).all().reverse();
+    const historyText = chatHistory2.filter(m => m.senderType !== 'system')
+      .map(m => `[${m.senderType === 'board' ? 'Board' : expert.name}]: ${m.message}`).join('\n\n');
+    const cliPrompt = `${expert.systemPrompt ? expert.systemPrompt + '\n\n' : ''}${historyText ? `[BISHERIGER CHAT]\n${historyText}\n\n` : ''}[AKTUELLE NACHRICHT]\n${nachricht}\n\nAntworte direkt und hilfreich.`;
+
+    const boardMsg2 = { id: uuid(), companyId: unternehmenId, agentId: expertId, senderType: 'board' as const, message: nachricht, read: false, createdAt: new Date().toISOString() };
+    db.insert(chatMessages).values(boardMsg2).run();
+    broadcastUpdate('chat_message', boardMsg2);
+
+    try {
+      let cliReply: string;
+      if (provider === 'codex-cli') {
+        cliReply = await runCodexDirectChat(cliPrompt, expertId);
+      } else if (provider === 'gemini-cli') {
+        cliReply = await runGeminiDirectChat(cliPrompt, expertId);
+      } else if (provider === 'kimi-cli') {
+        cliReply = await runKimiDirectChat(cliPrompt, expertId);
+      } else {
+        cliReply = await runClaudeDirectChat(cliPrompt, expertId);
+      }
+      emit('token', { token: cliReply });
+      const agentMsg2 = { id: uuid(), companyId: unternehmenId, agentId: expertId, senderType: 'agent' as const, message: cliReply, read: false, createdAt: new Date().toISOString() };
+      db.insert(chatMessages).values(agentMsg2).run();
+      broadcastUpdate('chat_message', agentMsg2);
+      emit('done', { fullText: cliReply });
+    } catch (err: any) {
+      emit('error', { message: err.message });
+    }
+    return res.end();
+  }
+
   if (provider === 'anthropic' || provider === 'claude') {
     const row = db.select().from(settings).where(eq(settings.key, 'anthropic_api_key')).get();
     if (row) apiKey = decryptSetting('anthropic_api_key', row.value);
