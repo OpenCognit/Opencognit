@@ -242,6 +242,7 @@ export function SkillLibrary() {
   const [search, setSearch] = useState('');
   const [seeding, setSeeding] = useState(false);
   const [seedResult, setSeedResult] = useState<{ added: number } | null>(null);
+  const [hasAttemptedSeed, setHasAttemptedSeed] = useState(false);
 
   const handleSeedStandardSkills = async () => {
     if (!aktivesUnternehmen) return;
@@ -263,12 +264,13 @@ export function SkillLibrary() {
     [aktivesUnternehmen?.id],
   );
 
-  // Auto-seed when library is empty on first load
+  // Auto-seed when library is empty on first load (only once)
   useEffect(() => {
-    if (skills && skills.length === 0 && aktivesUnternehmen && !seeding) {
+    if (skills && skills.length === 0 && aktivesUnternehmen && !seeding && !hasAttemptedSeed) {
+      setHasAttemptedSeed(true);
       handleSeedStandardSkills();
     }
-  }, [skills, aktivesUnternehmen?.id]);
+  }, [skills, aktivesUnternehmen?.id, seeding, hasAttemptedSeed]);
 
   const { data: experten } = useApi<Experte[]>(
     () => authFetch(`/api/unternehmen/${aktivesUnternehmen!.id}/experten`).then(r => r.json()),
@@ -305,7 +307,7 @@ export function SkillLibrary() {
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             {seedResult && (
               <span style={{ fontSize: '0.8rem', color: '#c5a059', fontWeight: 600 }}>
-                ✓ {seedResult.added} Skills hinzugefügt
+                ✓ {seedResult.added} {lang === 'de' ? 'Skills hinzugefügt' : 'skills added'}
               </span>
             )}
             <button
