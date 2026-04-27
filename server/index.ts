@@ -2035,7 +2035,12 @@ const agentAuth = (req: express.Request, res: express.Response, next: express.Ne
   // Verify the token cryptographically — must match HMAC(secret, agentId:companyId)
   const providedToken = authHeader.slice(7); // strip "Bearer "
   const expectedToken = deriveAgentToken(expertId as string, unternehmenId as string);
-  if (!crypto.timingSafeEqual(Buffer.from(providedToken), Buffer.from(expectedToken))) {
+  const providedBuf = Buffer.from(providedToken);
+  const expectedBuf = Buffer.from(expectedToken);
+  if (providedBuf.length !== expectedBuf.length) {
+    return res.status(401).json({ error: 'Invalid API key.' });
+  }
+  if (!crypto.timingSafeEqual(providedBuf, expectedBuf)) {
     return res.status(401).json({ error: 'Invalid API key.' });
   }
 
