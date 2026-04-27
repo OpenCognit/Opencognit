@@ -6,7 +6,7 @@
  * payload, and waits for the result. The agent's full knowledge / memory
  * stays on the OpenClaw side — OpenCognit only orchestrates.
  *
- * verbindungsConfig (JSON in experten.verbindungs_config):
+ * verbindungsConfig (JSON in agents.verbindungs_config):
  * {
  *   "openclawGateway": true,
  *   "gatewayUrl":      "wss://user-server:3400",  // ws:// also allowed for LAN
@@ -129,7 +129,7 @@ export class OpenClawAdapter implements Adapter {
     config: AdapterConfig,
   ): Promise<AdapterExecutionResult> {
     const startTime = Date.now();
-    const cfg = (config as any).verbindungsConfig ?? {};
+    const cfg = (config as any).connectionConfig ?? {};
 
     const gatewayUrl: string = cfg.gatewayUrl ?? '';
     const token: string      = cfg.token ?? '';
@@ -150,11 +150,11 @@ export class OpenClawAdapter implements Adapter {
     const e = context.openclawEnrichment;
 
     const messageParts: string[] = [
-      `Aufgabe: ${task.titel}`,
-      task.beschreibung ? `\nBeschreibung:\n${task.beschreibung}` : '',
-      `\nPriorität: ${task.prioritaet}`,
-      context.companyContext.ziel ? `\nUnternehmensziel: ${context.companyContext.ziel}` : '',
-      context.agentContext.gedaechtnis ? `\n[GEDÄCHTNIS]\n${context.agentContext.gedaechtnis}` : '',
+      `Aufgabe: ${task.title}`,
+      task.description ? `\nBeschreibung:\n${task.description}` : '',
+      `\nPriorität: ${task.priority}`,
+      context.companyContext.goal ? `\nUnternehmensziel: ${context.companyContext.goal}` : '',
+      context.agentContext.memory ? `\n[GEDÄCHTNIS]\n${context.agentContext.memory}` : '',
     ];
 
     // ── Enrichment: situational awareness ──────────────────────────────────────
@@ -162,14 +162,14 @@ export class OpenClawAdapter implements Adapter {
       if (e.recentOutputs.length > 0) {
         messageParts.push(
           `\n[MEINE LETZTEN ABGESCHLOSSENEN AUFGABEN]`,
-          ...e.recentOutputs.map(r => `• ${r.taskTitel} (${r.completedAt.slice(0, 10)})\n  ${r.output.slice(0, 400)}`),
+          ...e.recentOutputs.map(r => `• ${r.taskTitle} (${r.completedAt.slice(0, 10)})\n  ${r.output.slice(0, 400)}`),
         );
       }
       if (e.projectSiblingTasks.length > 0) {
         messageParts.push(
           `\n[WEITERE AUFGABEN IN DIESEM PROJEKT]`,
           ...e.projectSiblingTasks.map(t =>
-            `• [${t.status.toUpperCase()}] ${t.titel}${t.assignedTo ? ` → ${t.assignedTo}` : ' (unassigned)'}`
+            `• [${t.status.toUpperCase()}] ${t.title}${t.assignedTo ? ` → ${t.assignedTo}` : ' (unassigned)'}`
           ),
         );
       }
@@ -182,7 +182,7 @@ export class OpenClawAdapter implements Adapter {
       if (e.activeColleagues.length > 0) {
         messageParts.push(
           `\n[TEAM — GERADE AKTIV]`,
-          ...e.activeColleagues.map(c => `• ${c.name} (${c.rolle}): arbeitet an „${c.currentTask}"`),
+          ...e.activeColleagues.map(c => `• ${c.name} (${c.role}): arbeitet an „${c.currentTask}"`),
         );
       }
     }
@@ -190,8 +190,8 @@ export class OpenClawAdapter implements Adapter {
 
     const wakePayload: Record<string, unknown> = {
       runId:      config.runId,
-      agentId:    config.expertId,
-      companyId:  config.unternehmenId,
+      agentId:    config.agentId,
+      companyId:  config.companyId,
       taskId:     task.id,
       wakeReason: 'opencognit_task',
       message:    messageParts.filter(Boolean).join(''),
@@ -200,10 +200,10 @@ export class OpenClawAdapter implements Adapter {
       opencognit: {
         runId:        config.runId,
         taskId:       task.id,
-        agentId:      config.expertId,
-        companyId:    config.unternehmenId,
+        agentId:      config.agentId,
+        companyId:    config.companyId,
         agentName:    context.agentContext.name,
-        agentRolle:   context.agentContext.rolle,
+        agentRolle:   context.agentContext.role,
         companyName:  context.companyContext.name,
         // Structured enrichment for OpenClaw systems that can parse it
         enrichment: e ?? null,

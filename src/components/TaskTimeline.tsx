@@ -5,7 +5,7 @@ import type { Aufgabe, Experte } from '../api/client';
 const STATUS_COLORS: Record<string, string> = {
   backlog: '#52525b',
   todo: '#3b82f6',
-  in_progress: '#23CDCB',
+  in_progress: '#c5a059',
   in_review: '#eab308',
   done: '#22c55e',
   blocked: '#ef4444',
@@ -20,7 +20,7 @@ const ROW_H = 44;
 const HEADER_H = 56;
 const LABEL_W = 200;
 const DAY_W = 48;
-const TODAY_COLOR = 'rgba(35,205,202,0.12)';
+const TODAY_COLOR = 'rgba(197,160,89,0.12)';
 
 function addDays(d: Date, n: number): Date {
   const r = new Date(d);
@@ -156,7 +156,7 @@ export function TimelineView({ aufgaben, experten, lang, onSelect, i18n }: Props
       <div style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         minHeight: 300, gap: '0.75rem', color: '#52525b',
-        background: 'rgba(255,255,255,0.02)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)',
+        background: 'rgba(255,255,255,0.02)', borderRadius: 0, border: '1px solid rgba(255,255,255,0.06)',
       }}>
         <Calendar size={40} style={{ opacity: 0.3 }} />
         <p style={{ margin: 0, fontSize: '0.9375rem' }}>
@@ -170,7 +170,7 @@ export function TimelineView({ aufgaben, experten, lang, onSelect, i18n }: Props
     <div style={{
       background: 'rgba(255,255,255,0.02)',
       backdropFilter: 'blur(20px)',
-      borderRadius: '16px',
+      borderRadius: 0,
       border: '1px solid rgba(255,255,255,0.06)',
       overflow: 'hidden',
       animation: 'fadeInUp 0.4s ease-out',
@@ -182,7 +182,7 @@ export function TimelineView({ aufgaben, experten, lang, onSelect, i18n }: Props
         borderBottom: '1px solid rgba(255,255,255,0.06)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Calendar size={15} style={{ color: '#23CDCB' }} />
+          <Calendar size={15} style={{ color: '#c5a059' }} />
           <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#d4d4d8' }}>
             {formatMonth(viewStart, lang)} — {formatMonth(addDays(viewStart, DAYS - 1), lang)}
           </span>
@@ -191,17 +191,17 @@ export function TimelineView({ aufgaben, experten, lang, onSelect, i18n }: Props
           <button
             onClick={() => setViewStart(addDays(today, -7))}
             style={{
-              padding: '0.3rem 0.75rem', background: 'rgba(35,205,202,0.08)',
-              border: '1px solid rgba(35,205,202,0.2)', borderRadius: '8px',
-              color: '#23CDCB', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
+              padding: '0.3rem 0.75rem', background: 'rgba(197,160,89,0.08)',
+              border: '1px solid rgba(197,160,89,0.2)', borderRadius: 0,
+              color: '#c5a059', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
             }}
           >
             {lang === 'de' ? 'Heute' : 'Today'}
           </button>
-          <button onClick={() => navigate(-1)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.3rem', cursor: 'pointer', color: '#a1a1aa', display: 'flex' }}>
+          <button onClick={() => navigate(-1)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 0, padding: '0.3rem', cursor: 'pointer', color: '#a1a1aa', display: 'flex' }}>
             <ChevronLeft size={16} />
           </button>
-          <button onClick={() => navigate(1)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.3rem', cursor: 'pointer', color: '#a1a1aa', display: 'flex' }}>
+          <button onClick={() => navigate(1)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 0, padding: '0.3rem', cursor: 'pointer', color: '#a1a1aa', display: 'flex' }}>
             <ChevronRight size={16} />
           </button>
         </div>
@@ -211,7 +211,7 @@ export function TimelineView({ aufgaben, experten, lang, onSelect, i18n }: Props
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.5rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.04)', flexWrap: 'wrap' }}>
         {Object.entries(STATUS_COLORS).map(([key, color]) => (
           <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.6875rem', color: '#71717a' }}>
-            <div style={{ width: 10, height: 10, borderRadius: '3px', background: color }} />
+            <div style={{ width: 10, height: 10, borderRadius: 0, background: color }} />
             {(i18n.status as any)[key] || key}
           </div>
         ))}
@@ -253,9 +253,9 @@ export function TimelineView({ aufgaben, experten, lang, onSelect, i18n }: Props
                   {row.agent ? (
                     <>
                       <div style={{
-                        width: 24, height: 24, borderRadius: '8px', flexShrink: 0,
-                        background: (row.agent.avatarFarbe || '#23CDCB') + '22',
-                        color: row.agent.avatarFarbe || '#23CDCB',
+                        width: 24, height: 24, borderRadius: 0, flexShrink: 0,
+                        background: (row.agent.avatarFarbe || '#c5a059') + '22',
+                        color: row.agent.avatarFarbe || '#c5a059',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: '0.625rem', fontWeight: 700,
                       }}>
@@ -317,7 +317,7 @@ export function TimelineView({ aufgaben, experten, lang, onSelect, i18n }: Props
                     {showLabel && (
                       <span style={{
                         fontSize: '0.625rem', fontWeight: isMonthStart ? 700 : 500,
-                        color: isToday ? '#23CDCB' : isMonthStart ? '#d4d4d8' : '#52525b',
+                        color: isToday ? '#c5a059' : isMonthStart ? '#d4d4d8' : '#52525b',
                         whiteSpace: 'nowrap',
                       }}>
                         {isMonthStart
@@ -330,11 +330,11 @@ export function TimelineView({ aufgaben, experten, lang, onSelect, i18n }: Props
                       <div style={{
                         position: 'absolute', bottom: 0,
                         left: (i * DAY_W) + (DAY_W / 2),
-                        width: 2, height: 6, background: '#23CDCB', borderRadius: 1,
+                        width: 2, height: 6, background: '#c5a059', borderRadius: 0,
                       }} />
                     )}
                     <span style={{
-                      fontSize: '0.5625rem', color: isToday ? '#23CDCB' : '#3f3f46',
+                      fontSize: '0.5625rem', color: isToday ? '#c5a059' : '#3f3f46',
                     }}>
                       {d.getDate()}
                     </span>
@@ -352,7 +352,7 @@ export function TimelineView({ aufgaben, experten, lang, onSelect, i18n }: Props
                   left: todayOffset * DAY_W + DAY_W / 2,
                   top: 0, bottom: 0,
                   width: 2,
-                  background: 'rgba(35,205,202,0.5)',
+                  background: 'rgba(197,160,89,0.5)',
                   zIndex: 2,
                   pointerEvents: 'none',
                 }} />
@@ -420,7 +420,7 @@ export function TimelineView({ aufgaben, experten, lang, onSelect, i18n }: Props
                             top: ROW_H * 0.2,
                             height: ROW_H * 0.6,
                             width: Math.max(w - 4, 20),
-                            borderRadius: '6px',
+                            borderRadius: 0,
                             background: color + (isDone ? '50' : '30'),
                             border: `1px solid ${color}${isHovered ? 'cc' : '55'}`,
                             cursor: 'pointer',
@@ -471,7 +471,7 @@ export function TimelineView({ aufgaben, experten, lang, onSelect, i18n }: Props
           zIndex: 9999,
           background: 'rgba(10,10,20,0.97)',
           border: '1px solid rgba(255,255,255,0.12)',
-          borderRadius: '12px',
+          borderRadius: 0,
           padding: '0.75rem 1rem',
           pointerEvents: 'none',
           minWidth: 180, maxWidth: 280,
@@ -482,7 +482,7 @@ export function TimelineView({ aufgaben, experten, lang, onSelect, i18n }: Props
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             <span style={{
-              padding: '0.125rem 0.5rem', borderRadius: '4px', fontSize: '0.6875rem',
+              padding: '0.125rem 0.5rem', borderRadius: 0, fontSize: '0.6875rem',
               background: (STATUS_COLORS[tooltip.task.status] || '#52525b') + '25',
               color: STATUS_COLORS[tooltip.task.status] || '#52525b',
               border: `1px solid ${STATUS_COLORS[tooltip.task.status] || '#52525b'}40`,
@@ -490,7 +490,7 @@ export function TimelineView({ aufgaben, experten, lang, onSelect, i18n }: Props
               {(i18n.status as any)[tooltip.task.status]}
             </span>
             <span style={{
-              padding: '0.125rem 0.5rem', borderRadius: '4px', fontSize: '0.6875rem',
+              padding: '0.125rem 0.5rem', borderRadius: 0, fontSize: '0.6875rem',
               background: 'rgba(255,255,255,0.05)', color: '#71717a',
               border: '1px solid rgba(255,255,255,0.1)',
             }}>

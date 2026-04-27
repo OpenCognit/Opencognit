@@ -4,6 +4,7 @@
 export async function authFetch(url: string, options: RequestInit = {}) {
   const token = localStorage.getItem('opencognit_token');
   return fetch(url, {
+    credentials: 'include',
     ...options,
     headers: {
       'Content-Type': 'application/json',

@@ -8,7 +8,7 @@
 // 4. Skills unter dem Deprecation-Threshold werden automatisch entfernt
 
 import { db } from '../db/client.js';
-import { skillsLibrary, expertenSkills, experten } from '../db/schema.js';
+import { skillsLibrary, agentSkills, agents } from '../db/schema.js';
 import { eq, and, lt } from 'drizzle-orm';
 import { v4 as uuid } from 'uuid';
 
@@ -22,10 +22,10 @@ const MAX_AUTO_SKILLS_PRO_AGENT = 20; // Maximal 20 auto-generierte Skills pro A
 
 // ─── Skill-Extraktion ───────────────────────────────────────────────────────
 
-interface ExtrahierterSkill {
+interface ExtractedSkill {
   name: string;
-  beschreibung: string;
-  inhalt: string;
+  description: string;
+  content: string;
   tags: string[];
 }
 
@@ -33,21 +33,21 @@ interface ExtrahierterSkill {
  * Extrahiert wiederverwendbare Patterns aus einem Agent-Output.
  * Sucht nach expliziten Skill-Tags ODER erkennt strukturierte Lösungen.
  */
-export function extrahiereSkills(agentOutput: string, taskTitel: string): ExtrahierterSkill[] {
-  const skills: ExtrahierterSkill[] = [];
+export function extrahiereSkills(agentOutput: string, taskTitel: string): ExtractedSkill[] {
+  const skills: ExtractedSkill[] = [];
 
   // Methode 1: Explizite [SKILL:name]...[/SKILL:name] Tags
   const skillTagRegex = /\[SKILL:([^\]]+)\]([\s\S]*?)\[\/SKILL:\1\]/gi;
   let match;
   while ((match = skillTagRegex.exec(agentOutput)) !== null) {
     const name = match[1].trim();
-    const inhalt = match[2].trim();
-    if (inhalt.length >= MIN_SKILL_LAENGE) {
+    const content = match[2].trim();
+    if (content.length >= MIN_SKILL_LAENGE) {
       skills.push({
         name,
-        beschreibung: `Auto-generiert aus Task: ${taskTitel}`,
-        inhalt,
-        tags: extrahiereTags(inhalt, name),
+        description: `Auto-generiert aus Task: ${taskTitel}`,
+        content,
+        tags: extrahiereTags(content, name),
       });
     }
   }
@@ -58,13 +58,13 @@ export function extrahiereSkills(agentOutput: string, taskTitel: string): Extrah
     const codeBlockRegex = /###\s+(.+)\n([\s\S]*?```[\s\S]*?```[\s\S]*?)(?=###|\z)/g;
     while ((match = codeBlockRegex.exec(agentOutput)) !== null) {
       const name = match[1].trim();
-      const inhalt = match[2].trim();
-      if (inhalt.length >= MIN_SKILL_LAENGE && inhalt.includes('```')) {
+      const content = match[2].trim();
+      if (content.length >= MIN_SKILL_LAENGE && content.includes('```')) {
         skills.push({
           name: `${name} (${taskTitel.slice(0, 30)})`,
-          beschreibung: `Pattern extrahiert aus: ${taskTitel}`,
-          inhalt,
-          tags: extrahiereTags(inhalt, name),
+          description: `Pattern extrahiert aus: ${taskTitel}`,
+          content,
+          tags: extrahiereTags(content, name),
         });
       }
     }
@@ -76,9 +76,9 @@ export function extrahiereSkills(agentOutput: string, taskTitel: string): Extrah
 /**
  * Extrahiert relevante Tags aus einem Skill-Inhalt.
  */
-function extrahiereTags(inhalt: string, name: string): string[] {
+function extrahiereTags(content: string, name: string): string[] {
   const tags: string[] = [];
-  const text = `${name} ${inhalt}`.toLowerCase();
+  const text = `${name} ${content}`.toLowerCase();
 
   // Technologie-Keywords
   const techKeywords = [
@@ -112,39 +112,39 @@ export function aktualisiereKonfidenz(skillId: string, erfolgreich: boolean): vo
   if (!skill) return;
 
   const delta = erfolgreich ? KONFIDENZ_ERFOLG_BONUS : -KONFIDENZ_FEHLER_MALUS;
-  const neueKonfidenz = Math.max(0, Math.min(100, skill.konfidenz + delta));
-  const neueNutzungen = skill.nutzungen + 1;
-  const neueErfolge = skill.erfolge + (erfolgreich ? 1 : 0);
+  const neueKonfidenz = Math.max(0, Math.min(100, skill.confidence + delta));
+  const neueNutzungen = skill.uses + 1;
+  const neueErfolge = skill.successes + (erfolgreich ? 1 : 0);
 
   db.update(skillsLibrary).set({
-    konfidenz: neueKonfidenz,
-    nutzungen: neueNutzungen,
-    erfolge: neueErfolge,
-    aktualisiertAm: new Date().toISOString(),
+    confidence: neueKonfidenz,
+    uses: neueNutzungen,
+    successes: neueErfolge,
+    updatedAt: new Date().toISOString(),
   }).where(eq(skillsLibrary.id, skillId)).run();
 
-  console.log(`🧬 Learning Loop: Skill "${skill.name}" Konfidenz ${skill.konfidenz} → ${neueKonfidenz} (${erfolgreich ? 'Erfolg' : 'Fehler'})`);
+  console.log(`🧬 Learning Loop: Skill "${skill.name}" Konfidenz ${skill.confidence} → ${neueKonfidenz} (${erfolgreich ? 'Erfolg' : 'Fehler'})`);
 }
 
 /**
  * Entfernt alle Skills die unter den Deprecation-Threshold gefallen sind.
  * Gibt die Anzahl entfernter Skills zurück.
  */
-export function deprecateSchlechteSkills(unternehmenId: string): number {
+export function deprecateSchlechteSkills(companyId: string): number {
   const zuEntfernen = db.select().from(skillsLibrary)
     .where(and(
-      eq(skillsLibrary.unternehmenId, unternehmenId),
-      eq(skillsLibrary.quelle, 'learning-loop'),
-      lt(skillsLibrary.konfidenz, KONFIDENZ_DEPRECATION),
+      eq(skillsLibrary.companyId, companyId),
+      eq(skillsLibrary.source, 'learning-loop'),
+      lt(skillsLibrary.confidence, KONFIDENZ_DEPRECATION),
     ))
     .all();
 
   for (const skill of zuEntfernen) {
     // Zuerst Zuweisungen entfernen
-    db.delete(expertenSkills).where(eq(expertenSkills.skillId, skill.id)).run();
+    db.delete(agentSkills).where(eq(agentSkills.skillId, skill.id)).run();
     // Dann den Skill selbst
     db.delete(skillsLibrary).where(eq(skillsLibrary.id, skill.id)).run();
-    console.log(`🗑️ Learning Loop: Skill "${skill.name}" deprecated (Konfidenz: ${skill.konfidenz})`);
+    console.log(`🗑️ Learning Loop: Skill "${skill.name}" deprecated (Konfidenz: ${skill.confidence})`);
   }
 
   return zuEntfernen.length;
@@ -158,7 +158,7 @@ export function deprecateSchlechteSkills(unternehmenId: string): number {
  */
 export function nachZyklusVerarbeitung(
   expertId: string,
-  unternehmenId: string,
+  companyId: string,
   taskTitel: string,
   agentOutput: string,
   erfolg: boolean,
@@ -166,9 +166,9 @@ export function nachZyklusVerarbeitung(
   const ergebnis = { neueSkills: 0, aktualisiertSkills: 0, deprecatedSkills: 0 };
 
   // 1. Konfidenz aller genutzten Skills aktualisieren
-  const genutzteSkills = db.select({ skill: skillsLibrary }).from(expertenSkills)
-    .innerJoin(skillsLibrary, eq(expertenSkills.skillId, skillsLibrary.id))
-    .where(eq(expertenSkills.expertId, expertId))
+  const genutzteSkills = db.select({ skill: skillsLibrary }).from(agentSkills)
+    .innerJoin(skillsLibrary, eq(agentSkills.skillId, skillsLibrary.id))
+    .where(eq(agentSkills.agentId, expertId))
     .all()
     .map((r: any) => r.skill);
 
@@ -189,8 +189,8 @@ export function nachZyklusVerarbeitung(
     // Prüfe Limit
     const bestehendeAutoSkills = db.select().from(skillsLibrary)
       .where(and(
-        eq(skillsLibrary.unternehmenId, unternehmenId),
-        eq(skillsLibrary.quelle, 'learning-loop'),
+        eq(skillsLibrary.companyId, companyId),
+        eq(skillsLibrary.source, 'learning-loop'),
       ))
       .all();
 
@@ -204,11 +204,11 @@ export function nachZyklusVerarbeitung(
 
       if (existiert) {
         // Update: Inhalt zusammenführen, Konfidenz leicht erhöhen
-        const neuerInhalt = existiert.inhalt + '\n\n---\n\n' + skill.inhalt;
+        const neuerInhalt = existiert.content + '\n\n---\n\n' + skill.content;
         db.update(skillsLibrary).set({
-          inhalt: neuerInhalt.slice(0, 5000), // Max 5k Zeichen
-          konfidenz: Math.min(100, existiert.konfidenz + 3),
-          aktualisiertAm: new Date().toISOString(),
+          content: neuerInhalt.slice(0, 5000), // Max 5k Zeichen
+          confidence: Math.min(100, existiert.confidence + 3),
+          updatedAt: new Date().toISOString(),
         }).where(eq(skillsLibrary.id, existiert.id)).run();
         ergebnis.aktualisiertSkills++;
       } else {
@@ -216,26 +216,26 @@ export function nachZyklusVerarbeitung(
         const skillId = uuid();
         db.insert(skillsLibrary).values({
           id: skillId,
-          unternehmenId,
+          companyId,
           name: skill.name,
-          beschreibung: skill.beschreibung,
-          inhalt: skill.inhalt.slice(0, 5000),
+          description: skill.description,
+          content: skill.content.slice(0, 5000),
           tags: JSON.stringify(skill.tags),
-          erstelltVon: 'learning-loop',
-          konfidenz: 50,
-          nutzungen: 0,
-          erfolge: 0,
-          quelle: 'learning-loop',
-          erstelltAm: new Date().toISOString(),
-          aktualisiertAm: new Date().toISOString(),
+          createdBy: 'learning-loop',
+          confidence: 50,
+          uses: 0,
+          successes: 0,
+          source: 'learning-loop',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         }).run();
 
         // Skill dem Agenten zuweisen
-        db.insert(expertenSkills).values({
+        db.insert(agentSkills).values({
           id: uuid(),
           expertId,
           skillId,
-          erstelltAm: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
         }).run();
 
         ergebnis.neueSkills++;
@@ -245,7 +245,7 @@ export function nachZyklusVerarbeitung(
   }
 
   // 3. Schlechte Skills aufräumen
-  ergebnis.deprecatedSkills = deprecateSchlechteSkills(unternehmenId);
+  ergebnis.deprecatedSkills = deprecateSchlechteSkills(companyId);
 
   return ergebnis;
 }

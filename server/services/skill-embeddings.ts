@@ -38,6 +38,7 @@ async function initPipeline(): Promise<void> {
   // Attempt to import @xenova/transformers — may not be installed.
   let transformers: any;
   try {
+    // @ts-ignore Package may not be installed
     transformers = await import('@xenova/transformers');
   } catch {
     // Package not installed — embeddings remain unavailable.
@@ -154,7 +155,7 @@ export async function findRelevantSkills(
   // Embed all skills (cache hits are instant)
   const scored = await Promise.all(
     skills.map(async (skill: any) => {
-      const skillText = `${skill.name} ${skill.beschreibung ?? ''} ${skill.inhalt}`;
+      const skillText = `${skill.name} ${skill.description ?? ''} ${skill.content}`;
       const skillId   = skill.id as string;
       const skillVec  = await getOrCacheSkillEmbedding(skillId, skillText);
       const score     = cosineSimilarity(queryVec, skillVec);

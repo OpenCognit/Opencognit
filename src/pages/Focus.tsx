@@ -57,7 +57,7 @@ interface FocusData {
 const REASON_CFG: Record<string, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
   blocked:       { label: 'Blocked', color: '#ef4444', bg: 'rgba(239,68,68,0.08)', icon: <AlertTriangle size={12} /> },
   needs_review:  { label: 'Review', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', icon: <Shield size={12} /> },
-  unassigned:    { label: 'No Agent', color: '#a855f7', bg: 'rgba(168,85,247,0.08)', icon: <Users size={12} /> },
+  unassigned:    { label: 'No Agent', color: '#9b87c8', bg: 'rgba(155,135,200,0.08)', icon: <Users size={12} /> },
   high_priority: { label: 'High', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)', icon: <Zap size={12} /> },
 };
 
@@ -72,7 +72,7 @@ function greeting(): { text: string; icon: React.ReactNode } {
   const h = new Date().getHours();
   if (h < 5)  return { text: 'Working late?', icon: <Moon size={18} style={{ color: '#a78bfa' }} /> };
   if (h < 12) return { text: 'Good morning', icon: <Sun size={18} style={{ color: '#fbbf24' }} /> };
-  if (h < 17) return { text: 'Good afternoon', icon: <Coffee size={18} style={{ color: '#23CDCB' }} /> };
+  if (h < 17) return { text: 'Good afternoon', icon: <Coffee size={18} style={{ color: '#c5a059' }} /> };
   if (h < 21) return { text: 'Good evening', icon: <Sunset size={18} style={{ color: '#f97316' }} /> };
   return { text: 'Burning the midnight oil?', icon: <Moon size={18} style={{ color: '#a78bfa' }} /> };
 }
@@ -236,14 +236,14 @@ function PomodoroTimer({ onFocusStart, onFocusEnd }: PomodoroTimerProps) {
   const circ = 2 * Math.PI * r;
   const dash = circ * pct;
 
-  const timerColor = mode === 'focus' ? '#23CDCB' : '#22c55e';
+  const timerColor = mode === 'focus' ? '#c5a059' : '#22c55e';
   const modeLabel = mode === 'focus' ? 'Focus Session' : 'Short Break';
 
   return (
     <div style={{
       background: 'rgba(255,255,255,0.02)',
-      border: `1px solid ${mode === 'focus' ? 'rgba(35,205,202,0.12)' : 'rgba(34,197,94,0.12)'}`,
-      borderRadius: 20,
+      border: `1px solid ${mode === 'focus' ? 'rgba(197,160,89,0.12)' : 'rgba(34,197,94,0.12)'}`,
+      borderRadius: 0,
       padding: '1.5rem',
       display: 'flex',
       flexDirection: 'column',
@@ -275,23 +275,23 @@ function PomodoroTimer({ onFocusStart, onFocusEnd }: PomodoroTimerProps) {
       {showSettings && (
         <div style={{
           width: '100%', background: 'rgba(255,255,255,0.03)',
-          border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12,
+          border: '1px solid rgba(255,255,255,0.07)', borderRadius: 0,
           padding: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.5rem',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
             <label style={{ fontSize: '0.75rem', color: '#71717a', flex: 1 }}>Work</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-              <button onClick={() => { if (workMins > 5) { setWorkMins(m => m - 5); setSeconds((workMins - 5) * 60); setRunning(false); } }} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 4, color: '#a1a1aa', cursor: 'pointer', width: 22, height: 22, fontSize: '0.875rem' }}>−</button>
-              <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#23CDCB', width: 36, textAlign: 'center' }}>{workMins}m</span>
-              <button onClick={() => { if (workMins < 90) { setWorkMins(m => m + 5); setSeconds((workMins + 5) * 60); setRunning(false); } }} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 4, color: '#a1a1aa', cursor: 'pointer', width: 22, height: 22, fontSize: '0.875rem' }}>+</button>
+              <button onClick={() => { if (workMins > 5) { setWorkMins(m => m - 5); setSeconds((workMins - 5) * 60); setRunning(false); } }} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 0, color: '#a1a1aa', cursor: 'pointer', width: 22, height: 22, fontSize: '0.875rem' }}>−</button>
+              <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#c5a059', width: 36, textAlign: 'center' }}>{workMins}m</span>
+              <button onClick={() => { if (workMins < 90) { setWorkMins(m => m + 5); setSeconds((workMins + 5) * 60); setRunning(false); } }} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 0, color: '#a1a1aa', cursor: 'pointer', width: 22, height: 22, fontSize: '0.875rem' }}>+</button>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
             <label style={{ fontSize: '0.75rem', color: '#71717a', flex: 1 }}>Break</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-              <button onClick={() => { if (breakMins > 1) setBreakMins(m => m - 1); }} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 4, color: '#a1a1aa', cursor: 'pointer', width: 22, height: 22, fontSize: '0.875rem' }}>−</button>
+              <button onClick={() => { if (breakMins > 1) setBreakMins(m => m - 1); }} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 0, color: '#a1a1aa', cursor: 'pointer', width: 22, height: 22, fontSize: '0.875rem' }}>−</button>
               <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#22c55e', width: 36, textAlign: 'center' }}>{breakMins}m</span>
-              <button onClick={() => { if (breakMins < 30) setBreakMins(m => m + 1); }} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 4, color: '#a1a1aa', cursor: 'pointer', width: 22, height: 22, fontSize: '0.875rem' }}>+</button>
+              <button onClick={() => { if (breakMins < 30) setBreakMins(m => m + 1); }} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 0, color: '#a1a1aa', cursor: 'pointer', width: 22, height: 22, fontSize: '0.875rem' }}>+</button>
             </div>
           </div>
         </div>
@@ -333,13 +333,13 @@ function PomodoroTimer({ onFocusStart, onFocusEnd }: PomodoroTimerProps) {
         <button
           onClick={handleStartPause}
           style={{
-            padding: '0.5rem 1.5rem', borderRadius: 10, border: 'none', cursor: 'pointer',
-            background: running ? 'rgba(239,68,68,0.1)' : `rgba(35,205,202,0.12)`,
-            color: running ? '#ef4444' : '#23CDCB',
+            padding: '0.5rem 1.5rem', borderRadius: 0, border: 'none', cursor: 'pointer',
+            background: running ? 'rgba(239,68,68,0.1)' : `rgba(197,160,89,0.12)`,
+            color: running ? '#ef4444' : '#c5a059',
             fontWeight: 700, fontSize: '0.8125rem',
             display: 'flex', alignItems: 'center', gap: '0.375rem',
             transition: 'all 0.2s',
-            boxShadow: running ? 'none' : '0 0 16px rgba(35,205,202,0.15)',
+            boxShadow: running ? 'none' : '0 0 16px rgba(197,160,89,0.15)',
           }}
         >
           {running ? <><Pause size={14} /> Pause</> : <><Play size={14} /> {seconds === 0 || seconds === total ? 'Start' : 'Resume'}</>}
@@ -347,7 +347,7 @@ function PomodoroTimer({ onFocusStart, onFocusEnd }: PomodoroTimerProps) {
         <button
           onClick={handleReset}
           style={{
-            padding: '0.5rem 0.75rem', borderRadius: 10, border: 'none', cursor: 'pointer',
+            padding: '0.5rem 0.75rem', borderRadius: 0, border: 'none', cursor: 'pointer',
             background: 'rgba(255,255,255,0.04)', color: '#52525b',
             display: 'flex', alignItems: 'center',
             transition: 'all 0.15s',
@@ -365,7 +365,7 @@ function PomodoroTimer({ onFocusStart, onFocusEnd }: PomodoroTimerProps) {
         <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
           <span style={{ fontSize: '0.625rem', color: '#52525b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Sessions</span>
           {Array.from({ length: Math.min(sessions, 8) }).map((_, i) => (
-            <div key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: '#23CDCB', opacity: 0.7 }} />
+            <div key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: '#c5a059', opacity: 0.7 }} />
           ))}
           {sessions > 8 && <span style={{ fontSize: '0.6875rem', color: '#52525b' }}>+{sessions - 8}</span>}
         </div>
@@ -374,10 +374,10 @@ function PomodoroTimer({ onFocusStart, onFocusEnd }: PomodoroTimerProps) {
       {/* Mode label when finished */}
       {seconds === 0 && !running && (
         <div style={{
-          fontSize: '0.75rem', color: mode === 'focus' ? '#22c55e' : '#23CDCB',
+          fontSize: '0.75rem', color: mode === 'focus' ? '#22c55e' : '#c5a059',
           fontWeight: 700, textAlign: 'center',
-          padding: '0.375rem 0.75rem', borderRadius: 8,
-          background: mode === 'focus' ? 'rgba(34,197,94,0.08)' : 'rgba(35,205,202,0.08)',
+          padding: '0.375rem 0.75rem', borderRadius: 0,
+          background: mode === 'focus' ? 'rgba(34,197,94,0.08)' : 'rgba(197,160,89,0.08)',
         }}>
           {mode === 'focus' ? 'Session complete! Take a break.' : 'Break over! Ready to focus?'}
         </div>
@@ -430,26 +430,26 @@ function FocusModeToggle({ unternehmenId, focusMode, onToggle, pendingDurationMi
   return (
     <div style={{
       padding: '1rem 1.25rem',
-      borderRadius: 16,
+      borderRadius: 0,
       background: focusMode.active
-        ? 'rgba(35,205,202,0.06)'
+        ? 'rgba(197,160,89,0.06)'
         : 'rgba(255,255,255,0.02)',
-      border: `1px solid ${focusMode.active ? 'rgba(35,205,202,0.2)' : 'rgba(255,255,255,0.06)'}`,
+      border: `1px solid ${focusMode.active ? 'rgba(197,160,89,0.2)' : 'rgba(255,255,255,0.06)'}`,
       transition: 'all 0.3s',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
         <div style={{
-          width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-          background: focusMode.active ? 'rgba(35,205,202,0.15)' : 'rgba(255,255,255,0.05)',
+          width: 36, height: 36, borderRadius: 0, flexShrink: 0,
+          background: focusMode.active ? 'rgba(197,160,89,0.15)' : 'rgba(255,255,255,0.05)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: focusMode.active ? '#23CDCB' : '#52525b',
+          color: focusMode.active ? '#c5a059' : '#52525b',
           transition: 'all 0.3s',
         }}>
           {focusMode.active ? <BellOff size={16} /> : <Bell size={16} />}
         </div>
 
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '0.875rem', fontWeight: 700, color: focusMode.active ? '#23CDCB' : '#a1a1aa' }}>
+          <div style={{ fontSize: '0.875rem', fontWeight: 700, color: focusMode.active ? '#c5a059' : '#a1a1aa' }}>
             {focusMode.active ? 'Focus Mode Active' : 'Focus Mode'}
           </div>
           <div style={{ fontSize: '0.6875rem', color: '#52525b', marginTop: 2 }}>
@@ -464,10 +464,10 @@ function FocusModeToggle({ unternehmenId, focusMode, onToggle, pendingDurationMi
           disabled={loading}
           style={{
             padding: '0.375rem 0.875rem',
-            borderRadius: 8,
-            border: `1px solid ${focusMode.active ? 'rgba(239,68,68,0.3)' : 'rgba(35,205,202,0.3)'}`,
-            background: focusMode.active ? 'rgba(239,68,68,0.08)' : 'rgba(35,205,202,0.08)',
-            color: focusMode.active ? '#ef4444' : '#23CDCB',
+            borderRadius: 0,
+            border: `1px solid ${focusMode.active ? 'rgba(239,68,68,0.3)' : 'rgba(197,160,89,0.3)'}`,
+            background: focusMode.active ? 'rgba(239,68,68,0.08)' : 'rgba(197,160,89,0.08)',
+            color: focusMode.active ? '#ef4444' : '#c5a059',
             cursor: loading ? 'not-allowed' : 'pointer',
             fontSize: '0.75rem', fontWeight: 700,
             transition: 'all 0.2s',
@@ -498,13 +498,13 @@ function ActionCard({ action, onClick, isFocused, onFocusToggle }: {
       onMouseLeave={() => setHovered(false)}
       style={{
         padding: '0.875rem 1rem',
-        borderRadius: 12,
+        borderRadius: 0,
         background: isFocused
-          ? 'rgba(35,205,202,0.06)'
+          ? 'rgba(197,160,89,0.06)'
           : hovered ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.02)',
-        border: `1px solid ${isFocused ? 'rgba(35,205,202,0.25)' : hovered ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)'}`,
+        border: `1px solid ${isFocused ? 'rgba(197,160,89,0.25)' : hovered ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)'}`,
         transition: 'all 0.2s',
-        boxShadow: isFocused ? '0 0 16px rgba(35,205,202,0.12)' : hovered ? PRIORITY_GLOW[action.prioritaet] : 'none',
+        boxShadow: isFocused ? '0 0 16px rgba(197,160,89,0.12)' : hovered ? PRIORITY_GLOW[action.prioritaet] : 'none',
         display: 'flex', flexDirection: 'column', gap: '0.5rem',
       }}
     >
@@ -524,10 +524,10 @@ function ActionCard({ action, onClick, isFocused, onFocusToggle }: {
             onClick={e => { e.stopPropagation(); onFocusToggle(); }}
             title={isFocused ? 'Remove focus' : 'Focus on this task'}
             style={{
-              background: isFocused ? 'rgba(35,205,202,0.12)' : 'rgba(255,255,255,0.04)',
-              border: `1px solid ${isFocused ? 'rgba(35,205,202,0.3)' : 'rgba(255,255,255,0.08)'}`,
-              borderRadius: 6, cursor: 'pointer',
-              color: isFocused ? '#23CDCB' : '#52525b',
+              background: isFocused ? 'rgba(197,160,89,0.12)' : 'rgba(255,255,255,0.04)',
+              border: `1px solid ${isFocused ? 'rgba(197,160,89,0.3)' : 'rgba(255,255,255,0.08)'}`,
+              borderRadius: 0, cursor: 'pointer',
+              color: isFocused ? '#c5a059' : '#52525b',
               padding: '0.2rem 0.375rem',
               fontSize: '0.625rem', fontWeight: 700,
               letterSpacing: '0.04em', textTransform: 'uppercase',
@@ -542,7 +542,7 @@ function ActionCard({ action, onClick, isFocused, onFocusToggle }: {
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
         <span style={{
-          padding: '0.1rem 0.5rem', borderRadius: 999,
+          padding: '0.1rem 0.5rem', borderRadius: 0,
           background: cfg.bg, color: cfg.color,
           fontSize: '0.6875rem', fontWeight: 700,
           display: 'flex', alignItems: 'center', gap: 3,
@@ -555,7 +555,7 @@ function ActionCard({ action, onClick, isFocused, onFocusToggle }: {
           </span>
         )}
         {!action.agentName && action.reason === 'unassigned' && (
-          <span style={{ fontSize: '0.6875rem', color: '#a855f7', fontStyle: 'italic' }}>
+          <span style={{ fontSize: '0.6875rem', color: '#9b87c8', fontStyle: 'italic' }}>
             Needs agent assignment
           </span>
         )}
@@ -570,26 +570,26 @@ function AgentPulseCard({ agent, dimmed }: { agent: ActiveAgent; dimmed?: boolea
   return (
     <div style={{
       padding: '0.75rem',
-      borderRadius: 12,
-      background: 'rgba(35,205,202,0.03)',
-      border: '1px solid rgba(35,205,202,0.1)',
+      borderRadius: 0,
+      background: 'rgba(197,160,89,0.03)',
+      border: '1px solid rgba(197,160,89,0.1)',
       display: 'flex', gap: '0.75rem', alignItems: 'flex-start',
       opacity: dimmed ? 0.35 : 1,
       transition: 'opacity 0.3s',
     }}>
       <div style={{
-        width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-        background: agent.avatarFarbe || '#23CDCB',
+        width: 36, height: 36, borderRadius: 0, flexShrink: 0,
+        background: agent.avatarFarbe || '#c5a059',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: '1rem',
-        boxShadow: dimmed ? 'none' : '0 0 10px rgba(35,205,202,0.2)',
+        boxShadow: dimmed ? 'none' : '0 0 10px rgba(197,160,89,0.2)',
         position: 'relative',
       }}>
         {agent.avatar || agent.name[0]}
         <div style={{
           position: 'absolute', bottom: 0, right: 0,
           width: 8, height: 8, borderRadius: '50%',
-          background: dimmed ? '#3f3f46' : agent.status === 'running' ? '#23CDCB' : '#22c55e',
+          background: dimmed ? '#3f3f46' : agent.status === 'running' ? '#c5a059' : '#22c55e',
           border: '2px solid #0a0a0f',
           animation: (!dimmed && agent.status === 'running') ? 'pulse 2s ease-in-out infinite' : 'none',
         }} />
@@ -602,7 +602,7 @@ function AgentPulseCard({ agent, dimmed }: { agent: ActiveAgent; dimmed?: boolea
           <div style={{ fontSize: '0.75rem', color: '#3f3f46', fontStyle: 'italic' }}>Silenced (Focus Mode)</div>
         ) : agent.currentTask ? (
           <div style={{ fontSize: '0.75rem', color: '#a1a1aa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            <span style={{ color: '#23CDCB' }}>⚡ </span>{agent.currentTask.titel}
+            <span style={{ color: '#c5a059' }}>⚡ </span>{agent.currentTask.titel}
           </div>
         ) : (
           <div style={{ fontSize: '0.75rem', color: '#3f3f46', fontStyle: 'italic' }}>Standing by</div>
@@ -662,7 +662,7 @@ function DailyGoals() {
     <section style={{ marginBottom: '1.5rem' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
         <span style={{
-          width: 26, height: 26, borderRadius: 8, background: 'rgba(245,158,11,0.12)',
+          width: 26, height: 26, borderRadius: 0, background: 'rgba(245,158,11,0.12)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b',
         }}>
           <Flag size={14} />
@@ -672,7 +672,7 @@ function DailyGoals() {
         </h2>
         {goals.length > 0 && (
           <span style={{
-            padding: '0.1rem 0.5rem', borderRadius: 999,
+            padding: '0.1rem 0.5rem', borderRadius: 0,
             background: allDone ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.1)',
             color: allDone ? '#22c55e' : '#f59e0b',
             fontSize: '0.6875rem', fontWeight: 800,
@@ -685,7 +685,7 @@ function DailyGoals() {
       {/* All done celebration */}
       {allDone && goals.length > 0 && (
         <div style={{
-          padding: '0.875rem 1rem', borderRadius: 12, marginBottom: '0.75rem',
+          padding: '0.875rem 1rem', borderRadius: 0, marginBottom: '0.75rem',
           background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)',
           textAlign: 'center', animation: 'pulse 2s ease-in-out',
         }}>
@@ -700,7 +700,7 @@ function DailyGoals() {
         {goals.map(goal => (
           <div key={goal.id} style={{
             display: 'flex', alignItems: 'center', gap: '0.625rem',
-            padding: '0.5rem 0.75rem', borderRadius: 10,
+            padding: '0.5rem 0.75rem', borderRadius: 0,
             background: goal.done ? 'rgba(34,197,94,0.04)' : 'rgba(255,255,255,0.02)',
             border: `1px solid ${goal.done ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.06)'}`,
             transition: 'all 0.2s',
@@ -747,7 +747,7 @@ function DailyGoals() {
               flex: 1, padding: '0.5rem 0.75rem',
               background: 'rgba(255,255,255,0.03)',
               border: '1px solid rgba(255,255,255,0.07)',
-              borderRadius: 9, fontSize: '0.8125rem', color: '#d4d4d8',
+              borderRadius: 0, fontSize: '0.8125rem', color: '#d4d4d8',
               outline: 'none',
             }}
             onFocus={e => e.target.style.borderColor = 'rgba(245,158,11,0.3)'}
@@ -757,7 +757,7 @@ function DailyGoals() {
             onClick={addGoal}
             disabled={!input.trim()}
             style={{
-              padding: '0.5rem 0.75rem', borderRadius: 9, border: 'none',
+              padding: '0.5rem 0.75rem', borderRadius: 0, border: 'none',
               background: input.trim() ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.03)',
               color: input.trim() ? '#f59e0b' : '#3f3f46',
               cursor: input.trim() ? 'pointer' : 'not-allowed',
@@ -879,15 +879,15 @@ export default function Focus() {
         <div style={{
           marginBottom: '1.5rem',
           padding: '0.75rem 1.25rem',
-          borderRadius: 14,
-          background: 'rgba(35,205,202,0.06)',
-          border: '1px solid rgba(35,205,202,0.2)',
+          borderRadius: 0,
+          background: 'rgba(197,160,89,0.06)',
+          border: '1px solid rgba(197,160,89,0.2)',
           display: 'flex', alignItems: 'center', gap: '0.75rem',
           backdropFilter: 'blur(8px)',
         }}>
-          <BellOff size={16} style={{ color: '#23CDCB', flexShrink: 0 }} />
+          <BellOff size={16} style={{ color: '#c5a059', flexShrink: 0 }} />
           <div style={{ flex: 1 }}>
-            <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#23CDCB' }}>Focus Mode Active</span>
+            <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#c5a059' }}>Focus Mode Active</span>
             <span style={{ fontSize: '0.8125rem', color: '#52525b', marginLeft: '0.5rem' }}>
               — Agent notifications are suppressed. You won't be interrupted.
               {focusMode.until && (
@@ -924,27 +924,27 @@ export default function Focus() {
             <button
               onClick={() => setStandupOpen(true)}
               style={{
-                padding: '0.375rem 0.75rem', borderRadius: 8,
-                background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)',
-                color: '#a855f7', cursor: 'pointer', fontSize: '0.75rem',
+                padding: '0.375rem 0.75rem', borderRadius: 0,
+                background: 'rgba(155,135,200,0.08)', border: '1px solid rgba(155,135,200,0.2)',
+                color: '#9b87c8', cursor: 'pointer', fontSize: '0.75rem',
                 display: 'flex', alignItems: 'center', gap: '0.375rem',
                 fontWeight: 600, transition: 'all 0.2s',
               }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(168,85,247,0.14)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(168,85,247,0.08)'; }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(155,135,200,0.14)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(155,135,200,0.08)'; }}
             >
               <MessagesSquare size={13} /> Standup
             </button>
             <button
               onClick={load}
               style={{
-                padding: '0.375rem 0.75rem', borderRadius: 8,
+                padding: '0.375rem 0.75rem', borderRadius: 0,
                 background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)',
                 color: '#71717a', cursor: 'pointer', fontSize: '0.75rem',
                 display: 'flex', alignItems: 'center', gap: '0.375rem',
                 transition: 'all 0.2s',
               }}
-              onMouseEnter={e => { e.currentTarget.style.color = '#23CDCB'; e.currentTarget.style.borderColor = 'rgba(35,205,202,0.3)'; }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#c5a059'; e.currentTarget.style.borderColor = 'rgba(197,160,89,0.3)'; }}
               onMouseLeave={e => { e.currentTarget.style.color = '#71717a'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; }}
             >
               <RefreshCw size={13} /> Refresh
@@ -957,7 +957,7 @@ export default function Focus() {
 
       {loading ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh', color: '#52525b', fontSize: '0.875rem' }}>
-          <Zap size={20} style={{ marginRight: '0.625rem', animation: 'spin 1.5s linear infinite', color: '#23CDCB' }} />
+          <Zap size={20} style={{ marginRight: '0.625rem', animation: 'spin 1.5s linear infinite', color: '#c5a059' }} />
           Loading your focus data…
         </div>
       ) : data && (
@@ -966,13 +966,13 @@ export default function Focus() {
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '2rem' }}>
             {[
               { label: 'Open Tasks', value: data.stats.total_open, color: '#94a3b8', icon: <Target size={14} /> },
-              { label: 'In Progress', value: data.stats.in_progress, color: '#23CDCB', icon: <Zap size={14} /> },
+              { label: 'In Progress', value: data.stats.in_progress, color: '#c5a059', icon: <Zap size={14} /> },
               { label: 'Done Today', value: data.velocity.today, color: '#22c55e', icon: <CheckCircle2 size={14} /> },
-              { label: 'Agents Active', value: data.stats.agents, color: '#a855f7', icon: <Users size={14} /> },
+              { label: 'Agents Active', value: data.stats.agents, color: '#9b87c8', icon: <Users size={14} /> },
               ...(data.pending_approvals > 0 ? [{ label: 'Approvals', value: data.pending_approvals, color: '#ef4444', icon: <Shield size={14} /> }] : []),
             ].map(stat => (
               <div key={stat.label} style={{
-                padding: '0.5rem 1rem', borderRadius: 10,
+                padding: '0.5rem 1rem', borderRadius: 0,
                 background: 'rgba(255,255,255,0.02)',
                 border: '1px solid rgba(255,255,255,0.06)',
                 display: 'flex', alignItems: 'center', gap: '0.5rem',
@@ -985,14 +985,14 @@ export default function Focus() {
 
             {data.velocity.week_avg > 0 && (
               <div style={{
-                padding: '0.5rem 1rem', borderRadius: 10,
-                background: 'rgba(35,205,202,0.04)',
-                border: '1px solid rgba(35,205,202,0.12)',
+                padding: '0.5rem 1rem', borderRadius: 0,
+                background: 'rgba(197,160,89,0.04)',
+                border: '1px solid rgba(197,160,89,0.12)',
                 display: 'flex', alignItems: 'center', gap: '0.5rem',
               }}>
-                <TrendingUp size={14} style={{ color: '#23CDCB' }} />
+                <TrendingUp size={14} style={{ color: '#c5a059' }} />
                 <span style={{ fontSize: '0.75rem', color: '#71717a' }}>
-                  Avg <strong style={{ color: '#23CDCB' }}>{data.velocity.week_avg}/day</strong> this week
+                  Avg <strong style={{ color: '#c5a059' }}>{data.velocity.week_avg}/day</strong> this week
                 </span>
               </div>
             )}
@@ -1015,7 +1015,7 @@ export default function Focus() {
                     display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f4f4f5',
                   }}>
                     <span style={{
-                      width: 26, height: 26, borderRadius: 8, background: 'rgba(239,68,68,0.12)',
+                      width: 26, height: 26, borderRadius: 0, background: 'rgba(239,68,68,0.12)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444',
                     }}>
                       <AlertTriangle size={14} />
@@ -1023,7 +1023,7 @@ export default function Focus() {
                     Action Required
                     {data.human_actions.length > 0 && (
                       <span style={{
-                        padding: '0.1rem 0.5rem', borderRadius: 999,
+                        padding: '0.1rem 0.5rem', borderRadius: 0,
                         background: 'rgba(239,68,68,0.15)', color: '#ef4444',
                         fontSize: '0.6875rem', fontWeight: 800,
                       }}>{data.human_actions.length}</span>
@@ -1037,7 +1037,7 @@ export default function Focus() {
                       display: 'flex', alignItems: 'center', gap: 4,
                       transition: 'color 0.15s',
                     }}
-                    onMouseEnter={e => e.currentTarget.style.color = '#23CDCB'}
+                    onMouseEnter={e => e.currentTarget.style.color = '#c5a059'}
                     onMouseLeave={e => e.currentTarget.style.color = '#52525b'}
                   >
                     View all <ArrowRight size={12} />
@@ -1046,9 +1046,9 @@ export default function Focus() {
 
                 {focusedTaskId && (
                   <div style={{
-                    padding: '0.5rem 0.875rem', marginBottom: '0.625rem', borderRadius: 10,
-                    background: 'rgba(35,205,202,0.05)', border: '1px solid rgba(35,205,202,0.15)',
-                    fontSize: '0.75rem', color: '#23CDCB',
+                    padding: '0.5rem 0.875rem', marginBottom: '0.625rem', borderRadius: 0,
+                    background: 'rgba(197,160,89,0.05)', border: '1px solid rgba(197,160,89,0.15)',
+                    fontSize: '0.75rem', color: '#c5a059',
                     display: 'flex', alignItems: 'center', gap: '0.375rem',
                   }}>
                     <Target size={12} />
@@ -1058,7 +1058,7 @@ export default function Focus() {
 
                 {data.human_actions.length === 0 ? (
                   <div style={{
-                    padding: '2rem', borderRadius: 16, textAlign: 'center',
+                    padding: '2rem', borderRadius: 0, textAlign: 'center',
                     background: 'rgba(34,197,94,0.04)', border: '1px solid rgba(34,197,94,0.1)',
                   }}>
                     <CheckCircle2 size={28} style={{ color: '#22c55e', margin: '0 auto 0.625rem', display: 'block' }} />
@@ -1094,7 +1094,7 @@ export default function Focus() {
                 <div
                   onClick={() => navigate('/approvals')}
                   style={{
-                    padding: '1rem 1.25rem', borderRadius: 14,
+                    padding: '1rem 1.25rem', borderRadius: 0,
                     background: 'rgba(239,68,68,0.06)',
                     border: '1px solid rgba(239,68,68,0.2)',
                     cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem',
@@ -1104,7 +1104,7 @@ export default function Focus() {
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(239,68,68,0.06)'; }}
                 >
                   <div style={{
-                    width: 36, height: 36, borderRadius: 10,
+                    width: 36, height: 36, borderRadius: 0,
                     background: 'rgba(239,68,68,0.15)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444',
                   }}>
@@ -1130,14 +1130,14 @@ export default function Focus() {
                     display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f4f4f5',
                   }}>
                     <span style={{
-                      width: 26, height: 26, borderRadius: 8, background: 'rgba(34,197,94,0.12)',
+                      width: 26, height: 26, borderRadius: 0, background: 'rgba(34,197,94,0.12)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#22c55e',
                     }}>
                       <CheckCircle2 size={14} />
                     </span>
                     Today's Wins
                     <span style={{
-                      padding: '0.1rem 0.5rem', borderRadius: 999,
+                      padding: '0.1rem 0.5rem', borderRadius: 0,
                       background: 'rgba(34,197,94,0.12)', color: '#22c55e',
                       fontSize: '0.6875rem', fontWeight: 800,
                     }}>{data.completed_today.length}</span>
@@ -1146,7 +1146,7 @@ export default function Focus() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
                     {data.completed_today.map(task => (
                       <div key={task.id} style={{
-                        padding: '0.625rem 0.875rem', borderRadius: 10,
+                        padding: '0.625rem 0.875rem', borderRadius: 0,
                         background: 'rgba(34,197,94,0.03)', border: '1px solid rgba(34,197,94,0.07)',
                         display: 'flex', alignItems: 'center', gap: '0.625rem',
                       }}>
@@ -1190,17 +1190,17 @@ export default function Focus() {
                   display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f4f4f5',
                 }}>
                   <span style={{
-                    width: 26, height: 26, borderRadius: 8, background: 'rgba(35,205,202,0.12)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#23CDCB',
+                    width: 26, height: 26, borderRadius: 0, background: 'rgba(197,160,89,0.12)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#c5a059',
                   }}>
                     <Sparkles size={14} />
                   </span>
                   AI Team
                   {data.ai_active.length > 0 && (
                     <span style={{
-                      padding: '0.1rem 0.5rem', borderRadius: 999,
-                      background: focusMode.active ? 'rgba(35,205,202,0.06)' : 'rgba(35,205,202,0.12)',
-                      color: focusMode.active ? '#52525b' : '#23CDCB',
+                      padding: '0.1rem 0.5rem', borderRadius: 0,
+                      background: focusMode.active ? 'rgba(197,160,89,0.06)' : 'rgba(197,160,89,0.12)',
+                      color: focusMode.active ? '#52525b' : '#c5a059',
                       fontSize: '0.6875rem', fontWeight: 800,
                     }}>
                       {data.ai_active.length} {focusMode.active ? 'silenced' : 'active'}
@@ -1210,7 +1210,7 @@ export default function Focus() {
 
                 {data.ai_active.length === 0 ? (
                   <div style={{
-                    padding: '1.5rem', borderRadius: 14, textAlign: 'center',
+                    padding: '1.5rem', borderRadius: 0, textAlign: 'center',
                     background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)',
                   }}>
                     <Clock size={22} style={{ color: '#3f3f46', margin: '0 auto 0.5rem', display: 'block' }} />
@@ -1219,12 +1219,12 @@ export default function Focus() {
                       onClick={() => navigate('/experts')}
                       style={{
                         marginTop: '0.75rem', padding: '0.375rem 0.875rem',
-                        borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)',
+                        borderRadius: 0, border: '1px solid rgba(255,255,255,0.06)',
                         background: 'rgba(255,255,255,0.03)', color: '#71717a',
                         cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
                         transition: 'all 0.2s',
                       }}
-                      onMouseEnter={e => { e.currentTarget.style.color = '#23CDCB'; e.currentTarget.style.borderColor = 'rgba(35,205,202,0.3)'; }}
+                      onMouseEnter={e => { e.currentTarget.style.color = '#c5a059'; e.currentTarget.style.borderColor = 'rgba(197,160,89,0.3)'; }}
                       onMouseLeave={e => { e.currentTarget.style.color = '#71717a'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; }}
                     >
                       Manage agents
@@ -1245,7 +1245,7 @@ export default function Focus() {
                   margin: '0 0 0.75rem', fontSize: '0.9375rem', fontWeight: 700, color: '#f4f4f5',
                   display: 'flex', alignItems: 'center', gap: '0.5rem',
                 }}>
-                  <span style={{ width: 26, height: 26, borderRadius: 8, background: 'rgba(168,85,247,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a855f7' }}>
+                  <span style={{ width: 26, height: 26, borderRadius: 0, background: 'rgba(155,135,200,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9b87c8' }}>
                     <Zap size={14} />
                   </span>
                   Quick Jump
@@ -1253,7 +1253,7 @@ export default function Focus() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
                   {[
                     { label: 'New Task', icon: '➕', path: '/tasks', hint: 'Assign to an agent' },
-                    { label: 'War Room', icon: '🎯', path: '/war-room', hint: 'Live agent view' },
+                    { label: 'Live Room', icon: '🎯', path: '/war-room', hint: 'Live agent view' },
                     { label: 'Goals', icon: '🏆', path: '/goals', hint: 'Track objectives' },
                     { label: 'Performance', icon: '📈', path: '/performance', hint: 'Agent metrics' },
                   ].map(item => (
@@ -1261,7 +1261,7 @@ export default function Focus() {
                       key={item.path}
                       onClick={() => navigate(item.path)}
                       style={{
-                        padding: '0.625rem 0.875rem', borderRadius: 10,
+                        padding: '0.625rem 0.875rem', borderRadius: 0,
                         background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)',
                         cursor: 'pointer', textAlign: 'left',
                         display: 'flex', alignItems: 'center', gap: '0.625rem',

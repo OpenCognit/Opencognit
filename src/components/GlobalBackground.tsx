@@ -3,7 +3,7 @@
 import React, { useEffect, useRef } from "react";
 
 const colors = {
-  300: "#23CDCB",
+  300: "#c5a059",
   500: "#089191",
 };
 
@@ -34,7 +34,7 @@ export function GlobalBackground() {
       ripple.style.top = e.clientY + "px";
       ripple.style.width = "4px";
       ripple.style.height = "4px";
-      ripple.style.background = "rgba(35, 205, 202, 0.6)";
+      ripple.style.background = "rgba(197, 160, 89, 0.6)";
       ripple.style.borderRadius = "50%";
       ripple.style.transform = "translate(-50%, -50%)";
       ripple.style.pointerEvents = "none";

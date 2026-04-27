@@ -1,5 +1,5 @@
 import { db, initializeDatabase } from './client.js';
-import { benutzer } from './schema.js';
+import { users } from './schema.js';
 import { v4 as uuid } from 'uuid';
 import bcrypt from 'bcryptjs';
 import { eq } from 'drizzle-orm';
@@ -25,7 +25,7 @@ export async function seedDatabase() {
 
   // Check if admin user exists
   const adminEmail = 'admin@opencognit.com';
-  const existingUser = db.select().from(benutzer).where(eq(benutzer.email, adminEmail)).get();
+  const existingUser = db.select().from(users).where(eq(users.email, adminEmail)).get();
 
   if (existingUser) {
     console.log('ℹ️  Admin-Benutzer existiert bereits, überspringe Seed.');
@@ -40,14 +40,14 @@ export async function seedDatabase() {
   // --- Benutzer (Login) ---
   const adminId = uuid();
   const passwordHash = await bcrypt.hash(randomPassword, 12);
-  db.insert(benutzer).values({
+  db.insert(users).values({
     id: adminId,
     name: 'Admin User',
     email: 'admin@opencognit.com',
     passwortHash: passwordHash,
-    rolle: 'admin',
-    erstelltAm: now(),
-    aktualisiertAm: now(),
+    role: 'admin',
+    createdAt: now(),
+    updatedAt: now(),
   }).run();
 
   // Write credentials to a local file so the admin can find them

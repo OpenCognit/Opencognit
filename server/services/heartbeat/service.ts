@@ -7,11 +7,11 @@ import crypto from 'crypto';
 import { appEvents } from '../../events.js';
 import { db } from '../../db/client.js';
 import {
-  arbeitszyklen, agentWakeupRequests, experten, aufgaben, unternehmen, projekte,
-  kostenbuchungen, kommentare, workProducts, chatNachrichten, aktivitaetslog,
-  ziele, issueRelations, einstellungen, budgetPolicies, budgetIncidents,
-  agentMeetings, genehmigungen, agentPermissions, expertenSkills, skillsLibrary,
-  routinen, routineAusfuehrung, palaceKg, traceEreignisse, ceoDecisionLog,
+  workCycles, agentWakeupRequests, agents, tasks, companies, projects,
+  costEntries, comments, workProducts, chatMessages, activityLog,
+  goals, issueRelations, settings, budgetPolicies, budgetIncidents,
+  agentMeetings, approvals, agentPermissions, agentSkills, skillsLibrary,
+  routines, routineRuns, palaceKg, traceEvents, ceoDecisionLog,
 } from '../../db/schema.js';
 import { eq, and, sql, inArray, or, isNull, asc, desc, gte } from 'drizzle-orm';
 import { pruefeUndEntblocke } from '../issue-dependencies.js';
@@ -44,100 +44,100 @@ class HeartbeatServiceImpl implements HeartbeatService {
    * Create a new heartbeat run and execute it
    */
   async executeHeartbeat(
-    expertId: string,
-    unternehmenId: string,
+    agentId: string,
+    companyId: string,
     options: HeartbeatOptions
   ): Promise<string> {
     const runId = crypto.randomUUID();
     const now = new Date().toISOString();
 
-    await db.insert(arbeitszyklen).values({
+    await db.insert(workCycles).values({
       id: runId,
-      unternehmenId,
-      expertId,
-      quelle: options.invocationSource === 'timer' ? 'scheduler' :
+      companyId,
+      agentId,
+      source: options.invocationSource === 'timer' ? 'scheduler' :
               options.invocationSource === 'assignment' ? 'callback' : 'manual',
       status: 'queued',
       invocationSource: options.invocationSource,
       triggerDetail: options.triggerDetail,
       contextSnapshot: options.contextSnapshot ? JSON.stringify(options.contextSnapshot) : null,
-      erstelltAm: now,
+      createdAt: now,
     });
 
-    console.log(`🔄 Heartbeat run ${runId} created for expert ${expertId} (${options.invocationSource})`);
-    await this.executeRun(runId, expertId, unternehmenId, options);
+    console.log(`🔄 Heartbeat run ${runId} created for expert ${agentId} (${options.invocationSource})`);
+    await this.executeRun(runId, agentId, companyId, options);
     return runId;
   }
 
   /**
    * Process all pending wakeups for an agent
    */
-  async processPendingWakeups(expertId: string): Promise<number> {
+  async processPendingWakeups(agentId: string): Promise<number> {
     const expert = await db.select()
-      .from(experten)
-      .where(eq(experten.id, expertId))
+      .from(agents)
+      .where(eq(agents.id, agentId))
       .limit(1);
 
     if (expert.length === 0) {
-      console.warn(`⚠️ Expert ${expertId} not found`);
+      console.warn(`⚠️ Expert ${agentId} not found`);
       return 0;
     }
 
     const agent = expert[0];
 
     if (agent.status === 'paused' || agent.status === 'terminated') {
-      console.log(`⏸️ Skipping heartbeat for paused/terminated agent ${expertId}`);
+      console.log(`⏸️ Skipping heartbeat for paused/terminated agent ${agentId}`);
       return 0;
     }
 
     // ─── Budget-Autothrottling ────────────────────────────────────────────────────
-    if (agent.budgetMonatCent > 0) {
-      const verbrauchPct = (agent.verbrauchtMonatCent / agent.budgetMonatCent) * 100;
+    if (agent.monthlyBudgetCent > 0) {
+      const verbrauchPct = (agent.monthlySpendCent / agent.monthlyBudgetCent) * 100;
 
       if (verbrauchPct >= 100) {
-        console.log(`💸 Budget erschöpft (${verbrauchPct.toFixed(0)}%) — pausiere Agent ${expertId}`);
-        await db.update(experten)
-          .set({ status: 'paused', aktualisiertAm: new Date().toISOString() })
-          .where(eq(experten.id, expertId));
-        await db.insert(chatNachrichten).values({
+        console.log(`💸 Budget erschöpft (${verbrauchPct.toFixed(0)}%) — pausiere Agent ${agentId}`);
+        await db.update(agents)
+          .set({ status: 'paused', updatedAt: new Date().toISOString() })
+          .where(eq(agents.id, agentId));
+        await db.insert(chatMessages).values({
           id: crypto.randomUUID(),
-          unternehmenId: agent.unternehmenId,
-          expertId,
-          absenderTyp: 'system',
-          nachricht: `🚨 **Budget-Stop**: ${agent.name} wurde automatisch pausiert. Monatsbudget (${(agent.budgetMonatCent / 100).toFixed(2)}€) zu 100% verbraucht. Bitte Budget erhöhen oder Agent manuell reaktivieren.`,
+          companyId: agent.companyId,
+          agentId,
+          senderType: 'system',
+          message: `🚨 **Budget-Stop**: ${agent.name} wurde automatisch pausiert. Monatsbudget (${(agent.monthlyBudgetCent / 100).toFixed(2)}€) zu 100% verbraucht. Bitte Budget erhöhen oder Agent manuell reaktivieren.`,
           gelesen: false,
-          erstelltAm: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
         });
         return 0;
       }
 
       if (verbrauchPct >= 80) {
         const recentWarning = await db.select()
-          .from(chatNachrichten)
-          .where(and(eq(chatNachrichten.expertId, expertId), eq(chatNachrichten.absenderTyp, 'system')))
+          .from(chatMessages)
+          .where(and(eq(chatMessages.agentId, agentId), eq(chatMessages.senderType, 'system')))
           .limit(20)
-          .then((msgs: { nachricht: string; erstelltAm: string }[]) => msgs.some((m) =>
-            m.nachricht.includes('Budget-Warnung') &&
-            new Date(m.erstelltAm) > new Date(Date.now() - 24 * 60 * 60 * 1000)
+          .then((msgs: { message: string; createdAt: string }[]) => msgs.some((m) =>
+            m.message.includes('Budget-Warnung') &&
+            new Date(m.createdAt) > new Date(Date.now() - 24 * 60 * 60 * 1000)
           ));
 
         if (!recentWarning) {
-          console.log(`⚠️ Budget-Warnung (${verbrauchPct.toFixed(0)}%) für Agent ${expertId}`);
-          await db.insert(chatNachrichten).values({
+          console.log(`⚠️ Budget-Warnung (${verbrauchPct.toFixed(0)}%) für Agent ${agentId}`);
+          await db.insert(chatMessages).values({
             id: crypto.randomUUID(),
-            unternehmenId: agent.unternehmenId,
-            expertId,
-            absenderTyp: 'system',
-            nachricht: `⚠️ **Budget-Warnung**: ${agent.name} hat ${verbrauchPct.toFixed(0)}% des Monatsbudgets verbraucht (${(agent.verbrauchtMonatCent / 100).toFixed(2)}€ von ${(agent.budgetMonatCent / 100).toFixed(2)}€). Bei 100% wird der Agent automatisch pausiert.`,
+            companyId: agent.companyId,
+            agentId,
+            senderType: 'system',
+            message: `⚠️ **Budget-Warnung**: ${agent.name} hat ${verbrauchPct.toFixed(0)}% des Monatsbudgets verbraucht (${(agent.monthlySpendCent / 100).toFixed(2)}€ von ${(agent.monthlyBudgetCent / 100).toFixed(2)}€). Bei 100% wird der Agent automatisch pausiert.`,
             gelesen: false,
-            erstelltAm: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
           });
         }
       }
     }
     // ────────────────────────────────────────────────────────────────────────
 
-    const pendingWakeups = await wakeupService.getPendingWakeups(expertId, 5);
+    const pendingWakeups = await wakeupService.getPendingWakeups(agentId, 5);
     if (pendingWakeups.length === 0) return 0;
 
     let processedCount = 0;
@@ -147,21 +147,21 @@ class HeartbeatServiceImpl implements HeartbeatService {
         const runId = crypto.randomUUID();
         const now = new Date().toISOString();
 
-        await db.insert(arbeitszyklen).values({
+        await db.insert(workCycles).values({
           id: runId,
-          unternehmenId: wakeup.contextSnapshot?.unternehmenId || agent.unternehmenId,
-          expertId,
+          companyId: wakeup.contextSnapshot?.companyId || agent.companyId,
+          agentId,
           quelle: wakeup.source === 'timer' ? 'scheduler' :
                   wakeup.source === 'assignment' ? 'callback' : 'manual',
           status: 'queued',
           invocationSource: wakeup.source,
           triggerDetail: wakeup.triggerDetail,
           contextSnapshot: JSON.stringify(wakeup.contextSnapshot || {}),
-          erstelltAm: now,
+          createdAt: now,
         });
 
         await wakeupService.claimWakeup(wakeup.id, runId);
-        await this.executeRun(runId, expertId, agent.unternehmenId, {
+        await this.executeRun(runId, agentId, agent.companyId, {
           invocationSource: wakeup.source,
           triggerDetail: wakeup.triggerDetail,
           contextSnapshot: wakeup.contextSnapshot,
@@ -183,64 +183,64 @@ class HeartbeatServiceImpl implements HeartbeatService {
    */
   private async executeRun(
     runId: string,
-    expertId: string,
-    unternehmenId: string,
+    agentId: string,
+    companyId: string,
     options: HeartbeatOptions
   ): Promise<void> {
     const now = new Date().toISOString();
 
     try {
-      const agentExists = db.select({ id: experten.id }).from(experten).where(eq(experten.id, expertId)).get();
+      const agentExists = db.select({ id: agents.id }).from(agents).where(eq(agents.id, agentId)).get();
       if (!agentExists) {
-        console.warn(`⚠️ Heartbeat ${runId}: Agent ${expertId} wurde gelöscht — Ausführung übersprungen`);
-        await this.updateRunStatus(runId, 'failed', 'Agent wurde gelöscht');
+        console.warn(`⚠️ Heartbeat ${runId}: Agent ${agentId} wurde gelöscht — Ausführung übersprungen`);
+        await this.updateRunStatus(runId, 'failed', { error: 'Agent wurde gelöscht' });
         return;
       }
 
       await this.updateRunStatus(runId, 'running');
-      const inbox = await this.getAgentInbox(expertId, unternehmenId);
+      const inbox = await this.getAgentInbox(agentId, companyId);
 
-      console.log(`▶️ Heartbeat ${runId}: Processing ${inbox.length} tasks for expert ${expertId}`);
+      console.log(`▶️ Heartbeat ${runId}: Processing ${inbox.length} tasks for expert ${agentId}`);
 
-      await db.update(experten)
-        .set({ status: 'running', letzterZyklus: now, aktualisiertAm: now })
-        .where(eq(experten.id, expertId));
+      await db.update(agents)
+        .set({ status: 'running', lastCycle: now, updatedAt: now })
+        .where(eq(agents.id, agentId));
 
       // ─── Routine Handler ─────────────────────────────────────────────────────
       if (options.payload?.routineId) {
         const routineId = options.payload.routineId as string;
         const executionId = options.payload.executionId as string | undefined;
-        const routine = db.select({ id: routinen.id, titel: routinen.titel, beschreibung: routinen.beschreibung, unternehmenId: routinen.unternehmenId })
-          .from(routinen).where(eq(routinen.id, routineId)).get() as any;
+        const routine = db.select({ id: routines.id, title: routines.title, description: routines.description, companyId: routines.companyId })
+          .from(routines).where(eq(routines.id, routineId)).get() as any;
 
         if (routine) {
           const syntheticTask = {
             id: `routine-${routineId}-${runId}`,
-            titel: routine.titel,
-            beschreibung: routine.beschreibung || routine.titel,
+            title: routine.title,
+            description: routine.description || routine.title,
             status: 'todo',
-            prioritaet: 'medium',
+            priority: 'medium',
             executionLockedAt: null,
           };
 
-          console.log(`  📅 Routine-Trigger: "${routine.titel}"`);
-          trace(expertId, unternehmenId, 'action', `Routine gestartet: ${routine.titel}`, undefined, runId);
-          await this.executeTaskViaAdapter(runId, expertId, unternehmenId, syntheticTask, null);
+          console.log(`  📅 Routine-Trigger: "${routine.title}"`);
+          trace(agentId, companyId, 'action', `Routine gestartet: ${routine.title}`, undefined, runId);
+          await this.executeTaskViaAdapter(runId, agentId, companyId, syntheticTask, null);
 
           if (executionId) {
-            db.update(routineAusfuehrung as any)
-              .set({ status: 'completed', beendetAm: new Date().toISOString() } as any)
-              .where(eq((routineAusfuehrung as any).id, executionId)).run();
+            db.update(routineRuns as any)
+              .set({ status: 'completed', completedAt: new Date().toISOString() } as any)
+              .where(eq((routineRuns as any).id, executionId)).run();
           }
-          db.update(routinen).set({ zuletztAusgefuehrtAm: new Date().toISOString() } as any)
-            .where(eq(routinen.id, routineId)).run();
+          db.update(routines).set({ lastExecutedAt: new Date().toISOString() } as any)
+            .where(eq(routines.id, routineId)).run();
         }
 
         await this.updateRunStatus(runId, 'succeeded', {
-          ausgabe: routine ? `Routine ausgeführt: ${routine.titel}` : `Routine ${routineId} nicht gefunden`,
+          ausgabe: routine ? `Routine ausgeführt: ${routine.title}` : `Routine ${routineId} nicht gefunden`,
           beendetAm: new Date().toISOString(),
         });
-        await db.update(experten).set({ status: 'idle', aktualisiertAm: new Date().toISOString() }).where(eq(experten.id, expertId));
+        await db.update(agents).set({ status: 'idle', updatedAt: new Date().toISOString() }).where(eq(agents.id, agentId));
         return;
       }
       // ─────────────────────────────────────────────────────────────────────────────
@@ -248,64 +248,64 @@ class HeartbeatServiceImpl implements HeartbeatService {
       // ─── Meeting Handler ──────────────────────────────────────────────────────
       const meetingPayload = options.payload?.meetingId ? options.payload : null;
       if (meetingPayload?.meetingId) {
-        await handleMeetingWakeup(runId, expertId, unternehmenId, meetingPayload.meetingId as string);
+        await handleMeetingWakeup(runId, agentId, companyId, meetingPayload.meetingId as string);
         await this.updateRunStatus(runId, 'succeeded', {
           ausgabe: `Meeting beantwortet: ${meetingPayload.thema || meetingPayload.meetingId}`,
           beendetAm: new Date().toISOString(),
         });
-        await db.update(experten).set({ status: 'idle', aktualisiertAm: new Date().toISOString() }).where(eq(experten.id, expertId));
+        await db.update(agents).set({ status: 'idle', updatedAt: new Date().toISOString() }).where(eq(agents.id, agentId));
         return;
       }
       // ─────────────────────────────────────────────────────────────────────────────
 
       // ─── Advisor Strategy Integration ──────────────────────────────────────────
       let advisorPlan: string | null = null;
-      const agentWithAdvisor = db.select().from(experten).where(eq(experten.id, expertId)).get();
+      const agentWithAdvisor = db.select().from(agents).where(eq(agents.id, agentId)).get();
 
       if (agentWithAdvisor?.advisorId && agentWithAdvisor.advisorStrategy === 'planning') {
         console.log(`🧠 Consulting Advisor ${agentWithAdvisor.advisorId} for a plan...`);
-        advisorPlan = await getAdvisorPlan(agentWithAdvisor.advisorId, expertId, unternehmenId, inbox);
+        advisorPlan = await getAdvisorPlan(agentWithAdvisor.advisorId, agentId, companyId, inbox);
 
-        await db.insert(aktivitaetslog).values({
+        await db.insert(activityLog).values({
           id: uuid(),
-          unternehmenId,
-          akteurTyp: 'agent',
-          akteurId: agentWithAdvisor.advisorId,
-          aktion: 'advisor_plan_created',
-          entitaetTyp: 'expert',
-          entitaetId: expertId,
+          companyId,
+          actorType: 'agent',
+          actorId: agentWithAdvisor.advisorId,
+          action: 'advisor_plan_created',
+          entityType: 'expert',
+          entityId: agentId,
           details: JSON.stringify({ plan: advisorPlan?.slice(0, 500), runId }),
-          erstelltAm: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
         });
       }
       // ─────────────────────────────────────────────────────────────────────────────
 
       // ─── Orchestrator: Blocker-Scan ────────────────────────────────────────
-      const agentMeta = db.select({ isOrchestrator: experten.isOrchestrator }).from(experten).where(eq(experten.id, expertId)).get() as any;
+      const agentMeta = db.select({ isOrchestrator: agents.isOrchestrator }).from(agents).where(eq(agents.id, agentId)).get() as any;
       if (agentMeta?.isOrchestrator) {
-        await scanForBlockedTasks(unternehmenId, expertId);
+        await scanForBlockedTasks(companyId, agentId);
       }
       // ──────────────────────────────────────────────────────────────────────
 
       for (const task of inbox) {
-        await this.processTask(runId, expertId, unternehmenId, task, advisorPlan);
+        await this.processTask(runId, agentId, companyId, task, advisorPlan);
       }
 
       // ─── Orchestrator Planning Cycle ──────────────────────────────────────
       if (agentMeta?.isOrchestrator && inbox.length === 0) {
-        console.log(`  🧭 Orchestrator ${expertId} has empty inbox — running planning cycle`);
-        await this.runOrchestratorPlanning(runId, expertId, unternehmenId, advisorPlan);
+        console.log(`  🧭 Orchestrator ${agentId} has empty inbox — running planning cycle`);
+        await this.runOrchestratorPlanning(runId, agentId, companyId, advisorPlan);
       }
       // ──────────────────────────────────────────────────────────────────────
 
       await this.updateRunStatus(runId, 'succeeded', {
-        ausgabe: inbox.length > 0 ? `Abgeschlossen: ${inbox.map((t: any) => t.titel).join(', ')}` : 'Planungszyklus abgeschlossen',
+        ausgabe: inbox.length > 0 ? `Abgeschlossen: ${inbox.map((t: any) => t.title).join(', ')}` : 'Planungszyklus abgeschlossen',
         beendetAm: new Date().toISOString(),
       });
 
-      await db.update(experten)
-        .set({ status: 'idle', aktualisiertAm: new Date().toISOString() })
-        .where(eq(experten.id, expertId));
+      await db.update(agents)
+        .set({ status: 'idle', updatedAt: new Date().toISOString() })
+        .where(eq(agents.id, agentId));
 
     } catch (error) {
       console.error(`❌ Heartbeat ${runId} failed:`, error);
@@ -315,9 +315,9 @@ class HeartbeatServiceImpl implements HeartbeatService {
         beendetAm: new Date().toISOString(),
       });
 
-      await db.update(experten)
-        .set({ status: 'error', aktualisiertAm: new Date().toISOString() })
-        .where(eq(experten.id, expertId));
+      await db.update(agents)
+        .set({ status: 'error', updatedAt: new Date().toISOString() })
+        .where(eq(agents.id, agentId));
 
       throw error;
     }
@@ -326,55 +326,55 @@ class HeartbeatServiceImpl implements HeartbeatService {
   /**
    * Get agent's inbox (assigned tasks that are not done)
    */
-  private async getAgentInbox(expertId: string, unternehmenId: string): Promise<Array<{
+  private async getAgentInbox(agentId: string, companyId: string): Promise<Array<{
     id: string;
-    titel: string;
+    title: string;
     status: string;
-    prioritaet: string;
+    priority: string;
     executionLockedAt: string | null;
-    zielId: string | null;
+    targetId: string | null;
   }>> {
-    const agent = await db.select({ isOrchestrator: experten.isOrchestrator })
-      .from(experten)
-      .where(eq(experten.id, expertId))
+    const agent = await db.select({ isOrchestrator: agents.isOrchestrator })
+      .from(agents)
+      .where(eq(agents.id, agentId))
       .get();
 
     const isOrchestrator = agent?.isOrchestrator === true;
 
-    const tasks = await db.select({
-      id: aufgaben.id,
-      titel: aufgaben.titel,
-      status: aufgaben.status,
-      prioritaet: aufgaben.prioritaet,
-      executionLockedAt: aufgaben.executionLockedAt,
-      executionRunId: aufgaben.executionRunId,
-      zielId: aufgaben.zielId,
-      isMaximizerMode: aufgaben.isMaximizerMode,
+    const taskRows = await db.select({
+      id: tasks.id,
+      title: tasks.title,
+      status: tasks.status,
+      priority: tasks.priority,
+      executionLockedAt: tasks.executionLockedAt,
+      executionRunId: tasks.executionRunId,
+      targetId: tasks.goalId,
+      isMaximizerMode: tasks.isMaximizerMode,
     })
-    .from(aufgaben)
+    .from(tasks)
     .where(
       and(
-        eq(aufgaben.unternehmenId, unternehmenId),
-        inArray(aufgaben.status, ['backlog', 'todo', 'in_progress']),
+        eq(tasks.companyId, companyId),
+        inArray(tasks.status, ['backlog', 'todo', 'in_progress']),
         isOrchestrator
-          ? or(eq(aufgaben.zugewiesenAn, expertId), isNull(aufgaben.zugewiesenAn))
-          : eq(aufgaben.zugewiesenAn, expertId)
+          ? or(eq(tasks.assignedTo, agentId), isNull(tasks.assignedTo))
+          : eq(tasks.assignedTo, agentId)
       )
     );
 
     // Sort: MaximizerMode → goal-linked → priority weight
     const priorityWeight: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
-    tasks.sort((a, b) => {
+    taskRows.sort((a, b) => {
       const aMax = (a as any).isMaximizerMode ? 1 : 0;
       const bMax = (b as any).isMaximizerMode ? 1 : 0;
       if (aMax !== bMax) return bMax - aMax;
-      const aGoal = a.zielId ? 1 : 0;
-      const bGoal = b.zielId ? 1 : 0;
+      const aGoal = a.goalId ? 1 : 0;
+      const bGoal = b.goalId ? 1 : 0;
       if (aGoal !== bGoal) return bGoal - aGoal;
-      return (priorityWeight[b.prioritaet] ?? 0) - (priorityWeight[a.prioritaet] ?? 0);
+      return (priorityWeight[b.priority] ?? 0) - (priorityWeight[a.priority] ?? 0);
     });
 
-    return tasks;
+    return taskRows;
   }
 
   /**
@@ -382,12 +382,12 @@ class HeartbeatServiceImpl implements HeartbeatService {
    */
   private async processTask(
     runId: string,
-    expertId: string,
-    unternehmenId: string,
-    task: { id: string; titel: string; status: string; prioritaet: string; executionLockedAt: string | null },
+    agentId: string,
+    companyId: string,
+    task: { id: string; title: string; status: string; priority: string; executionLockedAt: string | null },
     advisorPlan: string | null = null
   ): Promise<void> {
-    console.log(`  📋 Processing task: ${task.titel} (${task.id})`);
+    console.log(`  📋 Processing task: ${task.title} (${task.id})`);
 
     const lockedByOtherRun = task.executionLockedAt &&
       (task as any).executionRunId &&
@@ -404,12 +404,12 @@ class HeartbeatServiceImpl implements HeartbeatService {
       console.log(`  ⏰ Task ${task.id} lock expired (${Math.round(lockAge / 60000)}min), reclaiming`);
     }
 
-    // Resolve workspace: projekt.workDir → unternehmen.workDir → isolated fallback
-    const company = db.select({ workDir: unternehmen.workDir }).from(unternehmen).where(eq(unternehmen.id, unternehmenId)).get() as any;
+    // Resolve workspace: projekt.workDir → companies.workDir → isolated fallback
+    const company = db.select({ workDir: companies.workDir }).from(companies).where(eq(companies.id, companyId)).get() as any;
     const companyWorkDir = company?.workDir;
 
-    const projektWorkDir = (task as any).projektId
-      ? (db.select({ workDir: projekte.workDir }).from(projekte).where(eq(projekte.id, (task as any).projektId)).get() as any)?.workDir
+    const projektWorkDir = (task as any).projectId
+      ? (db.select({ workDir: projects.workDir }).from(projects).where(eq(projects.id, (task as any).projectId)).get() as any)?.workDir
       : null;
 
     const effectiveWorkDir = (projektWorkDir && isSafeWorkdir(projektWorkDir))
@@ -426,11 +426,11 @@ class HeartbeatServiceImpl implements HeartbeatService {
 
       // Opt-in: git-worktree isolation — parallele Tasks bekommen jeweils einen eigenen worktree.
       try {
-        const worktreeSetting = db.select().from(einstellungen)
-          .where(and(eq(einstellungen.schluessel, 'worktree_isolation'), eq(einstellungen.unternehmenId, unternehmenId)))
+        const worktreeSetting = db.select().from(settings)
+          .where(and(eq(settings.key, 'worktree_isolation'), eq(settings.companyId, companyId)))
           .get();
-        if (worktreeSetting?.wert === 'true') {
-          const ws = ensureWorkspace(unternehmenId, task.id, expertId, effectiveWorkDir);
+        if (worktreeSetting?.value === 'true') {
+          const ws = ensureWorkspace(companyId, task.id, agentId, effectiveWorkDir);
           workspacePath = ws.pfad;
           console.log(`  🌿 Worktree-Isolation aktiv → ${workspacePath}${ws.branchName ? ` (${ws.branchName})` : ''}`);
         }
@@ -441,30 +441,30 @@ class HeartbeatServiceImpl implements HeartbeatService {
       if (companyWorkDir && !isSafeWorkdir(companyWorkDir)) {
         console.warn(`[Heartbeat] ⛔ companyWorkDir '${companyWorkDir}' is inside the OpenCognit project root — using isolated workspace instead.`);
       }
-      workspacePath = createWorkspace(task.id, expertId, runId);
+      workspacePath = createWorkspace(task.id, agentId, runId);
     }
 
     const now = new Date().toISOString();
-    await db.update(aufgaben)
+    await db.update(tasks)
       .set({
         executionRunId: runId,
-        executionAgentNameKey: `expert-${expertId}`,
+        executionAgentNameKey: `expert-${agentId}`,
         executionLockedAt: now,
         workspacePath,
         status: task.status === 'backlog' ? 'todo' : task.status,
-        gestartetAm: (task as any).gestartetAm || now,
+        gestartetAm: (task as any).startedAt || now,
       })
       .where(
         and(
-          eq(aufgaben.id, task.id),
-          or(eq(aufgaben.zugewiesenAn, expertId), isNull(aufgaben.zugewiesenAn))
+          eq(tasks.id, task.id),
+          or(eq(tasks.assignedTo, agentId), isNull(tasks.assignedTo))
         )
       );
 
     console.log(`  🔒 Task ${task.id} checked out → workspace: ${workspacePath}`);
-    trace(expertId, unternehmenId, 'action', `Task gestartet: ${task.titel}`, `Workspace: ${workspacePath}`, runId);
+    trace(agentId, companyId, 'action', `Task gestartet: ${task.title}`, `Workspace: ${workspacePath}`, runId);
 
-    await this.executeTaskViaAdapter(runId, expertId, unternehmenId, task, advisorPlan);
+    await this.executeTaskViaAdapter(runId, agentId, companyId, task, advisorPlan);
   }
 
   /**
@@ -472,64 +472,64 @@ class HeartbeatServiceImpl implements HeartbeatService {
    */
   private async executeTaskViaAdapter(
     runId: string,
-    expertId: string,
-    unternehmenId: string,
-    task: { id: string; titel: string; status: string; prioritaet: string; executionLockedAt: string | null },
+    agentId: string,
+    companyId: string,
+    task: { id: string; title: string; status: string; priority: string; executionLockedAt: string | null },
     advisorPlan: string | null = null
   ): Promise<void> {
     try {
       // Get full task details (synthetic planning tasks won't be in DB — use the passed task object)
       const taskFull = await db.select()
-        .from(aufgaben)
-        .where(eq(aufgaben.id, task.id))
+        .from(tasks)
+        .where(eq(tasks.id, task.id))
         .limit(1)
         .then((rows: any[]) => rows[0]) ?? {
           ...task,
-          beschreibung: (task as any).beschreibung || null,
-          zielId: null,
+          description: (task as any).description || null,
+          targetId: null,
           workspacePath: null,
-          abgeschlossenAm: null,
+          completedAt: null,
           gestartetAm: null,
           executionRunId: null,
         };
 
       const expert = await db.select()
-        .from(experten)
-        .where(eq(experten.id, expertId))
+        .from(agents)
+        .where(eq(agents.id, agentId))
         .limit(1)
         .then((rows: any[]) => rows[0]);
 
       const unternehmenData = await db.select()
-        .from(unternehmen)
-        .where(eq(unternehmen.id, unternehmenId))
+        .from(companies)
+        .where(eq(companies.id, companyId))
         .limit(1)
         .then((rows: any[]) => rows[0]);
 
-      const comments = await db.select()
-        .from(kommentare)
-        .where(eq(kommentare.aufgabeId, task.id))
-        .orderBy(kommentare.erstelltAm);
+      const commentRows = await db.select()
+        .from(comments)
+        .where(eq(comments.taskId, task.id))
+        .orderBy(comments.createdAt);
 
       // ─── Task-Output-as-Input: load outputs from blocker tasks ──────────────
       let blockerOutputs: string | null = null;
       try {
-        const blockers = await db.select({ blockerId: issueRelations.quellId })
+        const blockers = await db.select({ blockerId: issueRelations.sourceId })
           .from(issueRelations)
-          .where(eq(issueRelations.zielId, task.id));
+          .where(eq(issueRelations.targetId, task.id));
 
         if (blockers.length > 0) {
           const blockerResults: string[] = [];
           for (const { blockerId } of blockers) {
-            const lastComment = await db.select({ inhalt: kommentare.inhalt, erstelltAm: kommentare.erstelltAm })
-              .from(kommentare)
-              .where(eq(kommentare.aufgabeId, blockerId))
-              .orderBy(desc(kommentare.erstelltAm))
+            const lastComment = await db.select({ content: comments.content, createdAt: comments.createdAt })
+              .from(comments)
+              .where(eq(comments.taskId, blockerId))
+              .orderBy(desc(comments.createdAt))
               .limit(1)
               .then((r: any[]) => r[0]);
-            const blockerTask = await db.select({ titel: aufgaben.titel })
-              .from(aufgaben).where(eq(aufgaben.id, blockerId)).limit(1).then((r: any[]) => r[0]);
+            const blockerTask = await db.select({ title: tasks.title })
+              .from(tasks).where(eq(tasks.id, blockerId)).limit(1).then((r: any[]) => r[0]);
             if (lastComment && blockerTask) {
-              blockerResults.push(`### Ergebnis aus "${blockerTask.titel}":\n${lastComment.inhalt.slice(0, 1500)}`);
+              blockerResults.push(`### Ergebnis aus "${blockerTask.title}":\n${lastComment.content.slice(0, 1500)}`);
             }
           }
           if (blockerResults.length > 0) {
@@ -544,50 +544,50 @@ class HeartbeatServiceImpl implements HeartbeatService {
 
       const adapterTask: AdapterTask = {
         id: taskFull.id,
-        titel: taskFull.titel,
-        beschreibung: taskFull.beschreibung,
+        title: taskFull.title,
+        description: taskFull.description,
         status: taskFull.status,
-        prioritaet: taskFull.prioritaet,
+        priority: taskFull.priority,
       };
 
       // ─── Memory Kontext laden (nativ) ───────────────────────────────
-      const taskKeywords = [taskFull.titel, taskFull.beschreibung || '']
+      const taskKeywords = [taskFull.title, taskFull.description || '']
         .join(' ')
         .toLowerCase()
         .split(/\W+/)
         .filter(w => w.length > 4);
-      const memoryContext = loadRelevantMemory(expertId, taskKeywords) || null;
+      const memoryContext = loadRelevantMemory(agentId, taskKeywords) || null;
       // ────────────────────────────────────────────────────────────────────
 
       // ─── Load active goals with live task progress ──────────────────────
       let activeGoals: CompanyGoal[] = [];
       try {
         const rawGoals = await db.select({
-          id: ziele.id,
-          titel: ziele.titel,
-          beschreibung: ziele.beschreibung,
-          fortschritt: ziele.fortschritt,
-          status: ziele.status,
-        }).from(ziele)
+          id: goals.id,
+          title: goals.title,
+          description: goals.description,
+          progress: goals.progress,
+          status: goals.status,
+        }).from(goals)
           .where(and(
-            eq(ziele.unternehmenId, unternehmenId),
-            inArray(ziele.status, ['active', 'planned']),
+            eq(goals.companyId, companyId),
+            inArray(goals.status, ['active', 'planned']),
           ))
-          .orderBy(asc(ziele.erstelltAm))
+          .orderBy(asc(goals.createdAt))
           .limit(5);
 
         for (const g of rawGoals) {
-          const linkedTasks = await db.select({ status: aufgaben.status })
-            .from(aufgaben)
-            .where(and(eq(aufgaben.zielId, g.id), eq(aufgaben.unternehmenId, unternehmenId)));
+          const linkedTasks = await db.select({ status: tasks.status })
+            .from(tasks)
+            .where(and(eq(tasks.goalId, g.id), eq(tasks.companyId, companyId)));
           const doneTasks = linkedTasks.filter(t => t.status === 'done').length;
           const openTasks = linkedTasks.filter(t => t.status !== 'done').length;
           const computedProgress = linkedTasks.length > 0
             ? Math.round((doneTasks / linkedTasks.length) * 100)
-            : g.fortschritt;
+            : g.progress;
           activeGoals.push({
-            id: g.id, titel: g.titel, beschreibung: g.beschreibung,
-            fortschritt: computedProgress, status: g.status, openTasks, doneTasks,
+            id: g.id, title: g.title, description: g.description,
+            progress: computedProgress, status: g.status, openTasks, doneTasks,
           });
         }
       } catch (err: any) {
@@ -596,50 +596,50 @@ class HeartbeatServiceImpl implements HeartbeatService {
       // ──────────────────────────────────────────────────────────────────
 
       const teamMembers = expert?.isOrchestrator
-        ? await db.select({ id: experten.id, name: experten.name, rolle: experten.rolle, status: experten.status })
-            .from(experten)
-            .where(and(eq(experten.unternehmenId, unternehmenId), eq(experten.isOrchestrator, false)))
+        ? await db.select({ id: agents.id, name: agents.name, role: agents.role, status: agents.status })
+            .from(agents)
+            .where(and(eq(agents.companyId, companyId), eq(agents.isOrchestrator, false)))
         : [];
 
       const openTasksList = expert?.isOrchestrator
-        ? await db.select({ id: aufgaben.id, titel: aufgaben.titel, status: aufgaben.status, zugewiesenAn: aufgaben.zugewiesenAn, prioritaet: aufgaben.prioritaet })
-            .from(aufgaben)
+        ? await db.select({ id: tasks.id, title: tasks.title, status: tasks.status, assignedTo: tasks.assignedTo, priority: tasks.priority })
+            .from(tasks)
             .where(and(
-              eq(aufgaben.unternehmenId, unternehmenId),
-              inArray(aufgaben.status, ['backlog', 'todo', 'in_progress', 'blocked']),
+              eq(tasks.companyId, companyId),
+              inArray(tasks.status, ['backlog', 'todo', 'in_progress', 'blocked']),
             ))
             .limit(20)
         : [];
 
       let projektContext: AdapterContext['projektContext'] | undefined;
-      if (taskFull.projektId) {
-        const proj = await db.select({ name: projekte.name, beschreibung: projekte.beschreibung, workDir: projekte.workDir })
-          .from(projekte)
-          .where(eq(projekte.id, taskFull.projektId))
+      if (taskFull.projectId) {
+        const proj = await db.select({ name: projects.name, description: projects.description, workDir: projects.workDir })
+          .from(projects)
+          .where(eq(projects.id, taskFull.projectId))
           .limit(1)
           .then((rows: any[]) => rows[0]);
         if (proj) {
-          projektContext = { name: proj.name, beschreibung: proj.beschreibung, workDir: proj.workDir };
+          projektContext = { name: proj.name, description: proj.description, workDir: proj.workDir };
         }
       }
 
       const adapterContext: AdapterContext = {
         task: adapterTask,
-        previousComments: comments.map((c: any) => ({
-          id: c.id, inhalt: c.inhalt,
-          autorTyp: c.autorTyp as 'agent' | 'board',
-          erstelltAm: c.erstelltAm,
+        previousComments: commentRows.map((c: any) => ({
+          id: c.id, content: c.content,
+          senderType: c.authorType as 'agent' | 'board',
+          createdAt: c.createdAt,
         })),
         companyContext: {
           name: unternehmenData?.name || 'Unknown',
-          ziel: unternehmenData?.ziel || null,
+          goal: unternehmenData?.goal || null,
           goals: activeGoals.length > 0 ? activeGoals : undefined,
         },
         ...(projektContext ? { projektContext } : {}),
         agentContext: {
           name: expert?.name || 'Unknown Agent',
-          rolle: expert?.rolle || 'Agent',
-          faehigkeiten: expert?.faehigkeiten || null,
+          role: expert?.role || 'Agent',
+          skills: expert?.skills || null,
           ...((taskFull as any).isMaximizerMode ? {
             maximizerMode: '⚡ MAXIMIZER MODE AKTIV: Arbeite schnellstmöglich. Erzeuge vollständigen, sofort nutzbaren Output. Keine Rückfragen, keine Platzhalter — liefere alles in einem Durchgang.',
           } : {}),
@@ -654,12 +654,12 @@ class HeartbeatServiceImpl implements HeartbeatService {
               return files ? { workspaceFiles: `## Bereits vorhandene Dateien im Workspace\n\`\`\`\n${files}\n\`\`\`\nBitte konsistenten Code-Stil verwenden und bestehende Dateien beachten.` } : {};
             } catch { return {}; }
           })(),
-          ...(memoryContext ? { gedaechtnis: memoryContext } : {}),
+          ...(memoryContext ? { memory: memoryContext } : {}),
           ...(blockerOutputs ? { vorgaengerOutputs: blockerOutputs } : {}),
           ...(advisorPlan ? { advisorPlan: `### 🧠 STRATEGISCHER PLAN DES ARCHITEKTEN/ADVISORS\n\n${advisorPlan}\n\n*Bitte befolge diesen Plan strikt bei der Ausführung der Aufgabe.*` } : {}),
           ...(expert?.isOrchestrator && teamMembers.length > 0 ? {
-            team: teamMembers.map(m => ({ id: m.id, name: m.name, rolle: m.rolle, status: m.status })),
-            offeneTasks: openTasksList.map(t => ({ id: t.id, titel: t.titel, status: t.status, zugewiesenAn: t.zugewiesenAn, prioritaet: t.prioritaet })),
+            team: teamMembers.map(m => ({ id: m.id, name: m.name, role: m.role, status: m.status })),
+            offeneTasks: openTasksList.map(t => ({ id: t.id, title: t.title, status: t.status, assignedTo: t.assignedTo, priority: t.priority })),
             aktionsFormat: `
 ## WICHTIG: Aktionen als JSON ausgeben
 
@@ -668,10 +668,10 @@ Wenn du Tasks erstellen, zuweisen oder Ziele aktualisieren willst, füge am ENDE
 \`\`\`json
 {
   "actions": [
-    {"type": "create_task", "titel": "Task-Titel", "beschreibung": "Beschreibung...", "assignTo": "Agent Name", "prioritaet": "high", "zielId": "GOAL_ID"},
+    {"type": "create_task", "titel": "Task-Titel", "beschreibung": "Beschreibung...", "assignTo": "Agent Name", "priority": "high", "targetId": "GOAL_ID"},
     {"type": "assign_task", "taskId": "TASK_ID", "assignTo": "Agent Name"},
     {"type": "mark_done", "taskId": "TASK_ID"},
-    {"type": "update_goal", "goalId": "GOAL_ID", "fortschritt": 50},
+    {"type": "update_goal", "goalId": "GOAL_ID", "progress": 50},
     {"type": "hire_agent", "rolle": "QA Engineer", "faehigkeiten": "Testing, Python", "begruendung": "Wir brauchen mehr QA-Kapazität"}
   ]
 }
@@ -679,14 +679,14 @@ Wenn du Tasks erstellen, zuweisen oder Ziele aktualisieren willst, füge am ENDE
 
 Verfügbare Prioritäten: critical, high, medium, low
 Verfügbare Team-Mitglieder: ${teamMembers.map(m => m.name).join(', ')}
-WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Ziel-Fortschritt (update_goal) wenn Tasks abgeschlossen wurden.
+WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "targetId". Aktualisiere Ziel-Fortschritt (update_goal) wenn Tasks abgeschlossen wurden.
 `,
           } : {}),
         },
       };
 
       if (memoryContext) {
-        console.log(`  🧠 Memory geladen für Agent ${expertId} (${memoryContext.length} Zeichen)`);
+        console.log(`  🧠 Memory geladen für Agent ${agentId} (${memoryContext.length} Zeichen)`);
       }
 
       // ─── TOKEN BUDGET GUARD ────────────────────────────────────────────────
@@ -696,7 +696,7 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
         console.warn(`  ⚠️ Context too large (${Math.round(estimatedSize / 1000)}k chars) — trimming`);
         const agentCtx = adapterContext.agentContext as any;
         if (agentCtx.vorgaengerOutputs) agentCtx.vorgaengerOutputs = agentCtx.vorgaengerOutputs.slice(0, 20_000) + '\n[...gekürzt]';
-        if (adapterContext.agentContext.gedaechtnis) adapterContext.agentContext.gedaechtnis = (adapterContext.agentContext.gedaechtnis as string).slice(0, 10_000) + '\n[...gekürzt]';
+        if (adapterContext.agentContext.memory) adapterContext.agentContext.memory = (adapterContext.agentContext.memory as string).slice(0, 10_000) + '\n[...gekürzt]';
         if (JSON.stringify(adapterContext).length > CONTEXT_CHAR_LIMIT) adapterContext.previousComments = adapterContext.previousComments.slice(-5);
         if (agentCtx.offeneTasks) agentCtx.offeneTasks = agentCtx.offeneTasks.slice(0, 20);
         const afterSize = JSON.stringify(adapterContext).length;
@@ -704,14 +704,14 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
       }
       // ──────────────────────────────────────────────────────────────────────
 
-      console.log(`  🤖 Executing task via adapter: ${taskFull.titel}`);
+      console.log(`  🤖 Executing task via adapter: ${taskFull.title}`);
 
       // ── SOUL.md: load file-based identity if configured ──────────────────────
       const soulVars = {
         'company.name': unternehmenData?.name || 'Unknown',
-        'company.goal': unternehmenData?.ziel || '',
+        'company.goal': unternehmenData?.goal || '',
         'agent.name': expert?.name || '',
-        'agent.role': expert?.rolle || '',
+        'agent.role': expert?.role || '',
       };
       const resolvedSystemPrompt =
         loadSoul(expert as any, soulVars)
@@ -721,21 +721,21 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
 
       // ── Budget-Check vor Ausführung ────────────────────────────────────────────
       const isSyntheticTaskEarly = task.id.startsWith('planning-');
-      const budgetCheck = await checkBudgetAndEnforce(expertId, unternehmenId);
+      const budgetCheck = await checkBudgetAndEnforce(agentId, companyId);
       if (!budgetCheck.allowed) {
-        trace(expertId, unternehmenId, 'error', `🛑 Task blockiert: ${budgetCheck.reason}`, undefined, runId);
+        trace(agentId, companyId, 'error', `🛑 Task blockiert: ${budgetCheck.reason}`, undefined, runId);
         if (!isSyntheticTaskEarly) {
           try {
-            await db.insert(kommentare).values({
-              id: crypto.randomUUID(), unternehmenId, aufgabeId: task.id,
-              autorExpertId: expertId, autorTyp: 'agent',
-              inhalt: `🛑 **Ausführung blockiert — Budget-Limit erreicht**\n\n${budgetCheck.reason}\n\nBitte erhöhe das Budget-Limit in den Einstellungen oder warte auf den nächsten Abrechnungszeitraum.`,
-              erstelltAm: new Date().toISOString(),
+            await db.insert(comments).values({
+              id: crypto.randomUUID(), companyId, taskId: task.id,
+              authorAgentId: agentId, senderType: 'agent',
+              content: `🛑 **Ausführung blockiert — Budget-Limit erreicht**\n\n${budgetCheck.reason}\n\nBitte erhöhe das Budget-Limit in den Einstellungen oder warte auf den nächsten Abrechnungszeitraum.`,
+              createdAt: new Date().toISOString(),
             });
           } catch { /* agent may have been deleted mid-run */ }
-          await db.update(aufgaben)
+          await db.update(tasks)
             .set({ executionLockedAt: null, executionRunId: null, status: 'blocked' })
-            .where(eq(aufgaben.id, task.id));
+            .where(eq(tasks.id, task.id));
         }
         await this.updateRunStatus(runId, 'failed', { fehler: budgetCheck.reason });
         return;
@@ -743,11 +743,11 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
       // ──────────────────────────────────────────────────────────────────────────
 
       // Resolve effective adapter type
-      let effectiveVerbindungsTyp = expert?.verbindungsTyp || 'claude-code';
+      let effectiveVerbindungsTyp = expert?.connectionType || 'claude-code';
       let heartbeatParsedConfig: any = {};
-      if (expert?.verbindungsConfig) {
+      if (expert?.connectionConfig) {
         try {
-          heartbeatParsedConfig = JSON.parse(expert.verbindungsConfig as string);
+          heartbeatParsedConfig = JSON.parse(expert.connectionConfig as string);
           if (effectiveVerbindungsTyp === 'claude-code' && heartbeatParsedConfig.model?.includes('/')) {
             effectiveVerbindungsTyp = 'openrouter';
           }
@@ -767,11 +767,11 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
       if (effectiveVerbindungsTyp === 'openrouter' || effectiveVerbindungsTyp === 'ollama') {
         const dmKey = effectiveVerbindungsTyp === 'ollama' ? 'ollama_default_model' : 'openrouter_default_model';
         try {
-          const dmRow = db.select({ wert: einstellungen.wert }).from(einstellungen)
-            .where(and(eq(einstellungen.schluessel, dmKey), eq(einstellungen.unternehmenId, unternehmenId))).get()
-            ?? db.select({ wert: einstellungen.wert }).from(einstellungen)
-              .where(and(eq(einstellungen.schluessel, dmKey), eq(einstellungen.unternehmenId, ''))).get();
-          if (dmRow?.wert) heartbeatGlobalDefaultModel = decryptSetting(dmKey, dmRow.wert);
+          const dmRow = db.select({ value: settings.value }).from(settings)
+            .where(and(eq(settings.key, dmKey), eq(settings.companyId, companyId))).get()
+            ?? db.select({ value: settings.value }).from(settings)
+              .where(and(eq(settings.key, dmKey), eq(settings.companyId, ''))).get();
+          if (dmRow?.value) heartbeatGlobalDefaultModel = decryptSetting(dmKey, dmRow.value);
         } catch { /* ignore */ }
       }
 
@@ -779,38 +779,38 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
       if (effectiveVerbindungsTyp === 'openclaw') {
         try {
           const recentDone = await db
-            .select({ taskTitel: aufgaben.titel, output: kommentare.inhalt, completedAt: kommentare.erstelltAm })
-            .from(kommentare)
-            .innerJoin(aufgaben, eq(kommentare.aufgabeId, aufgaben.id))
+            .select({ taskTitel: tasks.title, output: comments.content, completedAt: comments.createdAt })
+            .from(comments)
+            .innerJoin(tasks, eq(comments.taskId, tasks.id))
             .where(and(
-              eq(aufgaben.zugewiesenAn, expertId),
-              eq(aufgaben.status, 'done'),
-              eq(kommentare.autorTyp, 'agent'),
+              eq(tasks.assignedTo, agentId),
+              eq(tasks.status, 'done'),
+              eq(comments.authorType, 'agent'),
             ))
-            .orderBy(desc(kommentare.erstelltAm))
+            .orderBy(desc(comments.createdAt))
             .limit(3);
 
-          const siblingTasks = taskFull.projektId
+          const siblingTasks = taskFull.projectId
             ? await db
-                .select({ id: aufgaben.id, titel: aufgaben.titel, status: aufgaben.status, zugewiesenAn: aufgaben.zugewiesenAn })
-                .from(aufgaben)
+                .select({ id: tasks.id, title: tasks.title, status: tasks.status, assignedTo: tasks.assignedTo })
+                .from(tasks)
                 .where(and(
-                  eq(aufgaben.projektId, taskFull.projektId),
-                  eq(aufgaben.unternehmenId, unternehmenId),
-                  inArray(aufgaben.status, ['backlog', 'todo', 'in_progress', 'blocked']),
+                  eq(tasks.projectId, taskFull.projectId),
+                  eq(tasks.companyId, companyId),
+                  inArray(tasks.status, ['backlog', 'todo', 'in_progress', 'blocked']),
                 ))
                 .limit(15)
             : [];
 
-          const assigneeIds = [...new Set(siblingTasks.map((t: any) => t.zugewiesenAn).filter(Boolean))];
+          const assigneeIds = [...new Set(siblingTasks.map((t: any) => t.assignedTo).filter(Boolean))];
           const assigneeNames: Record<string, string> = {};
           if (assigneeIds.length > 0) {
-            const rows = await db.select({ id: experten.id, name: experten.name }).from(experten)
-              .where(inArray(experten.id, assigneeIds as string[]));
+            const rows = await db.select({ id: agents.id, name: agents.name }).from(agents)
+              .where(inArray(agents.id, assigneeIds as string[]));
             for (const r of rows) assigneeNames[r.id] = r.name;
           }
 
-          const ocTaskKeywords = (taskFull.titel + ' ' + (taskFull.beschreibung || ''))
+          const ocTaskKeywords = (taskFull.title + ' ' + (taskFull.description || ''))
             .toLowerCase().replace(/[^\wäöüß\s]/g, ' ').split(/\s+/)
             .filter(w => w.length >= 4).slice(0, 8);
 
@@ -818,7 +818,7 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
           if (ocTaskKeywords.length > 0) {
             const allFacts = await db.select({ subject: palaceKg.subject, predicate: palaceKg.predicate, object: palaceKg.object })
               .from(palaceKg)
-              .where(and(eq(palaceKg.unternehmenId, unternehmenId), isNull(palaceKg.validUntil)))
+              .where(and(eq(palaceKg.companyId, companyId), isNull(palaceKg.validUntil)))
               .limit(200);
             kgFacts = allFacts
               .filter((f: any) => ocTaskKeywords.some(kw =>
@@ -830,10 +830,10 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
           }
 
           const activeOthers = await db
-            .select({ name: experten.name, rolle: experten.rolle, taskTitel: aufgaben.titel })
-            .from(experten)
-            .innerJoin(aufgaben, and(eq(aufgaben.zugewiesenAn, experten.id), eq(aufgaben.status, 'in_progress')))
-            .where(and(eq(experten.unternehmenId, unternehmenId), sql`${experten.id} != ${expertId}`))
+            .select({ name: agents.name, role: agents.role, taskTitel: tasks.title })
+            .from(agents)
+            .innerJoin(tasks, and(eq(tasks.assignedTo, agents.id), eq(tasks.status, 'in_progress')))
+            .where(and(eq(agents.companyId, companyId), sql`${agents.id} != ${agentId}`))
             .limit(5);
 
           adapterContext.openclawEnrichment = {
@@ -843,11 +843,11 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
               completedAt: r.completedAt,
             })),
             projectSiblingTasks: siblingTasks.map((t: any) => ({
-              id: t.id, titel: t.titel, status: t.status,
-              assignedTo: t.zugewiesenAn ? (assigneeNames[t.zugewiesenAn] ?? t.zugewiesenAn) : null,
+              id: t.id, title: t.title, status: t.status,
+              assignedTo: t.assignedTo ? (assigneeNames[t.assignedTo] ?? t.assignedTo) : null,
             })),
             kgFacts,
-            activeColleagues: activeOthers.map((r: any) => ({ name: r.name, rolle: r.rolle, currentTask: r.taskTitel })),
+            activeColleagues: activeOthers.map((r: any) => ({ name: r.name, role: r.role, currentTask: r.taskTitel })),
           };
           console.log(`  🔗 OpenClaw enrichment: ${recentDone.length} recent outputs, ${siblingTasks.length} sibling tasks, ${kgFacts.length} KG facts, ${activeOthers.length} active colleagues`);
         } catch (err: any) {
@@ -861,12 +861,12 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
       // No-op otherwise; always safe.
       try {
         const currentModel = heartbeatParsedConfig.model || heartbeatGlobalDefaultModel || '';
-        const decision = routeModel(unternehmenId, effectiveVerbindungsTyp, currentModel, {
-          titel: task.titel, beschreibung: task.beschreibung, prioritaet: task.prioritaet,
+        const decision = routeModel(companyId, effectiveVerbindungsTyp, currentModel, {
+          title: task.title, description: (task as any).description, priority: task.priority,
         });
         if (decision.routed) {
           heartbeatParsedConfig = { ...heartbeatParsedConfig, model: decision.model };
-          trace(expertId, unternehmenId, 'info',
+          trace(agentId, companyId, 'info',
             `Auto-routed: ${decision.originalModel || '(default)'} → ${decision.model} (${decision.reason})`,
             JSON.stringify({ tier: decision.tier, score: decision.score }), runId);
         }
@@ -876,14 +876,14 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
       // ────────────────────────────────────────────────────────────────────
 
       const result = await adapterRegistry.executeTask(adapterTask, adapterContext, {
-        expertId,
-        unternehmenId,
+        agentId,
+        companyId,
         runId,
         timeoutMs: 10 * 60 * 1000,
         workspacePath: (taskFull as any).workspacePath || undefined,
         systemPrompt: resolvedSystemPrompt,
-        verbindungsTyp: effectiveVerbindungsTyp,
-        verbindungsConfig: Object.keys(heartbeatParsedConfig).length > 0 ? heartbeatParsedConfig : undefined,
+        connectionType: effectiveVerbindungsTyp,
+        connectionConfig: Object.keys(heartbeatParsedConfig).length > 0 ? heartbeatParsedConfig : undefined,
         globalDefaultModel: heartbeatGlobalDefaultModel,
       });
 
@@ -920,21 +920,21 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
 
       if (isTransient) {
         if (isRateLimit) {
-          console.log(`  ⏳ Rate limit for task ${task.id} (${taskFull.titel}) — will retry next cycle`);
-          trace(expertId, unternehmenId, 'info', `Rate limit — wird automatisch wiederholt: ${taskFull.titel}`, undefined, runId);
+          console.log(`  ⏳ Rate limit for task ${task.id} (${taskFull.title}) — will retry next cycle`);
+          trace(agentId, companyId, 'info', `Rate limit — wird automatisch wiederholt: ${taskFull.title}`, undefined, runId);
           if (!isSyntheticTask) {
-            await db.update(aufgaben)
+            await db.update(tasks)
               .set({ executionLockedAt: null, executionRunId: null })
-              .where(eq(aufgaben.id, task.id));
+              .where(eq(tasks.id, task.id));
           }
         } else {
-          console.log(`  ⏳ Timeout/network for task ${task.id} (${taskFull.titel}) — retry in 5min`);
-          trace(expertId, unternehmenId, 'info', `Timeout — Retry in 5 Minuten: ${taskFull.titel}`, result.error, runId);
+          console.log(`  ⏳ Timeout/network for task ${task.id} (${taskFull.title}) — retry in 5min`);
+          trace(agentId, companyId, 'info', `Timeout — Retry in 5 Minuten: ${taskFull.title}`, result.error, runId);
           if (!isSyntheticTask) {
             const backoffLock = new Date(Date.now() - (30 * 60 * 1000 - 5 * 60 * 1000)).toISOString();
-            await db.update(aufgaben)
+            await db.update(tasks)
               .set({ executionLockedAt: backoffLock, executionRunId: null })
-              .where(eq(aufgaben.id, task.id));
+              .where(eq(tasks.id, task.id));
           }
         }
         return;
@@ -949,28 +949,28 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
           `Ausgabe:\n\`\`\`\n${result.output}\n\`\`\``;
 
         try {
-          await db.insert(kommentare).values({
-            id: crypto.randomUUID(), unternehmenId, aufgabeId: task.id,
-            autorExpertId: expertId, autorTyp: 'agent',
-            inhalt: resultComment, erstelltAm: new Date().toISOString(),
+          await db.insert(comments).values({
+            id: crypto.randomUUID(), companyId, taskId: task.id,
+            authorAgentId: agentId, senderType: 'agent',
+            content: resultComment, createdAt: new Date().toISOString(),
           });
         } catch { /* agent may have been deleted mid-run */ }
       }
 
       console.log(`  ✅ Adapter execution completed for task ${task.id}`);
-      trace(expertId, unternehmenId, result.success ? 'result' : 'error',
-        result.success ? `Task abgeschlossen: ${taskFull.titel}` : `Task fehlgeschlagen: ${taskFull.titel}`,
+      trace(agentId, companyId, result.success ? 'result' : 'error',
+        result.success ? `Task abgeschlossen: ${taskFull.title}` : `Task fehlgeschlagen: ${taskFull.title}`,
         result.success ? result.output?.slice(0, 500) : result.error, runId,
       );
 
       // ─── AGENTIC ACTION PARSING ─────────────────────────────────────
       const isOrchestrator = expert?.isOrchestrator === true;
-      const cliAdapters = ['claude-code', 'bash', 'http', 'codex-cli', 'gemini-cli'];
-      const isCliAdapter = cliAdapters.includes(expert?.verbindungsTyp || '');
+      const cliAdapters = ['claude-code', 'bash', 'http', 'codex-cli', 'gemini-cli', 'kimi-cli'];
+      const isCliAdapter = cliAdapters.includes(expert?.connectionType || '');
       let orchestratorMarkedCurrentTaskDone = false;
       if (result.success && result.output) {
         if (isOrchestrator) {
-          const orchResult = await processOrchestratorActions(task.id, expertId, unternehmenId, result.output);
+          const orchResult = await processOrchestratorActions(task.id, agentId, companyId, result.output);
           orchestratorMarkedCurrentTaskDone = orchResult.done;
 
           // ─── CEO Decision Log ───────────────────────────────────────────────
@@ -978,17 +978,17 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
           // with context instead of amnesia.
           try {
             const focusLine = result.output.split('\n').find(l => l.trim().length > 20)?.slice(0, 250)
-              ?? task.titel.slice(0, 250);
-            const goalsForLog = (adapterContext.companyContext.goals ?? []).map(g => `${g.titel} (${g.fortschritt}%)`).join(', ');
+              ?? task.title.slice(0, 250);
+            const goalsForLog = (adapterContext.companyContext.goals ?? []).map(g => `${g.title} (${g.progress}%)`).join(', ');
             const teamForLog = teamMembers.map(m => m.name).join(', ');
             const pendingCount = openTasksList.length;
 
             await db.insert(ceoDecisionLog as any).values({
               id: crypto.randomUUID(),
-              expertId,
-              unternehmenId,
+              agentId,
+              companyId,
               runId,
-              erstelltAm: new Date().toISOString(),
+              createdAt: new Date().toISOString(),
               focusSummary: focusLine,
               actionsJson: JSON.stringify(orchResult.actionSummary),
               goalsSnapshot: goalsForLog || null,
@@ -1000,7 +1000,7 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
           }
           // ────────────────────────────────────────────────────────────────────
         } else if (isCliAdapter) {
-          await processWorkerActions(task.id, expertId, unternehmenId, runId, result.output, (taskFull as any).workspacePath);
+          await processWorkerActions(task.id, agentId, companyId, runId, result.output, (taskFull as any).workspacePath);
         }
       }
       // ────────────────────────────────────────────────────────────────
@@ -1010,12 +1010,12 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
           // ─── CRITIC/EVALUATOR LOOP ─────────────────────────────────────────
           if (!isOrchestrator && result.output) {
             const criticResult = await runCriticReview(
-              task.id, taskFull.titel, taskFull.beschreibung || '', result.output, expertId, unternehmenId
+              task.id, taskFull.title, taskFull.description || '', result.output, agentId, companyId
             );
 
             recordLearning(
-              expertId,
-              taskFull.titel,
+              agentId,
+              taskFull.title,
               criticResult.approved ? 'approved' : (criticResult.escalate ? 'escalated' : 'needs_revision'),
               criticResult.approved
                 ? `Task delivered successfully via ${effectiveVerbindungsTyp}.`
@@ -1024,28 +1024,28 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
             if (!criticResult.approved) {
               if (criticResult.escalate) {
                 console.log(`  🚨 Critic: escalating task ${task.id} to human review`);
-                trace(expertId, unternehmenId, 'warning', `Critic: Eskalation — ${taskFull.titel}`, criticResult.feedback, runId);
-                await db.insert(kommentare).values({
-                  id: crypto.randomUUID(), unternehmenId, aufgabeId: task.id,
-                  autorExpertId: expertId, autorTyp: 'agent',
-                  inhalt: `🚨 **Critic Review — Manuelle Prüfung erforderlich**\n\n${criticResult.feedback}\n\n*Der Agent hat die Aufgabe nach 2 Überarbeitungszyklen nicht erfolgreich abgeschlossen. Bitte prüfe manuell.*`,
-                  erstelltAm: new Date().toISOString(),
+                trace(agentId, companyId, 'warning', `Critic: Eskalation — ${taskFull.title}`, criticResult.feedback, runId);
+                await db.insert(comments).values({
+                  id: crypto.randomUUID(), companyId, taskId: task.id,
+                  authorAgentId: agentId, senderType: 'agent',
+                  content: `🚨 **Critic Review — Manuelle Prüfung erforderlich**\n\n${criticResult.feedback}\n\n*Der Agent hat die Aufgabe nach 2 Überarbeitungszyklen nicht erfolgreich abgeschlossen. Bitte prüfe manuell.*`,
+                  createdAt: new Date().toISOString(),
                 });
-                await db.update(aufgaben)
+                await db.update(tasks)
                   .set({ executionLockedAt: null, executionRunId: null, status: 'blocked' })
-                  .where(eq(aufgaben.id, task.id));
+                  .where(eq(tasks.id, task.id));
               } else {
                 console.log(`  🔍 Critic rejected task ${task.id}: ${criticResult.feedback}`);
-                trace(expertId, unternehmenId, 'info', `Critic: Überarbeitung nötig — ${taskFull.titel}`, criticResult.feedback, runId);
-                await db.insert(kommentare).values({
-                  id: crypto.randomUUID(), unternehmenId, aufgabeId: task.id,
-                  autorExpertId: expertId, autorTyp: 'agent',
-                  inhalt: `🔍 **Critic Review — Überarbeitung erforderlich**\n\n${criticResult.feedback}\n\n*Bitte überarbeite die Aufgabe entsprechend diesem Feedback.*`,
-                  erstelltAm: new Date().toISOString(),
+                trace(agentId, companyId, 'info', `Critic: Überarbeitung nötig — ${taskFull.title}`, criticResult.feedback, runId);
+                await db.insert(comments).values({
+                  id: crypto.randomUUID(), companyId, taskId: task.id,
+                  authorAgentId: agentId, senderType: 'agent',
+                  content: `🔍 **Critic Review — Überarbeitung erforderlich**\n\n${criticResult.feedback}\n\n*Bitte überarbeite die Aufgabe entsprechend diesem Feedback.*`,
+                  createdAt: new Date().toISOString(),
                 });
-                await db.update(aufgaben)
+                await db.update(tasks)
                   .set({ executionLockedAt: null, executionRunId: null, status: 'in_progress' })
-                  .where(eq(aufgaben.id, task.id));
+                  .where(eq(tasks.id, task.id));
               }
               return;
             }
@@ -1055,34 +1055,34 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
 
           const finalStatus = 'done';
           const finalAbgeschlossenAm = new Date().toISOString();
-          await db.update(aufgaben)
-            .set({ status: finalStatus, abgeschlossenAm: finalAbgeschlossenAm, executionLockedAt: null, executionRunId: null })
-            .where(eq(aufgaben.id, task.id));
+          await db.update(tasks)
+            .set({ status: finalStatus, completedAt: finalAbgeschlossenAm, executionLockedAt: null, executionRunId: null })
+            .where(eq(tasks.id, task.id));
 
           // Unblock dependent tasks
           const entblockt = pruefeUndEntblocke(task.id);
           if (entblockt.length > 0) {
-            trace(expertId, unternehmenId, 'info', `🔓 ${entblockt.length} Task(s) entblockt`, entblockt.join(', '), runId);
+            trace(agentId, companyId, 'info', `🔓 ${entblockt.length} Task(s) entblockt`, entblockt.join(', '), runId);
           }
 
           // Auto-update goal progress
-          const completedTask = await db.select({ zielId: aufgaben.zielId })
-            .from(aufgaben).where(eq(aufgaben.id, task.id)).get();
-          const zielId = completedTask?.zielId;
-          if (zielId) {
-            const allGoalTasks = await db.select({ status: aufgaben.status })
-              .from(aufgaben)
-              .where(and(eq(aufgaben.zielId, zielId), eq(aufgaben.unternehmenId, unternehmenId)));
+          const completedTask = await db.select({ targetId: tasks.goalId })
+            .from(tasks).where(eq(tasks.id, task.id)).get();
+          const targetId = completedTask?.goalId;
+          if (targetId) {
+            const allGoalTasks = await db.select({ status: tasks.status })
+              .from(tasks)
+              .where(and(eq(tasks.goalId, targetId), eq(tasks.companyId, companyId)));
             const total = allGoalTasks.length;
             const done = allGoalTasks.filter(t => t.status === 'done').length;
             if (total > 0) {
-              const fortschritt = Math.round((done / total) * 100);
-              await db.update(ziele)
-                .set({ fortschritt, aktualisiertAm: new Date().toISOString() })
-                .where(and(eq(ziele.id, zielId), eq(ziele.unternehmenId, unternehmenId)))
+              const progress = Math.round((done / total) * 100);
+              await db.update(goals)
+                .set({ progress, updatedAt: new Date().toISOString() })
+                .where(and(eq(goals.id, targetId), eq(goals.companyId, companyId)))
                 .run();
-              console.log(`  📊 Ziel-Fortschritt auto-aktualisiert: ${fortschritt}% (${done}/${total} Tasks erledigt)`);
-              trace(expertId, unternehmenId, 'result', `Ziel-Fortschritt aktualisiert: ${fortschritt}%`, `${done}/${total} Tasks erledigt`, runId);
+              console.log(`  📊 Ziel-Fortschritt auto-aktualisiert: ${progress}% (${done}/${total} Tasks erledigt)`);
+              trace(agentId, companyId, 'result', `Ziel-Fortschritt aktualisiert: ${progress}%`, `${done}/${total} Tasks erledigt`, runId);
             }
           }
 
@@ -1091,9 +1091,9 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
           const MAX_RETRIES = 3;
           const LOCK_TIMEOUT_MS = 30 * 60 * 1000;
 
-          const failureComments = await db.select({ id: kommentare.id })
-            .from(kommentare)
-            .where(and(eq(kommentare.aufgabeId, task.id), sql`inhalt LIKE '%❌ Fehler%'`));
+          const failureComments = await db.select({ id: comments.id })
+            .from(comments)
+            .where(and(eq(comments.taskId, task.id), sql`inhalt LIKE '%❌ Fehler%'`));
           const failureCount = failureComments.length;
 
           if (failureCount < MAX_RETRIES) {
@@ -1101,77 +1101,77 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
             const syntheticLockTime = new Date(Date.now() - (LOCK_TIMEOUT_MS - backoffMinutes * 60 * 1000)).toISOString();
 
             console.log(`  🔄 Task ${task.id} failed (attempt ${failureCount}/${MAX_RETRIES}) — retry in ${backoffMinutes}min`);
-            trace(expertId, unternehmenId, 'info', `Automatischer Retry ${failureCount}/${MAX_RETRIES}: ${taskFull.titel}`, `Nächster Versuch in ${backoffMinutes} Minuten`, runId);
+            trace(agentId, companyId, 'info', `Automatischer Retry ${failureCount}/${MAX_RETRIES}: ${taskFull.title}`, `Nächster Versuch in ${backoffMinutes} Minuten`, runId);
 
-            await db.insert(kommentare).values({
-              id: crypto.randomUUID(), unternehmenId, aufgabeId: task.id,
-              autorExpertId: expertId, autorTyp: 'agent',
-              inhalt: `🔄 **Automatischer Retry ${failureCount}/${MAX_RETRIES}**\n\nTask fehlgeschlagen. Nächster Versuch in **${backoffMinutes} Minuten**.\n\n*Das System versucht automatisch, die Aufgabe erneut auszuführen.*`,
-              erstelltAm: new Date().toISOString(),
+            await db.insert(comments).values({
+              id: crypto.randomUUID(), companyId, taskId: task.id,
+              authorAgentId: agentId, senderType: 'agent',
+              content: `🔄 **Automatischer Retry ${failureCount}/${MAX_RETRIES}**\n\nTask fehlgeschlagen. Nächster Versuch in **${backoffMinutes} Minuten**.\n\n*Das System versucht automatisch, die Aufgabe erneut auszuführen.*`,
+              createdAt: new Date().toISOString(),
             });
-            await db.update(aufgaben)
+            await db.update(tasks)
               .set({ status: 'todo', executionRunId: null, executionLockedAt: syntheticLockTime })
-              .where(eq(aufgaben.id, task.id));
+              .where(eq(tasks.id, task.id));
 
           } else {
             console.log(`  🚨 Task ${task.id} failed ${failureCount}× — escalating to orchestrator`);
-            trace(expertId, unternehmenId, 'error', `Eskalation nach ${failureCount} Fehlern: ${taskFull.titel}`, result.error, runId);
+            trace(agentId, companyId, 'error', `Eskalation nach ${failureCount} Fehlern: ${taskFull.title}`, result.error, runId);
 
             const now = new Date().toISOString();
             const orchestrator = await db.select()
-              .from(experten)
-              .where(and(eq(experten.unternehmenId, unternehmenId), eq(experten.isOrchestrator, true)))
+              .from(agents)
+              .where(and(eq(agents.companyId, companyId), eq(agents.isOrchestrator, true)))
               .get();
 
-            if (orchestrator && orchestrator.id !== expertId) {
+            if (orchestrator && orchestrator.id !== agentId) {
               const escalationId = uuid();
-              await db.insert(aufgaben).values({
-                id: escalationId, unternehmenId,
-                titel: `🚨 Eskalation: "${taskFull.titel}" ist ${failureCount}× fehlgeschlagen`,
-                beschreibung:
-                  `Der Task **"${taskFull.titel}"** (ID: \`${task.id}\`) ist ${failureCount} Mal hintereinander fehlgeschlagen.\n\n` +
+              await db.insert(tasks).values({
+                id: escalationId, companyId,
+                title: `🚨 Eskalation: "${taskFull.title}" ist ${failureCount}× fehlgeschlagen`,
+                description:
+                  `Der Task **"${taskFull.title}"** (ID: \`${task.id}\`) ist ${failureCount} Mal hintereinander fehlgeschlagen.\n\n` +
                   `**Letzter Fehler:** ${result.error || 'Keine Details verfügbar'}\n\n` +
                   `**Empfohlene Maßnahmen:**\n1. Task-Beschreibung überprüfen\n2. Task anders zuweisen\n3. In kleinere Teilaufgaben aufteilen\n\n*Automatisch erstellt.*`,
-                status: 'todo', prioritaet: 'high',
-                zugewiesenAn: orchestrator.id, erstelltVon: expertId,
-                erstelltAm: now, aktualisiertAm: now,
+                status: 'todo', priority: 'high',
+                assignedTo: orchestrator.id, createdBy: agentId,
+                createdAt: now, updatedAt: now,
               });
 
-              wakeupService.wakeup(orchestrator.id, unternehmenId, {
+              wakeupService.wakeup(orchestrator.id, companyId, {
                 source: 'automation', triggerDetail: 'system',
-                reason: `Eskalation: "${taskFull.titel}" ${failureCount}× fehlgeschlagen`,
+                reason: `Eskalation: "${taskFull.title}" ${failureCount}× fehlgeschlagen`,
                 payload: { taskId: task.id },
               }).catch(() => {});
             }
 
-            await db.insert(kommentare).values({
-              id: crypto.randomUUID(), unternehmenId, aufgabeId: task.id,
-              autorExpertId: expertId, autorTyp: 'agent',
-              inhalt:
+            await db.insert(comments).values({
+              id: crypto.randomUUID(), companyId, taskId: task.id,
+              authorAgentId: agentId, senderType: 'agent',
+              content:
                 `🚨 **Eskalation an ${orchestrator ? orchestrator.name : 'Orchestrator'}**\n\n` +
                 `Nach ${failureCount} automatischen Versuchen konnte dieser Task nicht abgeschlossen werden.\n\n` +
                 (orchestrator
                   ? `**${orchestrator.name}** wurde informiert und ein Eskalations-Task wurde erstellt.`
                   : 'Der Task wurde als blockiert markiert.') +
                 `\n\n*Bitte überprüfe die Aufgabe manuell.*`,
-              erstelltAm: new Date().toISOString(),
+              createdAt: new Date().toISOString(),
             });
 
-            await db.update(aufgaben)
-              .set({ status: 'blocked', executionLockedAt: null, executionRunId: null, aktualisiertAm: new Date().toISOString() })
-              .where(eq(aufgaben.id, task.id));
+            await db.update(tasks)
+              .set({ status: 'blocked', executionLockedAt: null, executionRunId: null, updatedAt: new Date().toISOString() })
+              .where(eq(tasks.id, task.id));
 
             messagingService.notify(
-              unternehmenId,
-              `🚨 Eskalation: ${taskFull.titel}`,
-              `Task **"${taskFull.titel}"** ist ${failureCount}× fehlgeschlagen. ` +
+              companyId,
+              `🚨 Eskalation: ${taskFull.title}`,
+              `Task **"${taskFull.title}"** ist ${failureCount}× fehlgeschlagen. ` +
                 (orchestrator ? `**${orchestrator.name}** wurde automatisch benachrichtigt.` : 'Manuelle Überprüfung erforderlich.'),
               'warning'
             ).catch(() => {});
 
             appEvents.emit('broadcast', {
               type: 'task_escalated',
-              data: { unternehmenId, taskId: task.id, taskTitel: taskFull.titel, failureCount, orchestratorName: orchestrator?.name },
+              data: { companyId, taskId: task.id, taskTitel: taskFull.title, failureCount, orchestratorName: orchestrator?.name },
             });
           }
           // ──────────────────────────────────────────────────────────────────
@@ -1179,46 +1179,46 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
       }
 
       if (result.success && !isSyntheticTask) {
-        await recordWorkProducts(task.id, expertId, unternehmenId, runId, (taskFull as any).workspacePath);
-        autoSaveInsights(expertId, unternehmenId, result.output, taskFull.titel).catch(() => {});
+        await recordWorkProducts(task.id, agentId, companyId, runId, (taskFull as any).workspacePath);
+        autoSaveInsights(agentId, companyId, result.output, taskFull.title).catch(() => {});
 
         if (!isOrchestrator) {
-          await unlockDependentTasks(task.id, unternehmenId).catch(() => {});
+          await unlockDependentTasks(task.id, companyId).catch(() => {});
         }
 
         if (!expert?.isOrchestrator) {
           await notifyOrchestratorTaskDone(
-            unternehmenId, expertId, expert?.name || 'Agent',
-            taskFull.titel, taskFull.id, result.output,
+            companyId, agentId, expert?.name || 'Agent',
+            taskFull.title, taskFull.id, result.output,
           );
         }
       }
 
     } catch (error: any) {
       console.error(`  ❌ Adapter execution failed for task ${task.id}:`, error.message);
-      trace(expertId, unternehmenId, 'error', `Fehler bei Task: ${task.titel || task.id}`, error.message, runId);
+      trace(agentId, companyId, 'error', `Fehler bei Task: ${task.title || task.id}`, error.message, runId);
 
-      await db.update(aufgaben)
+      await db.update(tasks)
         .set({ status: 'blocked', executionLockedAt: null, executionRunId: null })
-        .where(eq(aufgaben.id, task.id));
+        .where(eq(tasks.id, task.id));
 
       // ─── ACTIVE ESCALATION ───────────────────────────────────────────
-      const agent = await db.select().from(experten).where(eq(experten.id, expertId)).get();
+      const agent = await db.select().from(agents).where(eq(agents.id, agentId)).get();
       if (agent?.reportsTo) {
-        const boss = await db.select().from(experten).where(eq(experten.id, agent.reportsTo)).get();
+        const boss = await db.select().from(agents).where(eq(agents.id, agent.reportsTo)).get();
         if (boss) {
           console.log(`🚨 Escalating problem from ${agent.name} to supervisor ${boss.name}...`);
           await messagingService.notify(
-            unternehmenId,
+            companyId,
             `Eskalation: ${agent.name} braucht Hilfe`,
-            `Agent **${agent.name}** meldet ein Problem bei Task **'${task.titel}'**.\n\nFehler: _${error.message}_`,
+            `Agent **${agent.name}** meldet ein Problem bei Task **'${task.title}'**.\n\nFehler: _${error.message}_`,
             'warning'
           );
-          await db.insert(traceEreignisse).values({
-            id: uuid(), unternehmenId, typ: 'status_change',
-            titel: `🚨 Eskalation an ${boss.name}`,
+          await db.insert(traceEvents).values({
+            id: uuid(), companyId, type: 'status_change',
+            title: `🚨 Eskalation an ${boss.name}`,
             details: `Agent ${agent.name} hat ein Problem gemeldet. Vorgesetzter wurde benachrichtigt.`,
-            erstelltAm: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
           });
         }
       }
@@ -1233,19 +1233,19 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
    */
   private async runOrchestratorPlanning(
     runId: string,
-    expertId: string,
-    unternehmenId: string,
+    agentId: string,
+    companyId: string,
     advisorPlan: string | null,
   ): Promise<void> {
     try {
-      const activeGoals = await db.select({ id: ziele.id, titel: ziele.titel, fortschritt: ziele.fortschritt, status: ziele.status })
-        .from(ziele)
-        .where(and(eq(ziele.unternehmenId, unternehmenId), inArray(ziele.status, ['active', 'planned'])))
+      const activeGoals = await db.select({ id: goals.id, title: goals.title, progress: goals.progress, status: goals.status })
+        .from(goals)
+        .where(and(eq(goals.companyId, companyId), inArray(goals.status, ['active', 'planned'])))
         .limit(5);
 
-      const backlogTasks = await db.select({ id: aufgaben.id, titel: aufgaben.titel, prioritaet: aufgaben.prioritaet })
-        .from(aufgaben)
-        .where(and(eq(aufgaben.unternehmenId, unternehmenId), inArray(aufgaben.status, ['backlog', 'todo', 'open'])))
+      const backlogTasks = await db.select({ id: tasks.id, title: tasks.title, priority: tasks.priority })
+        .from(tasks)
+        .where(and(eq(tasks.companyId, companyId), inArray(tasks.status, ['backlog', 'todo', 'in_progress'])))
         .limit(10);
 
       if (activeGoals.length === 0 && backlogTasks.length === 0) {
@@ -1253,36 +1253,36 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
         return;
       }
 
-      const teamForPlanning = await db.select({ id: experten.id, name: experten.name, faehigkeiten: experten.faehigkeiten })
-        .from(experten)
-        .where(and(eq(experten.unternehmenId, unternehmenId), eq(experten.isOrchestrator, false)));
+      const teamForPlanning = await db.select({ id: agents.id, name: agents.name, skills: agents.skills })
+        .from(agents)
+        .where(and(eq(agents.companyId, companyId), eq(agents.isOrchestrator, false)));
 
       const workloadPerAgent = await Promise.all(teamForPlanning.map(async (m) => {
         const count = await db.select({ n: sql<number>`COUNT(*)` })
-          .from(aufgaben)
-          .where(and(eq(aufgaben.unternehmenId, unternehmenId), eq(aufgaben.zugewiesenAn, m.id), inArray(aufgaben.status, ['todo', 'in_progress', 'backlog'])))
+          .from(tasks)
+          .where(and(eq(tasks.companyId, companyId), eq(tasks.assignedTo, m.id), inArray(tasks.status, ['todo', 'in_progress', 'backlog'])))
           .then(r => (r[0]?.n ?? 0) as number);
 
         const structuredSkills = await db.select({ skillName: skillsLibrary.name })
-          .from(expertenSkills)
-          .innerJoin(skillsLibrary, eq(expertenSkills.skillId, skillsLibrary.id))
-          .where(eq(expertenSkills.expertId, m.id));
+          .from(agentSkills)
+          .innerJoin(skillsLibrary, eq(agentSkills.skillId, skillsLibrary.id))
+          .where(eq(agentSkills.agentId, m.id));
 
         const allSkills = [
           ...structuredSkills.map(s => s.skillName),
-          ...(m.faehigkeiten ? m.faehigkeiten.split(',').map((s: string) => s.trim()).filter(Boolean) : []),
+          ...(m.skills ? m.skills.split(',').map((s: string) => s.trim()).filter(Boolean) : []),
         ];
         const skillStr = [...new Set(allSkills)].join(', ') || 'keine';
         return { name: m.name, skills: skillStr, openTasks: count };
       }));
 
       const staleDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const staleTasks = await db.select({ titel: aufgaben.titel, prioritaet: aufgaben.prioritaet })
-        .from(aufgaben)
+      const staleTasks = await db.select({ title: tasks.title, priority: tasks.priority })
+        .from(tasks)
         .where(and(
-          eq(aufgaben.unternehmenId, unternehmenId),
-          inArray(aufgaben.status, ['todo', 'in_progress', 'backlog']),
-          sql`${aufgaben.erstelltAm} < ${staleDate}`,
+          eq(tasks.companyId, companyId),
+          inArray(tasks.status, ['todo', 'in_progress', 'backlog']),
+          sql`${tasks.createdAt} < ${staleDate}`,
         ))
         .limit(5);
 
@@ -1296,31 +1296,31 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
       let planningContext: string;
       if (activeGoals.length > 0) {
         planningContext =
-          `Aktive Ziele: ${activeGoals.map(g => `"${g.titel}" (${g.fortschritt}%)`).join(', ')}. ` +
+          `Aktive Ziele: ${activeGoals.map(g => `"${g.title}" (${g.progress}%)`).join(', ')}. ` +
           `Team-Auslastung: ${workloadSummary}.${hiringHint} ` +
           `Analysiere was als nächstes getan werden muss und weise Aufgaben den passenden Team-Mitgliedern zu.`;
       } else {
         planningContext =
-          `Keine übergeordneten Ziele gesetzt. Offene Aufgaben im Backlog: ${backlogTasks.map(t => `"${t.titel}" [${t.prioritaet}]`).join(', ')}. ` +
+          `Keine übergeordneten Ziele gesetzt. Offene Aufgaben im Backlog: ${backlogTasks.map(t => `"${t.title}" [${t.priority}]`).join(', ')}. ` +
           `Team-Auslastung: ${workloadSummary}.${hiringHint} ` +
           `Priorisiere und weise diese Aufgaben den passenden Team-Mitgliedern zu. Erstelle bei Bedarf Unter-Tasks.`;
       }
 
       const syntheticTask = {
         id: `planning-${runId}`,
-        titel: 'Strategische Planung & Task-Erstellung',
-        beschreibung: `Überprüfe den aktuellen Status des Teams und koordiniere die Arbeit. ${planningContext}`,
+        title: 'Strategische Planung & Task-Erstellung',
+        description: `Überprüfe den aktuellen Status des Teams und koordiniere die Arbeit. ${planningContext}`,
         status: 'todo',
-        prioritaet: 'high',
+        priority: 'high',
         executionLockedAt: null,
       };
 
       const traceLabel = activeGoals.length > 0
-        ? `Ziele: ${activeGoals.map(g => g.titel).join(', ')}`
+        ? `Ziele: ${activeGoals.map(g => g.title).join(', ')}`
         : `Backlog: ${backlogTasks.length} offene Tasks`;
-      trace(expertId, unternehmenId, 'action', 'Planungszyklus gestartet', traceLabel, runId);
+      trace(agentId, companyId, 'action', 'Planungszyklus gestartet', traceLabel, runId);
 
-      await this.executeTaskViaAdapter(runId, expertId, unternehmenId, syntheticTask, advisorPlan);
+      await this.executeTaskViaAdapter(runId, agentId, companyId, syntheticTask, advisorPlan);
     } catch (err: any) {
       console.error(`  ❌ Orchestrator planning cycle failed: ${err.message}`);
     }
@@ -1331,16 +1331,16 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
    */
   async getRun(runId: string): Promise<HeartbeatRun | null> {
     const runs = await db.select()
-      .from(arbeitszyklen)
-      .where(eq(arbeitszyklen.id, runId))
+      .from(workCycles)
+      .where(eq(workCycles.id, runId))
       .limit(1);
 
     if (runs.length === 0) return null;
     const run = runs[0];
     return {
       id: run.id,
-      unternehmenId: run.unternehmenId,
-      expertId: run.expertId,
+      companyId: run.companyId,
+      agentId: run.agentId,
       status: run.status,
       invocationSource: run.invocationSource || 'manual',
       triggerDetail: run.triggerDetail || '',
@@ -1354,16 +1354,16 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
   async updateRunStatus(runId: string, status: string, extra?: Record<string, any>): Promise<void> {
     const updateData: Record<string, any> = { status };
     if (extra) {
-      if (extra.ausgabe) updateData.ausgabe = extra.ausgabe;
-      if (extra.fehler) updateData.fehler = extra.fehler;
-      if (extra.beendetAm) updateData.beendetAm = extra.beendetAm;
+      if (extra.output) updateData.output = extra.output;
+      if (extra.error) updateData.error = extra.error;
+      if (extra.endedAt) updateData.endedAt = extra.endedAt;
       if (extra.usageJson) updateData.usageJson = JSON.stringify(extra.usageJson);
       if (extra.resultJson) updateData.resultJson = JSON.stringify(extra.resultJson);
       if (extra.sessionIdBefore) updateData.sessionIdBefore = extra.sessionIdBefore;
       if (extra.sessionIdAfter) updateData.sessionIdAfter = extra.sessionIdAfter;
       if (extra.exitCode !== undefined) updateData.exitCode = extra.exitCode;
     }
-    await db.update(arbeitszyklen).set(updateData).where(eq(arbeitszyklen.id, runId));
+    await db.update(workCycles).set(updateData).where(eq(workCycles.id, runId));
   }
 
   /**
@@ -1373,26 +1373,26 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
     const run = await this.getRun(runId);
     if (!run) return;
 
-    await db.update(arbeitszyklen)
+    await db.update(workCycles)
       .set({ usageJson: JSON.stringify(usage) })
-      .where(eq(arbeitszyklen.id, runId));
+      .where(eq(workCycles.id, runId));
 
-    await db.update(experten)
-      .set({ verbrauchtMonatCent: sql`${experten.verbrauchtMonatCent} + ${usage.costCents}`, aktualisiertAm: new Date().toISOString() })
-      .where(eq(experten.id, run.expertId));
+    await db.update(agents)
+      .set({ monthlySpendCent: sql`${agents.monthlySpendCent} + ${usage.costCents}`, updatedAt: new Date().toISOString() })
+      .where(eq(agents.id, run.agentId));
 
-    await db.insert(kostenbuchungen).values({
+    await db.insert(costEntries).values({
       id: crypto.randomUUID(),
-      unternehmenId: run.unternehmenId,
-      expertId: run.expertId,
-      aufgabeId: run.contextSnapshot?.issueId || null,
-      anbieter: 'heartbeat',
-      modell: 'system',
+      companyId: run.companyId,
+      agentId: run.agentId,
+      taskId: run.contextSnapshot?.issueId || null,
+      provider: 'heartbeat',
+      model: 'system',
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
-      kostenCent: usage.costCents,
-      zeitpunkt: new Date().toISOString(),
-      erstelltAm: new Date().toISOString(),
+      costCent: usage.costCents,
+      timestamp: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
     });
   }
 
@@ -1404,10 +1404,10 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
     taskTitel: string,
     taskBeschreibung: string,
     output: string,
-    expertId: string,
-    unternehmenId: string
+    agentId: string,
+    companyId: string
   ): Promise<{ approved: boolean; feedback: string; escalate?: boolean }> {
-    return runCriticReview(taskId, taskTitel, taskBeschreibung, output, expertId, unternehmenId);
+    return runCriticReview(taskId, taskTitel, taskBeschreibung, output, agentId, companyId);
   }
 }
 

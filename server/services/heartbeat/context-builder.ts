@@ -2,7 +2,7 @@
 
 import fs from 'fs';
 import { db } from '../../db/client.js';
-import { experten, aufgaben, ziele, projekte, issueRelations, kommentare, palaceKg, chatNachrichten, ceoDecisionLog } from '../../db/schema.js';
+import { agents, tasks, goals, projects, issueRelations, comments, palaceKg, chatMessages, ceoDecisionLog } from '../../db/schema.js';
 import { eq, and, inArray, desc, asc, isNull, sql } from 'drizzle-orm';
 import type { AdapterContext, AdapterTask, CompanyGoal } from '../../adapters/types.js';
 import { loadRelevantMemory } from '../memory-auto.js';
@@ -14,8 +14,8 @@ export interface BuildContextParams {
   comments: any[];
   blockerOutputs: string | null;
   advisorPlan: string | null;
-  expertId: string;
-  unternehmenId: string;
+  agentId: string;
+  companyId: string;
 }
 
 /**
@@ -24,23 +24,23 @@ export interface BuildContextParams {
  * Also trims oversized context to stay within token budget.
  */
 export async function buildAdapterContext(params: BuildContextParams): Promise<AdapterContext> {
-  const { taskFull, expert, unternehmenData, comments, blockerOutputs, advisorPlan, expertId, unternehmenId } = params;
+  const { taskFull, expert, unternehmenData, comments, blockerOutputs, advisorPlan, agentId, companyId } = params;
 
   const adapterTask: AdapterTask = {
     id: taskFull.id,
-    titel: taskFull.titel,
-    beschreibung: taskFull.beschreibung,
+    title: taskFull.title,
+    description: taskFull.description,
     status: taskFull.status,
-    prioritaet: taskFull.prioritaet,
+    priority: taskFull.priority,
   };
 
   // ─── Memory Kontext laden (nativ) ───────────────────────────────
-  const taskKeywords = [taskFull.titel, taskFull.beschreibung || '']
+  const taskKeywords = [taskFull.title, taskFull.description || '']
     .join(' ')
     .toLowerCase()
     .split(/\W+/)
     .filter(w => w.length > 4);
-  const memoryContext = loadRelevantMemory(expertId, taskKeywords) || null;
+  const memoryContext = loadRelevantMemory(agentId, taskKeywords) || null;
 
   // ─── Letzte Chat-Nachrichten laden (Board ↔ Agent) ──────────────────
   // Damit der Agent weiß was im direkten Chat besprochen wurde und
@@ -48,26 +48,26 @@ export async function buildAdapterContext(params: BuildContextParams): Promise<A
   let boardKommunikation: string | undefined;
   try {
     const recentChat = await db.select({
-      absenderTyp: chatNachrichten.absenderTyp,
-      nachricht: chatNachrichten.nachricht,
-      erstelltAm: chatNachrichten.erstelltAm,
+      senderType: chatMessages.senderType,
+      message: chatMessages.message,
+      createdAt: chatMessages.createdAt,
     })
-      .from(chatNachrichten)
+      .from(chatMessages)
       .where(and(
-        eq(chatNachrichten.unternehmenId, unternehmenId),
-        eq(chatNachrichten.expertId, expertId),
+        eq(chatMessages.companyId, companyId),
+        eq(chatMessages.agentId, agentId),
       ))
-      .orderBy(desc(chatNachrichten.erstelltAm))
+      .orderBy(desc(chatMessages.createdAt))
       .limit(8)
       .then(rows => rows.reverse()); // chronological order
 
     if (recentChat.length > 0) {
       const lines = recentChat
-        .filter(m => m.absenderTyp !== 'system')
+        .filter(m => m.senderType !== 'system')
         .map(m => {
-          const who = m.absenderTyp === 'board' ? '👤 Board' : `🤖 ${expert?.name || 'Agent'}`;
-          const ts = m.erstelltAm ? new Date(m.erstelltAm).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
-          return `[${ts}] ${who}: ${m.nachricht}`;
+          const who = m.senderType === 'board' ? '👤 Board' : `🤖 ${expert?.name || 'Agent'}`;
+          const ts = m.createdAt ? new Date(m.createdAt).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+          return `[${ts}] ${who}: ${m.message}`;
         });
       if (lines.length > 0) {
         boardKommunikation = lines.join('\n');
@@ -84,15 +84,15 @@ export async function buildAdapterContext(params: BuildContextParams): Promise<A
       const lastDecision = await db.select()
         .from(ceoDecisionLog as any)
         .where(and(
-          eq((ceoDecisionLog as any).expertId, expertId),
-          eq((ceoDecisionLog as any).unternehmenId, unternehmenId),
+          eq((ceoDecisionLog as any).agentId, agentId),
+          eq((ceoDecisionLog as any).companyId, companyId),
         ))
-        .orderBy(desc((ceoDecisionLog as any).erstelltAm))
+        .orderBy(desc((ceoDecisionLog as any).createdAt))
         .limit(1)
         .then((rows: any[]) => rows[0]);
 
       if (lastDecision) {
-        const ts = new Date(lastDecision.erstelltAm).toLocaleString('de-DE', {
+        const ts = new Date(lastDecision.createdAt).toLocaleString('de-DE', {
           day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
         });
         const actions: string[] = JSON.parse(lastDecision.actionsJson || '[]');
@@ -115,33 +115,33 @@ export async function buildAdapterContext(params: BuildContextParams): Promise<A
   let activeGoals: CompanyGoal[] = [];
   try {
     const rawGoals = await db.select({
-      id: ziele.id,
-      titel: ziele.titel,
-      beschreibung: ziele.beschreibung,
-      fortschritt: ziele.fortschritt,
-      status: ziele.status,
-    }).from(ziele)
+      id: goals.id,
+      title: goals.title,
+      description: goals.description,
+      progress: goals.progress,
+      status: goals.status,
+    }).from(goals)
       .where(and(
-        eq(ziele.unternehmenId, unternehmenId),
-        inArray(ziele.status, ['active', 'planned']),
+        eq(goals.companyId, companyId),
+        inArray(goals.status, ['active', 'planned']),
       ))
-      .orderBy(asc(ziele.erstelltAm))
+      .orderBy(asc(goals.createdAt))
       .limit(5);
 
     for (const g of rawGoals) {
-      const linkedTasks = await db.select({ status: aufgaben.status })
-        .from(aufgaben)
-        .where(and(eq(aufgaben.zielId, g.id), eq(aufgaben.unternehmenId, unternehmenId)));
+      const linkedTasks = await db.select({ status: tasks.status })
+        .from(tasks)
+        .where(and(eq(tasks.goalId, g.id), eq(tasks.companyId, companyId)));
       const doneTasks = linkedTasks.filter(t => t.status === 'done').length;
       const openTasks = linkedTasks.filter(t => t.status !== 'done').length;
       const computedProgress = linkedTasks.length > 0
         ? Math.round((doneTasks / linkedTasks.length) * 100)
-        : g.fortschritt;
+        : g.progress;
       activeGoals.push({
         id: g.id,
-        titel: g.titel,
-        beschreibung: g.beschreibung,
-        fortschritt: computedProgress,
+        title: g.title,
+        description: g.description,
+        progress: computedProgress,
         status: g.status,
         openTasks,
         doneTasks,
@@ -154,32 +154,32 @@ export async function buildAdapterContext(params: BuildContextParams): Promise<A
 
   // Load team members for orchestrator context
   const teamMembers = expert?.isOrchestrator
-    ? await db.select({ id: experten.id, name: experten.name, rolle: experten.rolle, status: experten.status })
-        .from(experten)
-        .where(and(eq(experten.unternehmenId, unternehmenId), eq(experten.isOrchestrator, false)))
+    ? await db.select({ id: agents.id, name: agents.name, role: agents.role, status: agents.status })
+        .from(agents)
+        .where(and(eq(agents.companyId, companyId), eq(agents.isOrchestrator, false)))
     : [];
 
   // Load open/unassigned tasks summary for orchestrator
   const openTasks = expert?.isOrchestrator
-    ? await db.select({ id: aufgaben.id, titel: aufgaben.titel, status: aufgaben.status, zugewiesenAn: aufgaben.zugewiesenAn, prioritaet: aufgaben.prioritaet })
-        .from(aufgaben)
+    ? await db.select({ id: tasks.id, title: tasks.title, status: tasks.status, assignedTo: tasks.assignedTo, priority: tasks.priority })
+        .from(tasks)
         .where(and(
-          eq(aufgaben.unternehmenId, unternehmenId),
-          inArray(aufgaben.status, ['backlog', 'todo', 'in_progress', 'blocked']),
+          eq(tasks.companyId, companyId),
+          inArray(tasks.status, ['backlog', 'todo', 'in_progress', 'blocked']),
         ))
         .limit(20)
     : [];
 
   // Load project context if task belongs to a project
   let projektContext: AdapterContext['projektContext'] | undefined;
-  if (taskFull.projektId) {
-    const proj = await db.select({ name: projekte.name, beschreibung: projekte.beschreibung, workDir: projekte.workDir })
-      .from(projekte)
-      .where(eq(projekte.id, taskFull.projektId))
+  if (taskFull.projectId) {
+    const proj = await db.select({ name: projects.name, description: projects.description, workDir: projects.workDir })
+      .from(projects)
+      .where(eq(projects.id, taskFull.projectId))
       .limit(1)
       .then((rows: any[]) => rows[0]);
     if (proj) {
-      projektContext = { name: proj.name, beschreibung: proj.beschreibung, workDir: proj.workDir };
+      projektContext = { name: proj.name, description: proj.description, workDir: proj.workDir };
     }
   }
 
@@ -187,20 +187,20 @@ export async function buildAdapterContext(params: BuildContextParams): Promise<A
     task: adapterTask,
     previousComments: comments.map((c: any) => ({
       id: c.id,
-      inhalt: c.inhalt,
-      autorTyp: c.autorTyp as 'agent' | 'board',
-      erstelltAm: c.erstelltAm,
+      content: c.content,
+      senderType: c.authorType as 'agent' | 'board',
+      createdAt: c.createdAt,
     })),
     companyContext: {
       name: unternehmenData?.name || 'Unknown',
-      ziel: unternehmenData?.ziel || null,
+      goal: unternehmenData?.goal || null,
       goals: activeGoals.length > 0 ? activeGoals : undefined,
     },
     ...(projektContext ? { projektContext } : {}),
     agentContext: {
       name: expert?.name || 'Unknown Agent',
-      rolle: expert?.rolle || 'Agent',
-      faehigkeiten: expert?.faehigkeiten || null,
+      role: expert?.role || 'Agent',
+      skills: expert?.skills || null,
       // MaximizerMode: tell the agent to work at maximum speed and output
       ...((taskFull as any).isMaximizerMode ? {
         maximizerMode: '⚡ MAXIMIZER MODE AKTIV: Arbeite schnellstmöglich. Erzeuge vollständigen, sofort nutzbaren Output. Keine Rückfragen, keine Platzhalter — liefere alles in einem Durchgang.',
@@ -218,15 +218,15 @@ export async function buildAdapterContext(params: BuildContextParams): Promise<A
           return files ? { workspaceFiles: `## Bereits vorhandene Dateien im Workspace\n\`\`\`\n${files}\n\`\`\`\nBitte konsistenten Code-Stil verwenden und bestehende Dateien beachten.` } : {};
         } catch { return {}; }
       })(),
-      ...(memoryContext ? { gedaechtnis: memoryContext } : {}),
+      ...(memoryContext ? { memory: memoryContext } : {}),
       ...(letzteEntscheidung ? { letzteEntscheidung } : {}),
       ...(boardKommunikation ? { boardKommunikation } : {}),
       ...(blockerOutputs ? { vorgaengerOutputs: blockerOutputs } : {}),
       ...(advisorPlan ? { advisorPlan: `### 🧠 STRATEGISCHER PLAN DES ARCHITEKTEN/ADVISORS\n\n${advisorPlan}\n\n*Bitte befolge diesen Plan strikt bei der Ausführung der Aufgabe.*` } : {}),
       // Orchestrator gets full team + task overview
       ...(expert?.isOrchestrator && teamMembers.length > 0 ? {
-        team: teamMembers.map(m => ({ id: m.id, name: m.name, rolle: m.rolle, status: m.status })),
-        offeneTasks: openTasks.map(t => ({ id: t.id, titel: t.titel, status: t.status, zugewiesenAn: t.zugewiesenAn, prioritaet: t.prioritaet })),
+        team: teamMembers.map(m => ({ id: m.id, name: m.name, role: m.role, status: m.status })),
+        offeneTasks: openTasks.map(t => ({ id: t.id, title: t.title, status: t.status, assignedTo: t.assignedTo, priority: t.priority })),
         aktionsFormat: `
 ## WICHTIG: Aktionen als JSON ausgeben
 
@@ -235,10 +235,10 @@ Wenn du Tasks erstellen, zuweisen oder Ziele aktualisieren willst, füge am ENDE
 \`\`\`json
 {
   "actions": [
-    {"type": "create_task", "titel": "Task-Titel", "beschreibung": "Beschreibung...", "assignTo": "Agent Name", "prioritaet": "high", "zielId": "GOAL_ID"},
+    {"type": "create_task", "titel": "Task-Titel", "beschreibung": "Beschreibung...", "assignTo": "Agent Name", "priority": "high", "targetId": "GOAL_ID"},
     {"type": "assign_task", "taskId": "TASK_ID", "assignTo": "Agent Name"},
     {"type": "mark_done", "taskId": "TASK_ID"},
-    {"type": "update_goal", "goalId": "GOAL_ID", "fortschritt": 50},
+    {"type": "update_goal", "goalId": "GOAL_ID", "progress": 50},
     {"type": "hire_agent", "rolle": "QA Engineer", "faehigkeiten": "Testing, Python", "begruendung": "Wir brauchen mehr QA-Kapazität"}
   ]
 }
@@ -246,14 +246,14 @@ Wenn du Tasks erstellen, zuweisen oder Ziele aktualisieren willst, füge am ENDE
 
 Verfügbare Prioritäten: critical, high, medium, low
 Verfügbare Team-Mitglieder: ${teamMembers.map(m => m.name).join(', ')}
-WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Ziel-Fortschritt (update_goal) wenn Tasks abgeschlossen wurden.
+WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "targetId". Aktualisiere Ziel-Fortschritt (update_goal) wenn Tasks abgeschlossen wurden.
 `,
       } : {}),
     },
   };
 
   if (memoryContext) {
-    console.log(`  🧠 Memory geladen für Agent ${expertId} (${memoryContext.length} Zeichen)`);
+    console.log(`  🧠 Memory geladen für Agent ${agentId} (${memoryContext.length} Zeichen)`);
   }
 
   // ─── TOKEN BUDGET GUARD ────────────────────────────────────────────────
@@ -272,9 +272,9 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "zielId". Aktualisiere Z
     }
 
     // 2. Trim memory context
-    if (adapterContext.agentContext.gedaechtnis) {
-      adapterContext.agentContext.gedaechtnis =
-        (adapterContext.agentContext.gedaechtnis as string).slice(0, 10_000) + '\n[...gekürzt]';
+    if (adapterContext.agentContext.memory) {
+      adapterContext.agentContext.memory =
+        (adapterContext.agentContext.memory as string).slice(0, 10_000) + '\n[...gekürzt]';
     }
 
     // 3. Drop oldest comments if still too large

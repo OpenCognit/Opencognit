@@ -142,7 +142,7 @@ const BoxReveal = memo(function BoxReveal({
           right: 0,
           zIndex: 20,
           background: boxColor ?? '#5046e6',
-          borderRadius: 4,
+          borderRadius: 0,
         }}
       />
     </section>

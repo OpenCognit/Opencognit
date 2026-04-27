@@ -57,7 +57,7 @@ interface BootstrapPlan {
 const PRIO_COLORS: Record<string, string> = {
   critical: '#ef4444',
   high: '#f59e0b',
-  medium: '#23CDCB',
+  medium: '#c5a059',
   low: '#94a3b8',
 };
 
@@ -71,13 +71,13 @@ function StepDot({ step, current, label }: { step: number; current: number; labe
       <div style={{
         width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 13, fontWeight: 700, transition: 'all 0.3s',
-        background: done ? '#23CDCB' : active ? 'rgba(35,205,202,0.2)' : 'rgba(255,255,255,0.06)',
-        border: `2px solid ${done ? '#23CDCB' : active ? '#23CDCB' : 'rgba(255,255,255,0.1)'}`,
-        color: done ? '#000' : active ? '#23CDCB' : '#475569',
+        background: done ? '#c5a059' : active ? 'rgba(197,160,89,0.2)' : 'rgba(255,255,255,0.06)',
+        border: `2px solid ${done ? '#c5a059' : active ? '#c5a059' : 'rgba(255,255,255,0.1)'}`,
+        color: done ? '#000' : active ? '#c5a059' : '#475569',
       }}>
         {done ? <CheckCircle2 size={14} /> : step}
       </div>
-      <span style={{ fontSize: 10, color: active ? '#23CDCB' : '#475569', fontWeight: active ? 600 : 400, whiteSpace: 'nowrap' }}>{label}</span>
+      <span style={{ fontSize: 10, color: active ? '#c5a059' : '#475569', fontWeight: active ? 600 : 400, whiteSpace: 'nowrap' }}>{label}</span>
     </div>
   );
 }
@@ -86,7 +86,7 @@ function StepLine({ done }: { done: boolean }) {
   return (
     <div style={{
       flex: 1, height: 2, marginBottom: 20,
-      background: done ? '#23CDCB' : 'rgba(255,255,255,0.08)',
+      background: done ? '#c5a059' : 'rgba(255,255,255,0.08)',
       transition: 'background 0.3s',
     }} />
   );
@@ -121,21 +121,21 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
     width: '100%', padding: '0.75rem 1rem',
     background: 'rgba(255,255,255,0.04)',
     border: '1px solid rgba(255,255,255,0.12)',
-    borderRadius: '12px', color: '#ffffff',
+    borderRadius: 0, color: '#ffffff',
     fontSize: '0.875rem', outline: 'none',
     boxSizing: 'border-box', colorScheme: 'dark',
     resize: 'vertical' as any,
   };
 
   const btnPrimary: React.CSSProperties = {
-    padding: '0.75rem 1.5rem', borderRadius: '12px',
-    background: 'rgba(35,205,202,0.9)', border: '1px solid rgba(35,205,202,0.4)',
+    padding: '0.75rem 1.5rem', borderRadius: 0,
+    background: 'rgba(197,160,89,0.9)', border: '1px solid rgba(197,160,89,0.4)',
     color: '#000', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer',
     display: 'flex', alignItems: 'center', gap: '0.5rem',
   };
 
   const btnSecondary: React.CSSProperties = {
-    padding: '0.75rem 1.5rem', borderRadius: '12px',
+    padding: '0.75rem 1.5rem', borderRadius: 0,
     background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
     color: '#94a3b8', fontWeight: 500, fontSize: '0.875rem', cursor: 'pointer',
     display: 'flex', alignItems: 'center', gap: '0.5rem',
@@ -215,7 +215,7 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
       setDone(true);
       setStep(5);
     } catch (e: any) {
-      setExecError(e.message || 'Fehler beim Erstellen');
+      setExecError(e.message || 'Setup failed');
     } finally {
       setExecuting(false);
     }
@@ -236,26 +236,26 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
       background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
     }}>
       <div style={{
-        background: 'rgba(8,8,18,0.95)', backdropFilter: 'blur(40px)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        borderRadius: '24px', padding: '2rem',
+        background: 'linear-gradient(180deg, rgba(16,14,10,0.97) 0%, rgba(12,10,8,0.97) 100%)', backdropFilter: 'blur(40px)',
+        border: '1px solid rgba(197,160,89,0.15)',
+        borderRadius: 0, padding: '2rem',
         width: '100%', maxWidth: '680px', maxHeight: '90vh',
         overflowY: 'auto',
-        boxShadow: '0 40px 100px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.08)',
+        boxShadow: '0 40px 100px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.08), 0 0 40px rgba(197,160,89,0.06)',
         position: 'relative',
       }}>
         {/* Close */}
         <button onClick={onClose} style={{
           position: 'absolute', top: 16, right: 16,
           background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-          borderRadius: 8, padding: '4px 8px', cursor: 'pointer', color: '#71717a',
+          borderRadius: 0, padding: '4px 8px', cursor: 'pointer', color: '#71717a',
         }}><X size={14} /></button>
 
         {/* Header */}
         <div style={{ marginBottom: '1.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(35,205,202,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Sparkles size={18} style={{ color: '#23CDCB' }} />
+            <div style={{ width: 36, height: 36, borderRadius: 0, background: 'rgba(197,160,89,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Sparkles size={18} style={{ color: '#c5a059' }} />
             </div>
             <div>
               <div style={{ fontSize: '1.125rem', fontWeight: 800, color: '#fff' }}>
@@ -337,8 +337,8 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
               )}
             </div>
 
-            <div style={{ background: 'rgba(35,205,202,0.05)', border: '1px solid rgba(35,205,202,0.15)', borderRadius: 12, padding: '0.875rem' }}>
-              <div style={{ fontSize: '0.75rem', color: '#23CDCB', fontWeight: 600, marginBottom: 6 }}>
+            <div style={{ background: 'rgba(197,160,89,0.05)', border: '1px solid rgba(197,160,89,0.15)', borderRadius: 0, padding: '0.875rem' }}>
+              <div style={{ fontSize: '0.75rem', color: '#c5a059', fontWeight: 600, marginBottom: 6 }}>
                 {de ? 'Was passiert mit diesem Ordner?' : 'What happens with this folder?'}
               </div>
               <div style={{ fontSize: '0.7rem', color: '#64748b', lineHeight: 1.5 }}>
@@ -377,12 +377,12 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
               <>
                 <div style={{
                   width: 72, height: 72, borderRadius: '50%',
-                  background: 'radial-gradient(circle, rgba(35,205,202,0.2) 0%, transparent 70%)',
+                  background: 'radial-gradient(circle, rgba(197,160,89,0.2) 0%, transparent 70%)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  border: '2px solid rgba(35,205,202,0.3)',
+                  border: '2px solid rgba(197,160,89,0.3)',
                   animation: 'pulse 2s ease-in-out infinite',
                 }}>
-                  <Sparkles size={32} style={{ color: '#23CDCB' }} />
+                  <Sparkles size={32} style={{ color: '#c5a059' }} />
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', marginBottom: 6 }}>
@@ -392,7 +392,7 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
                     {de ? 'Plant Projekte, Agenten, Tasks und Routinen' : 'Planning projects, agents, tasks and routines'}
                   </div>
                 </div>
-                <Loader2 size={20} style={{ color: '#23CDCB', animation: 'spin 1s linear infinite' }} />
+                <Loader2 size={20} style={{ color: '#c5a059', animation: 'spin 1s linear infinite' }} />
               </>
             ) : analyzeError ? (
               <div style={{ textAlign: 'center' }}>
@@ -408,15 +408,15 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
         {step === 4 && plan && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             {planSource === 'default' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.625rem 0.875rem', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 10, fontSize: '0.75rem', color: '#f59e0b' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.625rem 0.875rem', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 0, fontSize: '0.75rem', color: '#f59e0b' }}>
                 <AlertCircle size={12} />
                 {de ? 'Kein API-Key gefunden — Basis-Plan erstellt. Füge einen API-Key in den Einstellungen hinzu für einen individuellen Plan.' : 'No API key found — basic plan created. Add an API key in settings for a custom plan.'}
               </div>
             )}
 
             {/* Company Goal */}
-            <div style={{ background: 'rgba(35,205,202,0.06)', border: '1px solid rgba(35,205,202,0.15)', borderRadius: 12, padding: '0.875rem' }}>
-              <div style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#23CDCB', marginBottom: 4 }}>
+            <div style={{ background: 'rgba(197,160,89,0.06)', border: '1px solid rgba(197,160,89,0.15)', borderRadius: 0, padding: '0.875rem' }}>
+              <div style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#c5a059', marginBottom: 4 }}>
                 {de ? 'Unternehmensziel' : 'Company Goal'}
               </div>
               <div style={{ fontSize: '0.875rem', color: '#e2e8f0' }}>{plan.companyGoal}</div>
@@ -430,16 +430,16 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {projektOrder.map((p, i) => (
                   <div key={p.name} style={{
-                    background: startProjekt === p.name ? 'rgba(35,205,202,0.08)' : 'rgba(255,255,255,0.03)',
-                    border: `1px solid ${startProjekt === p.name ? 'rgba(35,205,202,0.3)' : 'rgba(255,255,255,0.07)'}`,
-                    borderRadius: 10, padding: '0.625rem 0.75rem',
+                    background: startProjekt === p.name ? 'rgba(197,160,89,0.08)' : 'rgba(255,255,255,0.03)',
+                    border: `1px solid ${startProjekt === p.name ? 'rgba(197,160,89,0.3)' : 'rgba(255,255,255,0.07)'}`,
+                    borderRadius: 0, padding: '0.625rem 0.75rem',
                     display: 'flex', alignItems: 'center', gap: 10,
                   }}>
                     {/* Priority badge */}
                     <div style={{ fontSize: '0.625rem', fontWeight: 800, color: PRIO_COLORS[['critical','high','medium','low'][Math.min(i,3)]], width: 48, textAlign: 'center', textTransform: 'uppercase' }}>
                       {['critical','high','medium','low'][Math.min(i,3)]}
                     </div>
-                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: p.farbe || '#23CDCB', flexShrink: 0 }} />
+                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: p.farbe || '#c5a059', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#fff', marginBottom: 2 }}>{p.name}</div>
                       <div style={{ fontSize: '0.7rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -451,10 +451,10 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
                       onClick={() => setStartProjekt(p.name)}
                       title={de ? 'Als erstes starten' : 'Start first'}
                       style={{
-                        padding: '3px 8px', borderRadius: 6, fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer',
-                        background: startProjekt === p.name ? 'rgba(35,205,202,0.2)' : 'rgba(255,255,255,0.05)',
-                        border: `1px solid ${startProjekt === p.name ? '#23CDCB' : 'rgba(255,255,255,0.08)'}`,
-                        color: startProjekt === p.name ? '#23CDCB' : '#475569',
+                        padding: '3px 8px', borderRadius: 0, fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer',
+                        background: startProjekt === p.name ? 'rgba(197,160,89,0.2)' : 'rgba(255,255,255,0.05)',
+                        border: `1px solid ${startProjekt === p.name ? '#c5a059' : 'rgba(255,255,255,0.08)'}`,
+                        color: startProjekt === p.name ? '#c5a059' : '#475569',
                         display: 'flex', alignItems: 'center', gap: 4,
                       }}
                     >
@@ -478,7 +478,7 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {plan.agenten.map(a => (
                   <div key={a.name} style={{
-                    padding: '4px 10px', borderRadius: 20, fontSize: '0.75rem',
+                    padding: '4px 10px', borderRadius: 0, fontSize: '0.75rem',
                     background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
                     color: '#94a3b8',
                   }}>
@@ -495,8 +495,8 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
                 { icon: <Zap size={14} />, value: plan.routinen.length, label: de ? 'Routinen' : 'Routines' },
                 { icon: <Folder size={14} />, value: plan.projekte.length, label: de ? 'Projektordner' : 'Project folders' },
               ].map(({ icon, value, label }) => (
-                <div key={label} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: '0.625rem', textAlign: 'center' }}>
-                  <div style={{ color: '#23CDCB', marginBottom: 2 }}>{icon}</div>
+                <div key={label} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 0, padding: '0.625rem', textAlign: 'center' }}>
+                  <div style={{ color: '#c5a059', marginBottom: 2 }}>{icon}</div>
                   <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff' }}>{value}</div>
                   <div style={{ fontSize: '0.65rem', color: '#475569' }}>{label}</div>
                 </div>
@@ -504,7 +504,7 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
             </div>
 
             {execError && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.625rem 0.875rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, fontSize: '0.75rem', color: '#ef4444' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.625rem 0.875rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 0, fontSize: '0.75rem', color: '#ef4444' }}>
                 <AlertCircle size={12} /> {execError}
               </div>
             )}
@@ -541,12 +541,12 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
 
             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 6 }}>
               {[
-                { icon: <Folder size={14} />, count: created.projekte?.length, label: de ? 'Projekte erstellt' : 'Projects created', color: '#23CDCB' },
+                { icon: <Folder size={14} />, count: created.projekte?.length, label: de ? 'Projekte erstellt' : 'Projects created', color: '#c5a059' },
                 { icon: <Bot size={14} />, count: created.agenten?.length, label: de ? 'Agenten konfiguriert' : 'Agents configured', color: '#a78bfa' },
                 { icon: <ListTodo size={14} />, count: created.tasks?.length, label: de ? 'Tasks angelegt' : 'Tasks created', color: '#22c55e' },
                 { icon: <Zap size={14} />, count: created.routinen?.length, label: de ? 'Routinen aktiv' : 'Routines active', color: '#f59e0b' },
               ].map(({ icon, count, label, color }) => count > 0 ? (
-                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
+                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: 0 }}>
                   <div style={{ color }}>{icon}</div>
                   <div style={{ flex: 1, fontSize: '0.8125rem', color: '#94a3b8' }}>{label}</div>
                   <div style={{ fontSize: '0.875rem', fontWeight: 700, color }}>{count}</div>
@@ -555,7 +555,7 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
             </div>
 
             {created.soulFiles?.length > 0 && (
-              <div style={{ width: '100%', background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.15)', borderRadius: 10, padding: '0.625rem 0.875rem' }}>
+              <div style={{ width: '100%', background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.15)', borderRadius: 0, padding: '0.625rem 0.875rem' }}>
                 <div style={{ fontSize: '0.7rem', color: '#a78bfa', fontWeight: 600, marginBottom: 4 }}>
                   Soul-Dateien gespeichert
                 </div>
@@ -566,7 +566,7 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
             )}
 
             {skipped && (skipped.projekte?.length + skipped.agenten?.length + skipped.tasks?.length + skipped.routinen?.length) > 0 && (
-              <div style={{ width: '100%', background: 'rgba(100,116,139,0.06)', border: '1px solid rgba(100,116,139,0.15)', borderRadius: 10, padding: '0.625rem 0.875rem' }}>
+              <div style={{ width: '100%', background: 'rgba(100,116,139,0.06)', border: '1px solid rgba(100,116,139,0.15)', borderRadius: 0, padding: '0.625rem 0.875rem' }}>
                 <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, marginBottom: 4 }}>
                   {de ? 'Bereits vorhanden (übersprungen)' : 'Already existed (skipped)'}
                 </div>

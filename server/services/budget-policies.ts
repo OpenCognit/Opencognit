@@ -2,7 +2,7 @@
 // Ersetzt das einfache budgetMonatCent pro Agent durch ein echtes Policy-System.
 
 import { db } from '../db/client.js';
-import { budgetPolicies, budgetIncidents, kostenbuchungen, experten } from '../db/schema.js';
+import { budgetPolicies, budgetIncidents, costEntries, agents } from '../db/schema.js';
 import { eq, and, sql } from 'drizzle-orm';
 import { v4 as uuid } from 'uuid';
 
@@ -23,7 +23,7 @@ export interface BudgetStatus {
  */
 export function berechneBudgetStatus(policyId: string): BudgetStatus | null {
   const policy = db.select().from(budgetPolicies).where(eq(budgetPolicies.id, policyId)).get();
-  if (!policy || !policy.aktiv) return null;
+  if (!policy || !policy.active) return null;
 
   // Verbrauch berechnen (abhängig vom Scope)
   let verbrauchtCent = 0;
@@ -34,29 +34,29 @@ export function berechneBudgetStatus(policyId: string): BudgetStatus | null {
     monatsStart.setHours(0, 0, 0, 0);
     const startISO = monatsStart.toISOString();
 
-    const buchungen = db.select().from(kostenbuchungen)
-      .where(eq(kostenbuchungen.unternehmenId, policy.unternehmenId))
+    const buchungen = db.select().from(costEntries)
+      .where(eq(costEntries.companyId, policy.companyId))
       .all()
-      .filter(b => b.zeitpunkt >= startISO);
+      .filter(b => b.timestamp >= startISO);
 
     if (policy.scope === 'agent') {
-      verbrauchtCent = buchungen.filter(b => b.expertId === policy.scopeId).reduce((s, b) => s + b.kostenCent, 0);
+      verbrauchtCent = buchungen.filter(b => b.agentId === policy.scopeId).reduce((s, b) => s + b.costCent, 0);
     } else if (policy.scope === 'company') {
-      verbrauchtCent = buchungen.reduce((s, b) => s + b.kostenCent, 0);
+      verbrauchtCent = buchungen.reduce((s, b) => s + b.costCent, 0);
     } else if (policy.scope === 'project') {
       // Project-Scope: Alle Buchungen deren Task zum Projekt gehört
-      verbrauchtCent = buchungen.reduce((s, b) => s + b.kostenCent, 0); // Vereinfacht
+      verbrauchtCent = buchungen.reduce((s, b) => s + b.costCent, 0); // Vereinfacht
     }
   } else {
     // Lifetime: Alle Buchungen
-    const buchungen = db.select().from(kostenbuchungen)
-      .where(eq(kostenbuchungen.unternehmenId, policy.unternehmenId))
+    const buchungen = db.select().from(costEntries)
+      .where(eq(costEntries.companyId, policy.companyId))
       .all();
 
     if (policy.scope === 'agent') {
-      verbrauchtCent = buchungen.filter(b => b.expertId === policy.scopeId).reduce((s, b) => s + b.kostenCent, 0);
+      verbrauchtCent = buchungen.filter(b => b.agentId === policy.scopeId).reduce((s, b) => s + b.costCent, 0);
     } else {
-      verbrauchtCent = buchungen.reduce((s, b) => s + b.kostenCent, 0);
+      verbrauchtCent = buchungen.reduce((s, b) => s + b.costCent, 0);
     }
   }
 
@@ -85,7 +85,7 @@ export function berechneBudgetStatus(policyId: string): BudgetStatus | null {
  */
 export function pruefeBudgets(unternehmenId: string): number {
   const policies = db.select().from(budgetPolicies)
-    .where(and(eq(budgetPolicies.unternehmenId, unternehmenId), eq(budgetPolicies.aktiv, true)))
+    .where(and(eq(budgetPolicies.companyId, unternehmenId), eq(budgetPolicies.active, true)))
     .all();
 
   let neueIncidents = 0;
@@ -109,18 +109,18 @@ export function pruefeBudgets(unternehmenId: string): number {
           id: uuid(),
           policyId: policy.id,
           unternehmenId,
-          typ: status.status === 'hard_stop' ? 'hard_stop' : 'warnung',
+          type: status.status === 'hard_stop' ? 'hard_stop' : 'warnung',
           beobachteterBetrag: status.verbrauchtCent,
           limitBetrag: status.limitCent,
           status: 'offen',
-          erstelltAm: now,
+          createdAt: now,
         }).run();
         neueIncidents++;
 
         // Bei Hard Stop: Agent pausieren
         if (status.status === 'hard_stop' && policy.scope === 'agent') {
-          db.update(experten).set({ status: 'paused', aktualisiertAm: now })
-            .where(eq(experten.id, policy.scopeId)).run();
+          db.update(agents).set({ status: 'paused', updatedAt: now })
+            .where(eq(agents.id, policy.scopeId)).run();
           console.log(`⛔ Budget Hard Stop: Agent ${policy.scopeId} pausiert (${status.prozent}%)`);
         }
       }
@@ -147,16 +147,16 @@ export function erstellePolicy(params: {
 
   db.insert(budgetPolicies).values({
     id,
-    unternehmenId: params.unternehmenId,
+    companyId: params.unternehmenId,
     scope: params.scope,
     scopeId: params.scopeId,
     limitCent: params.limitCent,
     fenster: params.fenster || 'monatlich',
     warnProzent: params.warnProzent || 80,
     hardStop: params.hardStop !== false,
-    aktiv: true,
-    erstelltAm: now,
-    aktualisiertAm: now,
+    active: true,
+    createdAt: now,
+    updatedAt: now,
   }).run();
 
   return id;

@@ -4,6 +4,7 @@ import { Layout, Send, Trash2, X, Bot, User } from 'lucide-react';
 function authFetch(url: string, options: RequestInit = {}) {
   const token = localStorage.getItem('opencognit_token');
   return fetch(url, {
+    credentials: 'include',
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -103,13 +104,13 @@ export function WhiteboardPanel({ projektId, projektName, expertenMap = {}, onCl
     }}>
       <div style={{
         width: '100%', maxWidth: 680, maxHeight: '85vh',
-        background: 'rgba(10,10,20,0.98)', border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: 20, display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        boxShadow: '0 32px 64px rgba(0,0,0,0.7)',
+        background: 'linear-gradient(180deg, rgba(16,14,10,0.97) 0%, rgba(12,10,8,0.97) 100%)', border: '1px solid rgba(197,160,89,0.15)',
+        borderRadius: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        boxShadow: '0 32px 64px rgba(0,0,0,0.7), 0 0 40px rgba(197,160,89,0.06)',
       }}>
         {/* Header */}
         <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-          <Layout size={16} style={{ color: '#23CDCA' }} />
+          <Layout size={16} style={{ color: '#c5a059' }} />
           <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#e2e8f0', flex: 1 }}>
             Whiteboard — {projektName}
           </span>
@@ -119,20 +120,20 @@ export function WhiteboardPanel({ projektId, projektName, expertenMap = {}, onCl
           <button
             onClick={handleClear}
             disabled={clearing || state.eintraege.length === 0}
-            style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: '4px', display: 'flex', borderRadius: 6 }}
+            style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: '4px', display: 'flex', borderRadius: 0 }}
             title="Whiteboard leeren"
           >
             <Trash2 size={14} />
           </button>
           {onClose && (
-            <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: '4px', display: 'flex', borderRadius: 6 }}>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: '4px', display: 'flex', borderRadius: 0 }}>
               <X size={16} />
             </button>
           )}
         </div>
 
         {/* Info bar */}
-        <div style={{ padding: '0.5rem 1.25rem', background: 'rgba(35,205,202,0.04)', borderBottom: '1px solid rgba(35,205,202,0.08)', fontSize: '0.72rem', color: '#475569', flexShrink: 0 }}>
+        <div style={{ padding: '0.5rem 1.25rem', background: 'rgba(197,160,89,0.04)', borderBottom: '1px solid rgba(197,160,89,0.08)', fontSize: '0.72rem', color: '#475569', flexShrink: 0 }}>
           Geteilter Projektraum — Agenten und Board schreiben hier Ergebnisse, Notizen und Entscheidungen.
           {state.aktualisiertAm && ` · Zuletzt aktualisiert: ${formatTime(state.aktualisiertAm)}`}
         </div>
@@ -158,13 +159,13 @@ export function WhiteboardPanel({ projektId, projektName, expertenMap = {}, onCl
             }}>
               <div style={{
                 width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-                background: isBoard(entry.von) ? 'rgba(35,205,202,0.2)' : 'rgba(139,92,246,0.2)',
+                background: isBoard(entry.von) ? 'rgba(197,160,89,0.2)' : 'rgba(155,135,200,0.2)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                border: `1px solid ${isBoard(entry.von) ? 'rgba(35,205,202,0.3)' : 'rgba(139,92,246,0.3)'}`,
+                border: `1px solid ${isBoard(entry.von) ? 'rgba(197,160,89,0.3)' : 'rgba(155,135,200,0.3)'}`,
               }}>
                 {isBoard(entry.von)
-                  ? <User size={14} style={{ color: '#23CDCA' }} />
-                  : <Bot size={14} style={{ color: '#8b5cf6' }} />
+                  ? <User size={14} style={{ color: '#c5a059' }} />
+                  : <Bot size={14} style={{ color: '#9b87c8' }} />
                 }
               </div>
               <div style={{ maxWidth: '72%' }}>
@@ -174,16 +175,16 @@ export function WhiteboardPanel({ projektId, projektName, expertenMap = {}, onCl
                   display: 'flex', gap: 6, alignItems: 'center',
                   flexDirection: isBoard(entry.von) ? 'row-reverse' : 'row',
                 }}>
-                  <span style={{ fontWeight: 600, color: isBoard(entry.von) ? '#23CDCA' : '#a78bfa' }}>
+                  <span style={{ fontWeight: 600, color: isBoard(entry.von) ? '#c5a059' : '#a78bfa' }}>
                     {getName(entry.von)}
                   </span>
                   <span>{formatTime(entry.erstelltAm)}</span>
                 </div>
                 <div style={{
                   padding: '0.6rem 0.875rem',
-                  background: isBoard(entry.von) ? 'rgba(35,205,202,0.08)' : 'rgba(139,92,246,0.08)',
-                  border: `1px solid ${isBoard(entry.von) ? 'rgba(35,205,202,0.15)' : 'rgba(139,92,246,0.15)'}`,
-                  borderRadius: isBoard(entry.von) ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
+                  background: isBoard(entry.von) ? 'rgba(197,160,89,0.08)' : 'rgba(155,135,200,0.08)',
+                  border: `1px solid ${isBoard(entry.von) ? 'rgba(197,160,89,0.15)' : 'rgba(155,135,200,0.15)'}`,
+                  borderRadius: 0,
                   fontSize: '0.85rem', color: '#cbd5e1', lineHeight: 1.6,
                   whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                 }}>
@@ -205,7 +206,7 @@ export function WhiteboardPanel({ projektId, projektName, expertenMap = {}, onCl
             rows={2}
             style={{
               flex: 1, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: 10, color: '#e2e8f0', fontSize: '0.875rem', padding: '0.6rem 0.75rem',
+              borderRadius: 0, color: '#e2e8f0', fontSize: '0.875rem', padding: '0.6rem 0.75rem',
               resize: 'none', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5,
             }}
           />
@@ -213,8 +214,8 @@ export function WhiteboardPanel({ projektId, projektName, expertenMap = {}, onCl
             onClick={handlePost}
             disabled={saving || !newEntry.trim()}
             style={{
-              background: newEntry.trim() ? '#23CDCA' : 'rgba(35,205,202,0.15)',
-              border: 'none', borderRadius: 10, color: newEntry.trim() ? '#000' : '#334155',
+              background: newEntry.trim() ? '#c5a059' : 'rgba(197,160,89,0.15)',
+              border: 'none', borderRadius: 0, color: newEntry.trim() ? '#000' : '#334155',
               width: 44, display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: newEntry.trim() ? 'pointer' : 'not-allowed', flexShrink: 0,
               transition: 'all 0.15s',

@@ -8,6 +8,7 @@ import { PageHelp } from '../components/PageHelp';
 function authFetch(url: string, init?: RequestInit) {
   const token = localStorage.getItem('opencognit_token');
   return fetch(url, {
+    credentials: 'include',
     ...init,
     headers: { ...(init?.headers || {}), 'content-type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
   });
@@ -26,7 +27,7 @@ interface Worker {
   registriertAm: string;
 }
 
-const CAPABILITY_OPTIONS = ['bash', 'http', 'claude-code', 'openrouter', 'ollama', 'openclaw', 'codex-cli', 'gemini-cli'];
+const CAPABILITY_OPTIONS = ['bash', 'http', 'claude-code', 'openrouter', 'ollama', 'openclaw', 'codex-cli', 'gemini-cli', 'kimi-cli'];
 
 export function WorkerNodes() {
   const i18n = useI18n();
@@ -87,7 +88,7 @@ export function WorkerNodes() {
   return (
     <div style={{ padding: '24px 32px', maxWidth: 1100, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-        <Server size={24} color="#23CDCB" />
+        <Server size={24} color="#c5a059" />
         <div>
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#e2e8f0' }}>{de ? 'Worker-Nodes' : 'Worker Nodes'}</h1>
           <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>
@@ -96,8 +97,8 @@ export function WorkerNodes() {
         </div>
         <button onClick={() => setShowRegister(true)} style={{
           marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px',
-          borderRadius: 10, border: '1px solid rgba(35,205,203,0.3)',
-          background: 'rgba(35,205,203,0.1)', color: '#23CDCB', fontSize: 13, cursor: 'pointer',
+          borderRadius: 0, border: '1px solid rgba(35,205,203,0.3)',
+          background: 'rgba(35,205,203,0.1)', color: '#c5a059', fontSize: 13, cursor: 'pointer',
         }}>
           <Plus size={14} /> {de ? 'Worker registrieren' : 'Register worker'}
         </button>
@@ -117,7 +118,7 @@ export function WorkerNodes() {
           <p style={{ margin: '0 0 10px', fontSize: 12, color: '#94a3b8' }}>
             {de ? 'Token wird nur einmal angezeigt. Kopiere ihn jetzt.' : 'Token shown once only. Copy it now.'}
           </p>
-          <div style={{ fontFamily: 'monospace', fontSize: 11, background: 'rgba(0,0,0,0.3)', padding: 12, borderRadius: 8, marginBottom: 8 }}>
+          <div style={{ fontFamily: 'monospace', fontSize: 11, background: 'rgba(0,0,0,0.3)', padding: 12, borderRadius: 0, marginBottom: 8 }}>
             <div><span style={{ color: '#64748b' }}>ID:&nbsp;&nbsp;&nbsp;</span>{justRegistered.id}</div>
             <div><span style={{ color: '#64748b' }}>TOKEN:</span>{justRegistered.token}</div>
           </div>
@@ -126,7 +127,7 @@ export function WorkerNodes() {
             style={{
               display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
               background: 'rgba(35,205,203,0.1)', border: '1px solid rgba(35,205,203,0.3)',
-              color: '#23CDCB', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+              color: '#c5a059', borderRadius: 0, fontSize: 12, cursor: 'pointer',
             }}
           >
             <Copy size={12} /> {de ? 'Als .env kopieren' : 'Copy as .env'}
@@ -162,18 +163,18 @@ export function WorkerNodes() {
                   key={c}
                   onClick={() => setCaps(caps.includes(c) ? caps.filter(x => x !== c) : [...caps, c])}
                   style={{
-                    padding: '4px 10px', borderRadius: 999, fontSize: 11, cursor: 'pointer',
+                    padding: '4px 10px', borderRadius: 0, fontSize: 11, cursor: 'pointer',
                     background: caps.includes(c) ? 'rgba(35,205,203,0.2)' : 'rgba(148,163,184,0.1)',
-                    color: caps.includes(c) ? '#23CDCB' : '#94a3b8',
-                    border: `1px solid ${caps.includes(c) ? '#23CDCB' : 'rgba(148,163,184,0.2)'}`,
+                    color: caps.includes(c) ? '#c5a059' : '#94a3b8',
+                    border: `1px solid ${caps.includes(c) ? '#c5a059' : 'rgba(148,163,184,0.2)'}`,
                   }}
                 >{c}</button>
               ))}
             </div>
           </div>
           <button onClick={register} disabled={!name || caps.length === 0} style={{
-            marginTop: 16, padding: '8px 16px', borderRadius: 8,
-            background: 'rgba(35,205,203,0.15)', color: '#23CDCB',
+            marginTop: 16, padding: '8px 16px', borderRadius: 0,
+            background: 'rgba(35,205,203,0.15)', color: '#c5a059',
             border: '1px solid rgba(35,205,203,0.3)', cursor: 'pointer', fontSize: 13,
             opacity: (!name || caps.length === 0) ? 0.5 : 1,
           }}>{de ? 'Registrieren' : 'Register'}</button>
@@ -192,21 +193,21 @@ export function WorkerNodes() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                 <Server size={14} color={color} />
                 <strong style={{ color: '#e2e8f0', fontSize: 14 }}>{w.name}</strong>
-                <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: `${color}22`, color, border: `1px solid ${color}44`, marginLeft: 'auto' }}>
+                <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 0, background: `${color}22`, color, border: `1px solid ${color}44`, marginLeft: 'auto' }}>
                   {w.status}
                 </span>
               </div>
               {w.hostname && <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>{w.hostname}</div>}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
                 {w.capabilities.map(c => (
-                  <span key={c} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, background: 'rgba(35,205,203,0.1)', color: '#23CDCB' }}>{c}</span>
+                  <span key={c} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 0, background: 'rgba(35,205,203,0.1)', color: '#c5a059' }}>{c}</span>
                 ))}
               </div>
               <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
                 {de ? 'Auslastung' : 'Load'}: {w.activeRuns} / {w.maxConcurrency}
               </div>
-              <div style={{ height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 2, overflow: 'hidden', marginBottom: 10 }}>
-                <div style={{ width: `${Math.min(100, loadPct)}%`, height: '100%', background: loadPct > 80 ? '#f59e0b' : '#23CDCB' }} />
+              <div style={{ height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 0, overflow: 'hidden', marginBottom: 10 }}>
+                <div style={{ width: `${Math.min(100, loadPct)}%`, height: '100%', background: loadPct > 80 ? '#f59e0b' : '#c5a059' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#64748b' }}>
                 <span>{de ? 'Gesamt' : 'Total'}: {w.totalRuns}</span>
@@ -214,7 +215,7 @@ export function WorkerNodes() {
               </div>
               {w.status !== 'disabled' && (
                 <button onClick={() => disable(w.id)} style={{
-                  marginTop: 10, width: '100%', padding: '6px', borderRadius: 6, fontSize: 11, cursor: 'pointer',
+                  marginTop: 10, width: '100%', padding: '6px', borderRadius: 0, fontSize: 11, cursor: 'pointer',
                   background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
                 }}>
@@ -236,7 +237,7 @@ export function WorkerNodes() {
 }
 
 const inputStyle: React.CSSProperties = {
-  padding: '8px 12px', borderRadius: 8, fontSize: 13,
+  padding: '8px 12px', borderRadius: 0, fontSize: 13,
   background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
   color: '#e2e8f0',
 };

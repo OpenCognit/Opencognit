@@ -19,13 +19,14 @@ import { useToast } from '../components/ToastProvider';
 import { GlassCard } from '../components/GlassCard';
 import { translateTrace } from '../utils/translateTrace';
 
-const CLI_ADAPTERS = ['codex-cli', 'gemini-cli', 'claude-code'];
+const CLI_ADAPTERS = ['codex-cli', 'gemini-cli', 'kimi-cli', 'claude-code'];
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 function authFetch(url: string, options: RequestInit = {}) {
   const token = localStorage.getItem('opencognit_token');
   return fetch(url, {
+    credentials: 'include',
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -68,12 +69,12 @@ interface TraceEvent {
 }
 
 const TRACE_CFG: Record<string, { color: string; symbol: string; bg: string }> = {
-  thinking:       { color: '#a855f7', symbol: '💭', bg: 'rgba(168,85,247,0.08)' },
-  action:         { color: '#23CDCB', symbol: '⚡', bg: 'rgba(35,205,202,0.08)' },
+  thinking:       { color: '#9b87c8', symbol: '💭', bg: 'rgba(155,135,200,0.08)' },
+  action:         { color: '#c5a059', symbol: '⚡', bg: 'rgba(197,160,89,0.08)' },
   result:         { color: '#22c55e', symbol: '✓',  bg: 'rgba(34,197,94,0.08)'  },
   error:          { color: '#ef4444', symbol: '✗',  bg: 'rgba(239,68,68,0.08)'  },
   warning:        { color: '#f59e0b', symbol: '⚠',  bg: 'rgba(245,158,11,0.08)' },
-  task_started:   { color: '#23CDCB', symbol: '▶',  bg: 'rgba(35,205,202,0.06)' },
+  task_started:   { color: '#c5a059', symbol: '▶',  bg: 'rgba(197,160,89,0.06)' },
   task_completed: { color: '#22c55e', symbol: '✔',  bg: 'rgba(34,197,94,0.06)'  },
   info:           { color: '#64748b', symbol: '·',  bg: 'rgba(100,116,139,0.05)' },
 };
@@ -86,7 +87,7 @@ function ThinkingDots() {
     const id = setInterval(() => setDots(d => d.length >= 3 ? '' : d + '.'), 400);
     return () => clearInterval(id);
   }, []);
-  return <span style={{ color: '#23CDCB', fontWeight: 800, letterSpacing: 2 }}>{dots || '.'}</span>;
+  return <span style={{ color: '#c5a059', fontWeight: 800, letterSpacing: 2 }}>{dots || '.'}</span>;
 }
 
 function ElapsedTimer({ since }: { since: string | null }) {
@@ -99,7 +100,7 @@ function ElapsedTimer({ since }: { since: string | null }) {
     return () => clearInterval(id);
   }, [since]);
   if (!since) return null;
-  return <span style={{ color: '#23CDCB', fontFamily: 'monospace', fontSize: 10 }}>{fmtDuration(elapsed)}</span>;
+  return <span style={{ color: '#c5a059', fontFamily: 'monospace', fontSize: 10 }}>{fmtDuration(elapsed)}</span>;
 }
 
 function AnimatedNum({ value, suffix = '' }: { value: number; suffix?: string }) {
@@ -128,7 +129,7 @@ function PulseEntry({ ev, isNew, lang = 'de' }: { ev: TraceEvent; isNew: boolean
     <div
       onClick={() => hasDetails && setOpen(o => !o)}
       style={{
-        borderRadius: 8,
+        borderRadius: 0,
         background: isNew ? tc.bg : open ? `${tc.color}08` : 'transparent',
         border: `1px solid ${tc.color}${isNew ? '30' : open ? '20' : '10'}`,
         animation: isNew ? 'fadeInUp 0.25s ease-out' : 'none',
@@ -162,7 +163,7 @@ function PulseEntry({ ev, isNew, lang = 'de' }: { ev: TraceEvent; isNew: boolean
             fontSize: 10, color: '#64748b', fontFamily: 'monospace',
             whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5,
             maxHeight: 180, overflowY: 'auto',
-            background: 'rgba(0,0,0,0.3)', borderRadius: 6, padding: '6px 9px', margin: 0,
+            background: 'rgba(0,0,0,0.3)', borderRadius: 0, padding: '6px 9px', margin: 0,
           }}>
             {ev.details}
           </pre>
@@ -180,7 +181,7 @@ function TraceRow({ ev }: { ev: TraceEvent }) {
   const hasDetails = !!ev.details?.trim();
 
   return (
-    <div style={{ borderRadius: 6, background: tc.bg, border: `1px solid ${tc.color}18`, overflow: 'hidden' }}>
+    <div style={{ borderRadius: 0, background: tc.bg, border: `1px solid ${tc.color}18`, overflow: 'hidden' }}>
       <div
         style={{ padding: '5px 8px', display: 'flex', alignItems: 'flex-start', gap: 6, cursor: hasDetails ? 'pointer' : 'default' }}
         onClick={() => hasDetails && setOpen(o => !o)}
@@ -204,7 +205,7 @@ function TraceRow({ ev }: { ev: TraceEvent }) {
               fontSize: 9, color: '#64748b', marginTop: 6, fontFamily: 'monospace',
               whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5,
               maxHeight: 200, overflowY: 'auto',
-              background: 'rgba(0,0,0,0.3)', borderRadius: 4, padding: '6px 8px',
+              background: 'rgba(0,0,0,0.3)', borderRadius: 0, padding: '6px 8px',
             }}>
               {ev.details}
             </pre>
@@ -239,8 +240,8 @@ function AgentLogPanel({
       <div style={{
         width: 520, display: 'flex', flexDirection: 'column',
         background: 'rgba(8,10,20,0.98)',
-        borderLeft: '1px solid rgba(35,205,202,0.2)',
-        boxShadow: '-20px 0 60px rgba(35,205,202,0.05)',
+        borderLeft: '1px solid rgba(197,160,89,0.2)',
+        boxShadow: '-20px 0 60px rgba(197,160,89,0.05)',
       }}>
         <div style={{
           padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)',
@@ -248,7 +249,7 @@ function AgentLogPanel({
           background: 'rgba(0,0,0,0.3)',
         }}>
           <div style={{
-            width: 36, height: 36, borderRadius: 10,
+            width: 36, height: 36, borderRadius: 0,
             background: agent.avatarFarbe + '20',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 16, color: agent.avatarFarbe, fontWeight: 700, flexShrink: 0,
@@ -259,7 +260,7 @@ function AgentLogPanel({
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9' }}>{agent.name}</span>
               {isRunning && (
-                <span style={{ fontSize: 9, padding: '1px 7px', borderRadius: 20, background: 'rgba(35,205,202,0.2)', color: '#23CDCB', fontWeight: 800 }}>
+                <span style={{ fontSize: 9, padding: '1px 7px', borderRadius: 0, background: 'rgba(197,160,89,0.2)', color: '#c5a059', fontWeight: 800 }}>
                   LÄUFT
                 </span>
               )}
@@ -274,11 +275,11 @@ function AgentLogPanel({
         {agent.currentTask && (
           <div style={{
             padding: '10px 20px', borderBottom: '1px solid rgba(255,255,255,0.04)',
-            background: isRunning ? 'rgba(35,205,202,0.05)' : 'rgba(0,0,0,0.2)',
+            background: isRunning ? 'rgba(197,160,89,0.05)' : 'rgba(0,0,0,0.2)',
             display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
           }}>
             {isRunning
-              ? <Play size={10} style={{ color: '#23CDCB' }} />
+              ? <Play size={10} style={{ color: '#c5a059' }} />
               : <CheckCircle2 size={10} style={{ color: '#475569' }} />}
             <span style={{ fontSize: 11, color: isRunning ? '#cbd5e1' : '#64748b', flex: 1 }}>
               {agent.currentTask.titel}
@@ -298,8 +299,8 @@ function AgentLogPanel({
           </span>
           {isRunning && (
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
-              <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#23CDCB', animation: 'pulse 1.5s ease-in-out infinite' }} />
-              <span style={{ fontSize: 9, color: '#23CDCB', fontWeight: 700 }}>LIVE</span>
+              <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#c5a059', animation: 'pulse 1.5s ease-in-out infinite' }} />
+              <span style={{ fontSize: 9, color: '#c5a059', fontWeight: 700 }}>LIVE</span>
             </div>
           )}
         </div>
@@ -351,10 +352,11 @@ export function Experts() {
   const [pausingAgents, setPausingAgents] = useState<Set<string>>(new Set());
 
   type QualityEntry = {
-    expertId: string; name: string; totalRuns: number; approvedRuns: number;
+    expertId: string; name: string; totalRuns: number; approvedRuns: number; meaningfulRuns: number;
     failedRuns: number; criticRejections: number; escalations: number;
     emptyActions: number; bashFailures: number; hedgingCount: number;
-    halluzinationsScore: number; qualityLabel: string;
+    emptyActionPct: number; failurePct: number; criticRejectionPct: number; escalationPct: number;
+    reliabilityScore: number; qualityLabel: string;
   };
   const [qualitaet, setQualitaet] = useState<QualityEntry[]>([]);
   const [showQuality, setShowQuality] = useState(false);
@@ -393,6 +395,7 @@ export function Experts() {
     await Promise.all(alleExperten.map(async (a) => {
       try {
         const r = await fetch(`/api/experten/${a.id}/trace/history?limit=30`, {
+          credentials: 'include',
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (r.ok) map[a.id] = await r.json();
@@ -411,12 +414,14 @@ export function Experts() {
   // ── WebSocket live updates ────────────────────────────────────────────────
   useEffect(() => {
     if (!aktivesUnternehmen) return;
+    let destroyed = false; // StrictMode guard: prevents errors when React unmounts during WS handshake
     const token = localStorage.getItem('opencognit_token');
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${window.location.hostname}:3201/ws${token ? `?token=${token}` : ''}`);
+    const ws = new WebSocket(`${proto}//${window.location.host}/ws${token ? `?token=${token}` : ''}`);
     wsRef.current = ws;
 
     ws.onmessage = (event) => {
+      if (destroyed) return;
       try {
         const msg = JSON.parse(event.data);
         if (msg.unternehmenId && msg.unternehmenId !== aktivesUnternehmen.id) return;
@@ -440,7 +445,7 @@ export function Experts() {
           const agentName = alleExperten?.find(a => a.id === msg.agentId)?.name;
           setFeed(prev => [...prev, {
             id: crypto.randomUUID(), expertId: msg.agentId, expertName: agentName,
-            typ: 'task_started', titel: msg.taskTitel || 'Task gestartet', erstelltAm: new Date().toISOString(),
+            typ: 'task_started', titel: msg.taskTitel || 'Task started', erstelltAm: new Date().toISOString(),
           }].slice(-80));
         }
 
@@ -449,14 +454,26 @@ export function Experts() {
           const agentName = alleExperten?.find(a => a.id === msg.agentId)?.name;
           setFeed(prev => [...prev, {
             id: crypto.randomUUID(), expertId: msg.agentId, expertName: agentName,
-            typ: 'task_completed', titel: msg.taskTitel || 'Task abgeschlossen', erstelltAm: new Date().toISOString(),
+            typ: 'task_completed', titel: msg.taskTitel || 'Task completed', erstelltAm: new Date().toISOString(),
           }].slice(-80));
           setTimeout(loadDash, 2000);
         }
       } catch {}
     };
 
-    return () => { ws.close(); wsRef.current = null; };
+    // Suppress console noise from StrictMode double-invoke closing the socket mid-handshake
+    ws.onerror = () => { if (!destroyed) console.warn('[Experts] WebSocket error'); };
+    ws.onclose = () => { if (!destroyed) console.debug('[Experts] WebSocket closed'); };
+
+    return () => {
+      destroyed = true;
+      ws.onerror = null;
+      ws.onclose = null;
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
+        ws.close();
+      }
+      wsRef.current = null;
+    };
   }, [aktivesUnternehmen?.id]);
 
   // ── pulse auto-scroll ─────────────────────────────────────────────────────
@@ -485,6 +502,7 @@ export function Experts() {
     if (!aktivesUnternehmen || !showQuality) return;
     const token = localStorage.getItem('opencognit_token');
     fetch(`/api/unternehmen/${aktivesUnternehmen.id}/agent-qualitaet`, {
+      credentials: 'include',
       headers: { Authorization: `Bearer ${token}` },
     }).then(r => r.json()).then(setQualitaet).catch(() => {});
   }, [aktivesUnternehmen?.id, showQuality]);
@@ -570,25 +588,25 @@ export function Experts() {
           }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                <Sparkles size={20} style={{ color: '#23CDCB' }} />
-                <span style={{ fontSize: '12px', fontWeight: 600, color: '#23CDCB', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                <Sparkles size={20} style={{ color: '#c5a059' }} />
+                <span style={{ fontSize: '12px', fontWeight: 600, color: '#c5a059', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                   {aktivesUnternehmen.name}
                 </span>
                 {runningCount > 0 && (
                   <span style={{
                     display: 'flex', alignItems: 'center', gap: 5,
-                    padding: '2px 10px', borderRadius: 20,
-                    background: 'rgba(35,205,202,0.1)', border: '1px solid rgba(35,205,202,0.25)',
-                    fontSize: 11, fontWeight: 700, color: '#23CDCB',
+                    padding: '2px 10px', borderRadius: 0,
+                    background: 'rgba(197,160,89,0.1)', border: '1px solid rgba(197,160,89,0.25)',
+                    fontSize: 11, fontWeight: 700, color: '#c5a059',
                   }}>
-                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#23CDCB', display: 'inline-block', animation: 'pulse 1.5s ease-in-out infinite' }} />
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#c5a059', display: 'inline-block', animation: 'pulse 1.5s ease-in-out infinite' }} />
                     {runningCount} {de ? 'aktiv' : 'active'}
                   </span>
                 )}
               </div>
               <h1 style={{
                 fontSize: '2rem', fontWeight: 700,
-                background: 'linear-gradient(to bottom right, #23CDCB 0%, #ffffff 100%)',
+                background: 'linear-gradient(to bottom right, #c5a059 0%, #ffffff 100%)',
                 WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
               }}>{i18n.t.experten.title}</h1>
               <p style={{ fontSize: '0.875rem', color: '#71717a', marginTop: '0.25rem' }}>{i18n.t.experten.subtitle}</p>
@@ -601,7 +619,7 @@ export function Experts() {
                   padding: '0.75rem 1.25rem',
                   backgroundColor: showQuality ? 'rgba(239,68,68,0.12)' : 'rgba(255,255,255,0.05)',
                   border: `1px solid ${showQuality ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.1)'}`,
-                  borderRadius: '12px', color: showQuality ? '#ef4444' : '#71717a',
+                  borderRadius: 0, color: showQuality ? '#ef4444' : '#71717a',
                   fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', transition: 'all 0.2s',
                 }}
               >
@@ -612,9 +630,9 @@ export function Experts() {
                 style={{
                   display: 'flex', alignItems: 'center', gap: '0.5rem',
                   padding: '0.75rem 1.25rem',
-                  backgroundColor: showPulse ? 'rgba(35,205,202,0.12)' : 'rgba(255,255,255,0.05)',
-                  border: `1px solid ${showPulse ? 'rgba(35,205,202,0.3)' : 'rgba(255,255,255,0.1)'}`,
-                  borderRadius: '12px', color: showPulse ? '#23CDCB' : '#71717a',
+                  backgroundColor: showPulse ? 'rgba(197,160,89,0.12)' : 'rgba(255,255,255,0.05)',
+                  border: `1px solid ${showPulse ? 'rgba(197,160,89,0.3)' : 'rgba(255,255,255,0.1)'}`,
+                  borderRadius: 0, color: showPulse ? '#c5a059' : '#71717a',
                   fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', transition: 'all 0.2s',
                 }}
               >
@@ -625,8 +643,8 @@ export function Experts() {
                 style={{
                   display: 'flex', alignItems: 'center', gap: '0.5rem',
                   padding: '0.75rem 1.25rem',
-                  backgroundColor: 'rgba(35,205,202,0.1)', border: '1px solid rgba(35,205,202,0.2)',
-                  borderRadius: '12px', color: '#23CDCB',
+                  backgroundColor: 'rgba(197,160,89,0.1)', border: '1px solid rgba(197,160,89,0.2)',
+                  borderRadius: 0, color: '#c5a059',
                   fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', transition: 'all 0.2s',
                 }}
               >
@@ -641,12 +659,12 @@ export function Experts() {
           {dashData && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.875rem', marginBottom: '1.5rem' }}>
               {[
-                { icon: <Users size={14} style={{ color: '#23CDCB' }} />, label: de ? 'AGENTEN' : 'AGENTS', value: dashData.experten.gesamt, sub: `${dashData.experten.running} ${de ? 'laufen' : 'running'}`, color: '#23CDCB' },
+                { icon: <Users size={14} style={{ color: '#c5a059' }} />, label: de ? 'AGENTEN' : 'AGENTS', value: dashData.experten.gesamt, sub: `${dashData.experten.running} ${de ? 'laufen' : 'running'}`, color: '#c5a059' },
                 { icon: <CheckCircle2 size={14} style={{ color: '#22c55e' }} />, label: de ? 'ERLEDIGT' : 'DONE', value: dashData.aufgaben.erledigt, sub: `${dashData.aufgaben.inBearbeitung} ${de ? 'laufend' : 'in progress'}`, color: '#22c55e' },
-                { icon: <Target size={14} style={{ color: '#a855f7' }} />, label: de ? 'OFFEN' : 'OPEN', value: dashData.aufgaben.offen, sub: `${dashData.aufgaben.blockiert} ${de ? 'blockiert' : 'blocked'}`, color: dashData.aufgaben.blockiert > 0 ? '#f59e0b' : '#a855f7' },
+                { icon: <Target size={14} style={{ color: '#9b87c8' }} />, label: de ? 'OFFEN' : 'OPEN', value: dashData.aufgaben.offen, sub: `${dashData.aufgaben.blockiert} ${de ? 'blockiert' : 'blocked'}`, color: dashData.aufgaben.blockiert > 0 ? '#f59e0b' : '#9b87c8' },
                 { icon: <Wallet size={14} style={{ color: '#f59e0b' }} />, label: 'BUDGET', value: dashData.kosten.prozent, suffix: '%', sub: centZuEuro(dashData.kosten.gesamtVerbraucht), color: dashData.kosten.prozent > 80 ? '#ef4444' : '#f59e0b' },
               ].map((m, i) => (
-                <GlassCard key={i} accent={m.color} style={{ padding: '0.875rem 1rem', borderRadius: '14px' }}>
+                <GlassCard key={i} accent={m.color} style={{ padding: '0.875rem 1rem', borderRadius: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                     {m.icon}
                     <span style={{ fontSize: '0.625rem', fontWeight: 800, color: '#475569', letterSpacing: '0.12em', textTransform: 'uppercase' }}>{m.label}</span>
@@ -663,7 +681,7 @@ export function Experts() {
           {/* Agent grid */}
           {(loading || !alleExperten) ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' }}>
-              <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#23CDCB' }} />
+              <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#c5a059' }} />
             </div>
           ) : null}
 
@@ -672,7 +690,13 @@ export function Experts() {
             gap: '1.25rem',
             display: (loading || !alleExperten) ? 'none' : 'grid',
           }}>
-            {(alleExperten ?? []).map((m, i) => {
+            {[...(alleExperten ?? [])].sort((a, b) => {
+              const aIsCEO = (() => { try { const cfg = JSON.parse(a.verbindungsConfig || '{}'); return cfg.isOrchestrator === true; } catch { return false; } })();
+              const bIsCEO = (() => { try { const cfg = JSON.parse(b.verbindungsConfig || '{}'); return cfg.isOrchestrator === true; } catch { return false; } })();
+              if (aIsCEO && !bIsCEO) return -1;
+              if (!aIsCEO && bIsCEO) return 1;
+              return 0;
+            }).map((m, i) => {
               const budget = m.budgetMonatCent > 0 ? Math.round((m.verbrauchtMonatCent / m.budgetMonatCent) * 100) : 0;
               const manager = m.reportsTo ? (alleExperten ?? []).find(x => x.id === m.reportsTo) : null;
               let modell = '';
@@ -693,9 +717,9 @@ export function Experts() {
                   key={m.id}
                   onClick={() => setActiveChatExpert(m)}
                   active={isRunning}
-                  accent={isCEO ? '#FFD700' : '#23CDCB'}
+                  accent={isCEO ? '#FFD700' : '#c5a059'}
                   style={{
-                    padding: '1.5rem', borderRadius: '24px',
+                    padding: '1.5rem', borderRadius: 0,
                     animation: `fadeInUp 0.5s ease-out ${Math.min(i, 4) * 0.1}s both`,
                     ...(isCEO ? { boxShadow: '0 0 48px rgba(255, 215, 0, 0.07), 0 0 12px rgba(255, 215, 0, 0.04)' } : {}),
                   }}
@@ -704,7 +728,7 @@ export function Experts() {
                     <div style={{
                       position: 'absolute', top: '0.75rem', right: '3.25rem',
                       background: 'rgba(255,215,0,0.1)', border: '1px solid rgba(255,215,0,0.2)',
-                      padding: '4px 8px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: 6, zIndex: 10,
+                      padding: '4px 8px', borderRadius: 0, display: 'flex', alignItems: 'center', gap: 6, zIndex: 10,
                     }}>
                       <Crown size={12} color="#FFD700" />
                       <span style={{ fontSize: '10px', color: '#FFD700', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>CEO</span>
@@ -715,7 +739,7 @@ export function Experts() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
                     <div style={{ position: 'relative', flexShrink: 0 }}>
                       <div style={{
-                        width: '48px', height: '48px', borderRadius: '12px',
+                        width: '48px', height: '48px', borderRadius: 0,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: '1.125rem', fontWeight: 600,
                         background: m.avatarFarbe + '22', color: m.avatarFarbe,
@@ -726,9 +750,9 @@ export function Experts() {
                       {isRunning && (
                         <div style={{
                           position: 'absolute', bottom: -2, right: -2, width: 10, height: 10,
-                          borderRadius: '50%', background: '#23CDCB',
+                          borderRadius: '50%', background: '#c5a059',
                           border: '2px solid rgba(8,10,20,0.9)',
-                          boxShadow: '0 0 10px rgba(35,205,202,0.6)',
+                          boxShadow: '0 0 10px rgba(197,160,89,0.6)',
                           animation: 'pulse 1.5s ease-in-out infinite',
                         }} />
                       )}
@@ -740,7 +764,7 @@ export function Experts() {
                         <button
                           onClick={(e) => { e.stopPropagation(); setEditingExpert(m); }}
                           style={{ padding: '0.25rem', background: 'none', border: 'none', color: '#71717a', cursor: 'pointer', display: 'flex', alignItems: 'center', marginLeft: 'auto', transition: 'color 0.2s' }}
-                          onMouseEnter={e => e.currentTarget.style.color = '#23CDCB'}
+                          onMouseEnter={e => e.currentTarget.style.color = '#c5a059'}
                           onMouseLeave={e => e.currentTarget.style.color = '#71717a'}
                           title={i18n.t.actions.bearbeiten}
                         >
@@ -752,7 +776,7 @@ export function Experts() {
                           <span style={{ padding: '0.125rem 0.5rem', backgroundColor: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: '9999px', fontSize: '0.625rem', fontWeight: 700, color: '#fbbf24', letterSpacing: '0.05em', textTransform: 'uppercase' }}>CEO</span>
                         )}
                         {CLI_ADAPTERS.includes(m.verbindungsTyp) && (
-                          <span title={i18n.t.gedaechtnis.subscriptionBadge} style={{ padding: '0.125rem 0.5rem', backgroundColor: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: '9999px', fontSize: '0.625rem', fontWeight: 700, color: '#a855f7', letterSpacing: '0.05em', textTransform: 'uppercase' }}>🔑</span>
+                          <span title={i18n.t.gedaechtnis.subscriptionBadge} style={{ padding: '0.125rem 0.5rem', backgroundColor: 'rgba(155,135,200,0.15)', border: '1px solid rgba(155,135,200,0.3)', borderRadius: '9999px', fontSize: '0.625rem', fontWeight: 700, color: '#9b87c8', letterSpacing: '0.05em', textTransform: 'uppercase' }}>🔑</span>
                         )}
                       </div>
                       <div style={{ fontSize: '0.875rem', color: '#71717a' }}>{m.titel}</div>
@@ -770,10 +794,10 @@ export function Experts() {
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'end' }}>
                         <span style={{
                           padding: '0.25rem 0.625rem',
-                          backgroundColor: CLI_ADAPTERS.includes(m.verbindungsTyp) ? 'rgba(168,85,247,0.15)' : 'rgba(255,255,255,0.05)',
-                          border: CLI_ADAPTERS.includes(m.verbindungsTyp) ? '1px solid rgba(168,85,247,0.3)' : '1px solid rgba(255,255,255,0.1)',
+                          backgroundColor: CLI_ADAPTERS.includes(m.verbindungsTyp) ? 'rgba(155,135,200,0.15)' : 'rgba(255,255,255,0.05)',
+                          border: CLI_ADAPTERS.includes(m.verbindungsTyp) ? '1px solid rgba(155,135,200,0.3)' : '1px solid rgba(255,255,255,0.1)',
                           borderRadius: '9999px', fontSize: '0.75rem',
-                          color: CLI_ADAPTERS.includes(m.verbindungsTyp) ? '#a855f7' : '#d4d4d8',
+                          color: CLI_ADAPTERS.includes(m.verbindungsTyp) ? '#9b87c8' : '#d4d4d8',
                           fontWeight: CLI_ADAPTERS.includes(m.verbindungsTyp) ? 600 : 400,
                         }}>{verbindungsLabels[m.verbindungsTyp] || m.verbindungsTyp}</span>
                         {modell && <span style={{ fontSize: '0.6875rem', color: '#71717a', marginTop: '0.25rem' }}>{modell}</span>}
@@ -783,7 +807,7 @@ export function Experts() {
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <span style={{ color: '#71717a' }}>{de ? 'Vorgesetzter' : 'Reports to'}</span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <div style={{ width: '24px', height: '24px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.625rem', fontWeight: 600, background: manager.avatarFarbe + '22', color: manager.avatarFarbe }}>{manager.avatar}</div>
+                          <div style={{ width: '24px', height: '24px', borderRadius: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.625rem', fontWeight: 600, background: manager.avatarFarbe + '22', color: manager.avatarFarbe }}>{manager.avatar}</div>
                           <span style={{ color: '#d4d4d8' }}>{manager.name}</span>
                         </div>
                       </div>
@@ -801,8 +825,8 @@ export function Experts() {
                             <span style={{ marginLeft: '0.5rem', color: budget > 90 ? '#ef4444' : budget > 70 ? '#eab308' : '#71717a', fontWeight: 600 }}>({budget}%)</span>
                           </span>
                         </div>
-                        <div style={{ height: '6px', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${budget}%`, backgroundColor: budget > 90 ? '#ef4444' : budget > 70 ? '#eab308' : '#22c55e', borderRadius: '3px', transition: 'width 0.3s' }} />
+                        <div style={{ height: '6px', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 0, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${budget}%`, backgroundColor: budget > 90 ? '#ef4444' : budget > 70 ? '#eab308' : '#22c55e', borderRadius: 0, transition: 'width 0.3s' }} />
                         </div>
                       </div>
                     )}
@@ -812,10 +836,10 @@ export function Experts() {
                   {isRunning && (
                     <div style={{
                       marginTop: '0.75rem', padding: '0.625rem 0.75rem',
-                      borderRadius: '10px', background: 'rgba(35,205,202,0.05)', border: '1px solid rgba(35,205,202,0.15)',
+                      borderRadius: 0, background: 'rgba(197,160,89,0.05)', border: '1px solid rgba(197,160,89,0.15)',
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: lastTrace ? 4 : 0 }}>
-                        <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#23CDCB', animation: 'pulse 1s ease-in-out infinite', flexShrink: 0 }} />
+                        <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#c5a059', animation: 'pulse 1s ease-in-out infinite', flexShrink: 0 }} />
                         <span style={{ fontSize: '0.75rem', color: currentTask ? '#cbd5e1' : '#64748b', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: currentTask ? 'normal' : 'italic' }}>
                           {currentTask?.titel ?? (de ? 'Aktiv' : 'Running')}
                         </span>
@@ -824,7 +848,7 @@ export function Experts() {
                       </div>
                       {lastTrace && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 5, paddingLeft: 11 }}>
-                          <CornerDownRight size={8} style={{ color: '#23CDCB', flexShrink: 0 }} />
+                          <CornerDownRight size={8} style={{ color: '#c5a059', flexShrink: 0 }} />
                           <span style={{ fontSize: '0.6875rem', color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {lastTrace.titel}
                           </span>
@@ -838,16 +862,16 @@ export function Experts() {
                     style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       marginTop: '0.75rem', padding: '0.625rem 0.875rem',
-                      backgroundColor: m.zyklusAktiv ? 'rgba(35,205,202,0.06)' : 'rgba(255,255,255,0.02)',
-                      border: `1px solid ${m.zyklusAktiv ? 'rgba(35,205,202,0.2)' : 'rgba(255,255,255,0.06)'}`,
-                      borderRadius: '10px', transition: 'all 0.2s',
+                      backgroundColor: m.zyklusAktiv ? 'rgba(197,160,89,0.06)' : 'rgba(255,255,255,0.02)',
+                      border: `1px solid ${m.zyklusAktiv ? 'rgba(197,160,89,0.2)' : 'rgba(255,255,255,0.06)'}`,
+                      borderRadius: 0, transition: 'all 0.2s',
                     }}
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.125rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                        {m.zyklusAktiv ? <Zap size={13} color="#23CDCB" /> : <ZapOff size={13} color="#71717a" />}
-                        <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: m.zyklusAktiv ? '#23CDCB' : '#a1a1aa' }}>
+                        {m.zyklusAktiv ? <Zap size={13} color="#c5a059" /> : <ZapOff size={13} color="#71717a" />}
+                        <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: m.zyklusAktiv ? '#c5a059' : '#a1a1aa' }}>
                           {m.zyklusAktiv ? i18n.t.experten.autonomAktiv : i18n.t.experten.autonomInaktiv}
                         </span>
                       </div>
@@ -861,7 +885,7 @@ export function Experts() {
                         await authFetch(`/api/mitarbeiter/${m.id}`, { method: 'PATCH', body: JSON.stringify({ zyklusAktiv: !m.zyklusAktiv }) });
                         reload();
                       }}
-                      style={{ position: 'relative', width: '38px', height: '22px', borderRadius: '11px', backgroundColor: m.zyklusAktiv ? '#23CDCB' : 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer', transition: 'background 0.2s', flexShrink: 0 }}
+                      style={{ position: 'relative', width: '38px', height: '22px', borderRadius: 0, backgroundColor: m.zyklusAktiv ? '#c5a059' : 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer', transition: 'background 0.2s', flexShrink: 0 }}
                     >
                       <span style={{ position: 'absolute', top: '3px', left: m.zyklusAktiv ? '19px' : '3px', width: '16px', height: '16px', borderRadius: '50%', backgroundColor: '#ffffff', transition: 'left 0.2s', display: 'block' }} />
                     </button>
@@ -875,17 +899,17 @@ export function Experts() {
                     <div style={{ display: 'flex', gap: '0.375rem' }}>
                       <button
                         onClick={(e) => { e.stopPropagation(); setActiveChatExpert(m); }}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.5rem 0.625rem', backgroundColor: 'rgba(35,205,202,0.08)', border: 'none', borderRadius: '8px', color: '#23CDCB', fontWeight: 600, fontSize: '0.8125rem', cursor: 'pointer', transition: 'all 0.2s' }}
-                        onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(35,205,202,0.15)'}
-                        onMouseLeave={e => e.currentTarget.style.backgroundColor = 'rgba(35,205,202,0.08)'}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.5rem 0.625rem', backgroundColor: 'rgba(197,160,89,0.08)', border: 'none', borderRadius: 0, color: '#c5a059', fontWeight: 600, fontSize: '0.8125rem', cursor: 'pointer', transition: 'all 0.2s' }}
+                        onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(197,160,89,0.15)'}
+                        onMouseLeave={e => e.currentTarget.style.backgroundColor = 'rgba(197,160,89,0.08)'}
                       >
                         <MessageSquare size={14} />
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); setLogAgent(m); }}
                         title={de ? 'Aktivitätslog' : 'Activity log'}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.5rem 0.625rem', backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: '#71717a', fontSize: '0.8125rem', cursor: 'pointer', transition: 'all 0.2s' }}
-                        onMouseEnter={e => { e.currentTarget.style.color = '#23CDCB'; e.currentTarget.style.borderColor = 'rgba(35,205,202,0.3)'; }}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.5rem 0.625rem', backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 0, color: '#71717a', fontSize: '0.8125rem', cursor: 'pointer', transition: 'all 0.2s' }}
+                        onMouseEnter={e => { e.currentTarget.style.color = '#c5a059'; e.currentTarget.style.borderColor = 'rgba(197,160,89,0.3)'; }}
                         onMouseLeave={e => { e.currentTarget.style.color = '#71717a'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; }}
                       >
                         <Terminal size={14} />
@@ -894,7 +918,7 @@ export function Experts() {
                         onClick={(e) => { e.stopPropagation(); togglePause(m); }}
                         disabled={pausingAgents.has(m.id)}
                         title={m.status === 'paused' ? (de ? 'Fortsetzen' : 'Resume') : (de ? 'Pausieren' : 'Pause')}
-                        style={{ display: 'flex', alignItems: 'center', padding: '0.5rem 0.625rem', backgroundColor: m.status === 'paused' ? 'rgba(234,179,8,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${m.status === 'paused' ? 'rgba(234,179,8,0.3)' : 'rgba(255,255,255,0.08)'}`, borderRadius: '8px', color: m.status === 'paused' ? '#eab308' : '#71717a', fontSize: '0.8125rem', cursor: pausingAgents.has(m.id) ? 'default' : 'pointer', transition: 'all 0.2s' }}
+                        style={{ display: 'flex', alignItems: 'center', padding: '0.5rem 0.625rem', backgroundColor: m.status === 'paused' ? 'rgba(234,179,8,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${m.status === 'paused' ? 'rgba(234,179,8,0.3)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 0, color: m.status === 'paused' ? '#eab308' : '#71717a', fontSize: '0.8125rem', cursor: pausingAgents.has(m.id) ? 'default' : 'pointer', transition: 'all 0.2s' }}
                         onMouseEnter={e => { if (!pausingAgents.has(m.id)) { e.currentTarget.style.backgroundColor = 'rgba(234,179,8,0.1)'; e.currentTarget.style.color = '#eab308'; } }}
                         onMouseLeave={e => { if (!pausingAgents.has(m.id) && m.status !== 'paused') { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = '#71717a'; } }}
                       >
@@ -904,7 +928,7 @@ export function Experts() {
                         onClick={(e) => { e.stopPropagation(); triggerWakeup(m.id); }}
                         disabled={wakingUp.has(m.id)}
                         title={de ? 'Jetzt ausführen' : 'Run now'}
-                        style={{ display: 'flex', alignItems: 'center', padding: '0.5rem 0.625rem', backgroundColor: wakingUp.has(m.id) ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${wakingUp.has(m.id) ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`, borderRadius: '8px', color: wakingUp.has(m.id) ? '#22c55e' : '#71717a', fontSize: '0.8125rem', cursor: wakingUp.has(m.id) ? 'default' : 'pointer', transition: 'all 0.2s' }}
+                        style={{ display: 'flex', alignItems: 'center', padding: '0.5rem 0.625rem', backgroundColor: wakingUp.has(m.id) ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${wakingUp.has(m.id) ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 0, color: wakingUp.has(m.id) ? '#22c55e' : '#71717a', fontSize: '0.8125rem', cursor: wakingUp.has(m.id) ? 'default' : 'pointer', transition: 'all 0.2s' }}
                         onMouseEnter={e => { if (!wakingUp.has(m.id)) { e.currentTarget.style.backgroundColor = 'rgba(34,197,94,0.1)'; e.currentTarget.style.color = '#22c55e'; } }}
                         onMouseLeave={e => { if (!wakingUp.has(m.id)) { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = '#71717a'; } }}
                       >
@@ -912,7 +936,7 @@ export function Experts() {
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); navigate('/tasks'); }}
-                        style={{ display: 'flex', alignItems: 'center', padding: '0.5rem 0.5rem', backgroundColor: 'transparent', border: 'none', borderRadius: '8px', color: '#23CDCB', fontSize: '0.8125rem', cursor: 'pointer' }}
+                        style={{ display: 'flex', alignItems: 'center', padding: '0.5rem 0.5rem', backgroundColor: 'transparent', border: 'none', borderRadius: 0, color: '#c5a059', fontSize: '0.8125rem', cursor: 'pointer' }}
                         title={de ? 'Aufgaben anzeigen' : 'View tasks'}
                       >
                         <ArrowRight size={14} />
@@ -934,49 +958,89 @@ export function Experts() {
                 </h2>
               </div>
               {qualitaet.length === 0 ? (
-                <div style={{ padding: '2rem', borderRadius: '16px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', textAlign: 'center', color: '#71717a', fontSize: '0.875rem' }}>
+                <div style={{ padding: '2rem', borderRadius: 0, backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', textAlign: 'center', color: '#71717a', fontSize: '0.875rem' }}>
                   {de ? 'Noch keine Runs aufgezeichnet — Agenten müssen erst Aufgaben ausführen.' : 'No runs recorded yet.'}
                 </div>
               ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1rem' }}>
                   {qualitaet.map(q => {
-                    const score = q.halluzinationsScore;
-                    const scoreColor = score >= 70 ? '#ef4444' : score >= 40 ? '#eab308' : '#22c55e';
-                    const labelColor = q.qualityLabel === 'Kritisch' ? '#ef4444' : q.qualityLabel === 'Mittel' ? '#eab308' : q.qualityLabel === 'Gut' ? '#f97316' : '#22c55e';
-                    const labelText = q.qualityLabel === 'Kritisch' ? (de ? 'Kritisch' : 'Critical') : q.qualityLabel === 'Mittel' ? (de ? 'Mittel' : 'Moderate') : q.qualityLabel === 'Gut' ? (de ? 'Gut' : 'Good') : (de ? 'Exzellent' : 'Excellent');
+                    const hasData = q.totalRuns > 0;
+                    const rel = q.reliabilityScore; // 100 = perfect
+                    const relColor = rel >= 80 ? '#22c55e' : rel >= 50 ? '#eab308' : '#ef4444';
+
+                    // Warn thresholds: relative (percentage-based), not absolute
+                    const metrics = [
+                      { key: 'failurePct', label: de ? 'Fehlrate' : 'Failure Rate', pct: q.failurePct, abs: q.failedRuns, warn: q.failurePct >= 10 },
+                      { key: 'emptyActionPct', label: de ? 'Leere Aktionen' : 'Empty Actions', pct: q.emptyActionPct, abs: q.emptyActions, warn: q.emptyActionPct >= 30 },
+                      { key: 'criticRejectionPct', label: de ? 'Critic-Ablehnungen' : 'Critic Rejections', pct: q.criticRejectionPct, abs: q.criticRejections, warn: q.criticRejectionPct >= 10 },
+                      { key: 'escalationPct', label: de ? 'Eskalationen' : 'Escalations', pct: q.escalationPct, abs: q.escalations, warn: q.escalationPct >= 5 },
+                      { key: 'bashFailures', label: de ? 'Bash-Fehler' : 'Bash Failures', pct: null, abs: q.bashFailures, warn: q.bashFailures > 0 },
+                      { key: 'hedgingCount', label: de ? 'Hedging-Sprache' : 'Hedging Language', pct: null, abs: q.hedgingCount, warn: q.hedgingCount >= 5 },
+                    ];
+
                     return (
-                      <div key={q.expertId} style={{ padding: '1.25rem', borderRadius: '16px', backgroundColor: 'rgba(255,255,255,0.03)', border: `1px solid ${score >= 70 ? 'rgba(239,68,68,0.2)' : score >= 40 ? 'rgba(234,179,8,0.15)' : 'rgba(34,197,94,0.15)'}`, backdropFilter: 'blur(8px)' }}>
+                      <div key={q.expertId} style={{ padding: '1.25rem', borderRadius: 0, backgroundColor: 'rgba(255,255,255,0.03)', border: `1px solid ${hasData ? (rel >= 80 ? 'rgba(34,197,94,0.15)' : rel >= 50 ? 'rgba(234,179,8,0.15)' : 'rgba(239,68,68,0.2)') : 'rgba(255,255,255,0.08)'}`, backdropFilter: 'blur(8px)' }}>
+                        {/* Header: Name + Status */}
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
                           <span style={{ fontWeight: 700, color: '#ffffff', fontSize: '0.9375rem' }}>{q.name}</span>
-                          <span style={{ padding: '0.25rem 0.625rem', borderRadius: '9999px', fontSize: '0.6875rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', backgroundColor: labelColor + '22', color: labelColor, border: `1px solid ${labelColor}44` }}>{labelText}</span>
+                          {!hasData ? (
+                            <span style={{ padding: '0.25rem 0.625rem', borderRadius: 0, fontSize: '0.6875rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', backgroundColor: 'rgba(148,163,184,0.1)', color: '#94a3b8', border: '1px solid rgba(148,163,184,0.2)' }}>
+                              {de ? 'Keine Daten' : 'No Data'}
+                            </span>
+                          ) : (
+                            <span style={{ padding: '0.25rem 0.625rem', borderRadius: 0, fontSize: '0.6875rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', backgroundColor: relColor + '15', color: relColor, border: `1px solid ${relColor}35` }}>
+                              {q.qualityLabel === 'Exzellent' ? (de ? 'Exzellent' : 'Excellent')
+                                : q.qualityLabel === 'Gut' ? (de ? 'Gut' : 'Good')
+                                : q.qualityLabel === 'Mittel' ? (de ? 'Mittel' : 'Moderate')
+                                : (de ? 'Kritisch' : 'Critical')}
+                            </span>
+                          )}
                         </div>
-                        <div style={{ marginBottom: '1rem' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.375rem' }}>
-                            <span style={{ fontSize: '0.75rem', color: '#71717a' }}>{de ? 'Halluzinations-Score' : 'Hallucination Score'}</span>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: scoreColor }}>{score}/100</span>
+
+                        {!hasData ? (
+                          <div style={{ fontSize: '0.8125rem', color: '#52525b', padding: '1rem 0', textAlign: 'center' }}>
+                            {de ? 'Dieser Agent hat noch keine Aufgaben ausgeführt. Daten erscheinen nach dem ersten Run.' : 'This agent has not executed any tasks yet. Data will appear after the first run.'}
                           </div>
-                          <div style={{ height: '8px', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden' }}>
-                            <div style={{ height: '100%', width: `${score}%`, backgroundColor: scoreColor, borderRadius: '4px', transition: 'width 0.5s', boxShadow: `0 0 8px ${scoreColor}66` }} />
-                          </div>
-                          <div style={{ fontSize: '0.6875rem', color: '#52525b', marginTop: '0.25rem' }}>
-                            {de ? `${q.approvedRuns} von ${q.totalRuns} Runs erfolgreich` : `${q.approvedRuns} of ${q.totalRuns} runs successful`}
-                          </div>
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                          {[
-                            { label: de ? 'Critic-Ablehnungen' : 'Critic Rejections', value: q.criticRejections, warn: q.criticRejections > 2 },
-                            { label: de ? 'Eskalationen' : 'Escalations', value: q.escalations, warn: q.escalations > 0 },
-                            { label: de ? 'Leere Aktionen' : 'Empty Actions', value: q.emptyActions, warn: q.emptyActions > 3 },
-                            { label: de ? 'Bash-Fehler' : 'Bash Failures', value: q.bashFailures, warn: q.bashFailures > 2 },
-                            { label: de ? 'Hedging-Sprache' : 'Hedging Language', value: q.hedgingCount, warn: q.hedgingCount > 3 },
-                            { label: de ? 'Fehlgeschlagen' : 'Failed Runs', value: q.failedRuns, warn: q.failedRuns > 1 },
-                          ].map(({ label, value, warn }) => (
-                            <div key={label} style={{ padding: '0.5rem 0.625rem', borderRadius: '8px', backgroundColor: warn && value > 0 ? 'rgba(239,68,68,0.07)' : 'rgba(255,255,255,0.03)', border: `1px solid ${warn && value > 0 ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.06)'}` }}>
-                              <div style={{ fontSize: '0.6875rem', color: '#71717a', marginBottom: '0.25rem' }}>{label}</div>
-                              <div style={{ fontSize: '1.125rem', fontWeight: 700, color: warn && value > 0 ? '#ef4444' : value === 0 ? '#22c55e' : '#d4d4d8' }}>{value}</div>
+                        ) : (
+                          <>
+                            {/* Reliability Score — 100 = perfect (intuitive!) */}
+                            <div style={{ marginBottom: '1rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.375rem' }}>
+                                <span style={{ fontSize: '0.75rem', color: '#71717a' }}>{de ? 'Zuverlässigkeit' : 'Reliability'}</span>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: relColor }}>{rel}%</span>
+                              </div>
+                              <div style={{ height: '8px', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 0, overflow: 'hidden' }}>
+                                <div style={{ height: '100%', width: `${rel}%`, backgroundColor: relColor, borderRadius: 0, transition: 'width 0.5s', boxShadow: `0 0 8px ${relColor}66` }} />
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.375rem' }}>
+                                <span style={{ fontSize: '0.6875rem', color: '#52525b' }}>
+                                  {de ? `${q.meaningfulRuns} von ${q.totalRuns} Runs sinnvoll` : `${q.meaningfulRuns} of ${q.totalRuns} runs meaningful`}
+                                </span>
+                                <span style={{ fontSize: '0.6875rem', color: '#52525b' }}>
+                                  {de ? `${q.approvedRuns} genehmigt` : `${q.approvedRuns} approved`}
+                                </span>
+                              </div>
                             </div>
-                          ))}
-                        </div>
+
+                            {/* Metrics grid — with percentages */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                              {metrics.map(({ label, pct, abs, warn }) => {
+                                const showPct = pct !== null && q.totalRuns > 0;
+                                return (
+                                  <div key={label} style={{ padding: '0.5rem 0.625rem', borderRadius: 0, backgroundColor: warn ? 'rgba(239,68,68,0.06)' : 'rgba(255,255,255,0.02)', border: `1px solid ${warn ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.05)'}` }}>
+                                    <div style={{ fontSize: '0.625rem', color: '#52525b', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{label}</div>
+                                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.35rem' }}>
+                                      <span style={{ fontSize: '1.125rem', fontWeight: 700, color: warn ? '#ef4444' : abs === 0 ? '#22c55e' : '#d4d4d8' }}>{abs}</span>
+                                      {showPct && (
+                                        <span style={{ fontSize: '0.6875rem', color: warn ? '#ef4444' : '#52525b' }}>({pct}%)</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </>
+                        )}
                       </div>
                     );
                   })}
@@ -993,17 +1057,17 @@ export function Experts() {
             position: 'sticky', top: '1rem',
             height: 'calc(100vh - 8rem)',
             display: 'flex', flexDirection: 'column',
-            borderRadius: '20px',
+            borderRadius: 0,
             background: 'rgba(0,0,0,0.3)',
-            border: '1px solid rgba(35,205,202,0.12)',
+            border: '1px solid rgba(197,160,89,0.12)',
             backdropFilter: 'blur(12px)',
             overflow: 'hidden',
           }}>
             {/* Header */}
-            <div style={{ padding: '12px 14px', borderBottom: '1px solid rgba(35,205,202,0.1)', flexShrink: 0 }}>
+            <div style={{ padding: '12px 14px', borderBottom: '1px solid rgba(197,160,89,0.1)', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <Activity size={13} style={{ color: '#23CDCB' }} />
-                <span style={{ fontSize: '0.625rem', fontWeight: 800, color: '#23CDCB', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                <Activity size={13} style={{ color: '#c5a059' }} />
+                <span style={{ fontSize: '0.625rem', fontWeight: 800, color: '#c5a059', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
                   System Pulse
                 </span>
                 <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -1011,8 +1075,8 @@ export function Experts() {
                     <span style={{ fontSize: 8, color: '#f59e0b', fontWeight: 700 }}>⏸ PAUSED</span>
                   ) : (
                     <>
-                      <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#23CDCB', animation: 'pulse 2s ease-in-out infinite' }} />
-                      <span style={{ fontSize: 9, color: '#23CDCB', fontWeight: 700 }}>LIVE</span>
+                      <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#c5a059', animation: 'pulse 2s ease-in-out infinite' }} />
+                      <span style={{ fontSize: 9, color: '#c5a059', fontWeight: 700 }}>LIVE</span>
                     </>
                   )}
                 </div>
@@ -1023,10 +1087,10 @@ export function Experts() {
                     key={f}
                     onClick={() => setPulseFilter(f)}
                     style={{
-                      padding: '2px 7px', borderRadius: 4, border: 'none', cursor: 'pointer',
+                      padding: '2px 7px', borderRadius: 0, border: 'none', cursor: 'pointer',
                       fontSize: 8, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
-                      background: pulseFilter === f ? 'rgba(35,205,202,0.2)' : 'rgba(255,255,255,0.04)',
-                      color: pulseFilter === f ? '#23CDCB' : '#334155', transition: 'all 0.15s',
+                      background: pulseFilter === f ? 'rgba(197,160,89,0.2)' : 'rgba(255,255,255,0.04)',
+                      color: pulseFilter === f ? '#c5a059' : '#334155', transition: 'all 0.15s',
                     }}
                   >
                     {f === 'all' ? (de ? 'Alle' : 'All') : f === 'error' ? '⚠ Err' : f === 'action' ? '⚡ Act' : '💭 Think'}
@@ -1067,11 +1131,11 @@ export function Experts() {
                   setNewEventCount(0);
                 }}
                 style={{
-                  margin: '8px', borderRadius: 10,
+                  margin: '8px', borderRadius: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
                   padding: '6px 10px',
-                  background: 'rgba(35,205,202,0.15)', border: '1px solid rgba(35,205,202,0.4)',
-                  color: '#23CDCB', fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                  background: 'rgba(197,160,89,0.15)', border: '1px solid rgba(197,160,89,0.4)',
+                  color: '#c5a059', fontSize: 10, fontWeight: 700, cursor: 'pointer',
                 }}
               >
                 ↓ {newEventCount} {de ? 'neue' : 'new'}

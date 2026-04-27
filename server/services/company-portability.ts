@@ -3,7 +3,7 @@
 // Importiert mit Preview, Collision-Handling und Adapter-Override.
 
 import { db } from '../db/client.js';
-import { unternehmen, experten, aufgaben, skillsLibrary, expertenSkills, einstellungen, budgetPolicies } from '../db/schema.js';
+import { companies, agents, tasks, skillsLibrary, agentSkills, settings, budgetPolicies } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { v4 as uuid } from 'uuid';
 
@@ -12,41 +12,41 @@ import { v4 as uuid } from 'uuid';
 export interface CompanyManifest {
   version: '1.0.0';
   exportiertAm: string;
-  unternehmen: {
+  companies: {
     name: string;
-    beschreibung: string | null;
-    ziel: string | null;
+    description: string | null;
+    goal: string | null;
     workDir: string | null;
   };
   agenten: Array<{
     name: string;
-    rolle: string;
-    titel: string | null;
-    faehigkeiten: string | null;
-    verbindungsTyp: string;
+    role: string;
+    title: string | null;
+    capabilities: string | null;
+    connectionType: string;
     avatar: string | null;
-    avatarFarbe: string;
-    budgetMonatCent: number;
+    avatarColor: string;
+    monthlyBudgetCent: number;
     reportsToName: string | null; // Name statt ID für Portabilität
     systemPrompt: string | null;
     isOrchestrator: boolean;
     skills: Array<{
       name: string;
-      beschreibung: string | null;
-      inhalt: string;
+      description: string | null;
+      content: string;
       tags: string | null;
-      konfidenz: number;
-      quelle: string;
+      confidence: number;
+      source: string;
     }>;
   }>;
-  aufgaben: Array<{
-    titel: string;
-    beschreibung: string | null;
+  tasks: Array<{
+    title: string;
+    description: string | null;
     status: string;
-    prioritaet: string;
-    zugewiesenAnName: string | null; // Name statt ID
+    priority: string;
+    assignedToName: string | null; // Name statt ID
   }>;
-  einstellungen: Array<{
+  settings: Array<{
     schluessel: string;
     wert: string;
     istGeheim: boolean;
@@ -84,73 +84,73 @@ export interface ImportPreview {
 
 // ─── Export ─────────────────────────────────────────────────────────────────
 
-export function exportCompany(unternehmenId: string): CompanyManifest | null {
-  const company = db.select().from(unternehmen).where(eq(unternehmen.id, unternehmenId)).get();
+export function exportCompany(companyId: string): CompanyManifest | null {
+  const company = db.select().from(companies).where(eq(companies.id, companyId)).get();
   if (!company) return null;
 
-  const agents = db.select().from(experten).where(eq(experten.unternehmenId, unternehmenId)).all();
-  const tasks = db.select().from(aufgaben).where(eq(aufgaben.unternehmenId, unternehmenId)).all();
-  const settings = db.select().from(einstellungen).where(eq(einstellungen.unternehmenId, unternehmenId)).all();
-  const policies = db.select().from(budgetPolicies).where(eq(budgetPolicies.unternehmenId, unternehmenId)).all();
+  const agentsRows = db.select().from(agents).where(eq(agents.companyId, companyId)).all();
+  const tasksRows = db.select().from(tasks).where(eq(tasks.companyId, companyId)).all();
+  const settingsRows = db.select().from(settings).where(eq(settings.companyId, companyId)).all();
+  const policies = db.select().from(budgetPolicies).where(eq(budgetPolicies.companyId, companyId)).all();
 
   // Agent-ID → Name Mapping
-  const idToName = new Map(agents.map(a => [a.id, a.name]));
+  const idToName = new Map(agentsRows.map(a => [a.id, a.name]));
 
   // Manifest bauen
   const manifest: CompanyManifest = {
     version: '1.0.0',
     exportiertAm: new Date().toISOString(),
-    unternehmen: {
+    companies: {
       name: company.name,
-      beschreibung: company.beschreibung,
-      ziel: company.ziel,
+      description: company.description,
+      goal: company.goal,
       workDir: company.workDir,
     },
-    agenten: agents.map(a => {
+    agenten: agentsRows.map(a => {
       // Skills für diesen Agent laden
-      const agentSkills = db.select({ skill: skillsLibrary }).from(expertenSkills)
-        .innerJoin(skillsLibrary, eq(expertenSkills.skillId, skillsLibrary.id))
-        .where(eq(expertenSkills.expertId, a.id))
+      const agentSkillsRows = db.select({ skill: skillsLibrary }).from(agentSkills)
+        .innerJoin(skillsLibrary, eq(agentSkills.skillId, skillsLibrary.id))
+        .where(eq(agentSkills.agentId, a.id))
         .all()
         .map((r: any) => r.skill);
 
       let isOrch = false;
-      try { isOrch = JSON.parse(a.verbindungsConfig || '{}').isOrchestrator === true; } catch {}
+      try { isOrch = JSON.parse(a.connectionConfig || '{}').isOrchestrator === true; } catch {}
 
       return {
         name: a.name,
-        rolle: a.rolle,
-        titel: a.titel,
-        faehigkeiten: a.faehigkeiten,
-        verbindungsTyp: a.verbindungsTyp,
+        role: a.role,
+        title: a.title,
+        capabilities: a.skills,
+        connectionType: a.connectionType,
         avatar: a.avatar,
-        avatarFarbe: a.avatarFarbe,
-        budgetMonatCent: a.budgetMonatCent,
+        avatarColor: a.avatarColor,
+        monthlyBudgetCent: a.monthlyBudgetCent,
         reportsToName: a.reportsTo ? idToName.get(a.reportsTo) || null : null,
         systemPrompt: a.systemPrompt,
         isOrchestrator: isOrch,
-        skills: agentSkills.map(s => ({
+        skills: agentSkillsRows.map(s => ({
           name: s.name,
-          beschreibung: s.beschreibung,
-          inhalt: s.inhalt,
+          description: s.description,
+          content: s.content,
           tags: s.tags,
-          konfidenz: s.konfidenz,
-          quelle: s.quelle,
+          confidence: s.confidence,
+          source: s.source,
         })),
       };
     }),
-    aufgaben: tasks.map(t => ({
-      titel: t.titel,
-      beschreibung: t.beschreibung,
+    tasks: tasksRows.map(t => ({
+      title: t.title,
+      description: t.description,
       status: t.status,
-      prioritaet: t.prioritaet,
-      zugewiesenAnName: t.zugewiesenAn ? idToName.get(t.zugewiesenAn) || null : null,
+      priority: t.priority,
+      assignedToName: t.assignedTo ? idToName.get(t.assignedTo) || null : null,
     })),
-    einstellungen: settings
-      .filter(s => !s.schluessel.includes('api_key') && !s.schluessel.includes('token')) // Secrets nicht exportieren
+    settings: settingsRows
+      .filter(s => !s.key.includes('api_key') && !s.key.includes('token')) // Secrets nicht exportieren
       .map(s => ({
-        schluessel: s.schluessel,
-        wert: s.wert || '',
+        schluessel: s.key,
+        wert: s.value || '',
         istGeheim: false,
       })),
     budgetPolicies: policies.map(p => ({
@@ -169,8 +169,8 @@ export function exportCompany(unternehmenId: string): CompanyManifest | null {
 // ─── Import Preview ────────────────────────���────────────────────────────────
 
 export function previewImport(targetUnternehmenId: string, manifest: CompanyManifest): ImportPreview {
-  const existingAgents = db.select().from(experten)
-    .where(eq(experten.unternehmenId, targetUnternehmenId)).all();
+  const existingAgents = db.select().from(agents)
+    .where(eq(agents.companyId, targetUnternehmenId)).all();
   const existingNames = new Set(existingAgents.map(a => a.name));
 
   const collisions = manifest.agenten
@@ -178,9 +178,9 @@ export function previewImport(targetUnternehmenId: string, manifest: CompanyMani
     .map(a => ({ name: a.name, typ: 'agent' }));
 
   return {
-    unternehmenName: manifest.unternehmen.name,
+    unternehmenName: manifest.companies.name,
     agentenCount: manifest.agenten.length,
-    aufgabenCount: manifest.aufgaben.length,
+    aufgabenCount: manifest.tasks.length,
     skillsCount: manifest.agenten.reduce((s, a) => s + a.skills.length, 0),
     collisions,
   };
@@ -198,8 +198,8 @@ export function importCompany(
   let agentsImported = 0;
   let tasksImported = 0;
 
-  const existingAgents = db.select().from(experten)
-    .where(eq(experten.unternehmenId, targetUnternehmenId)).all();
+  const existingAgents = db.select().from(agents)
+    .where(eq(agents.companyId, targetUnternehmenId)).all();
   const existingNames = new Set(existingAgents.map(a => a.name));
   const nameToId = new Map<string, string>();
 
@@ -221,29 +221,29 @@ export function importCompany(
       const agentId = uuid();
       nameToId.set(agentDef.name, agentId);
 
-      const verbindungsTyp = options.adapterOverride || agentDef.verbindungsTyp;
+      const verbindungsTyp = options.adapterOverride || agentDef.connectionType;
       const config = agentDef.isOrchestrator
         ? JSON.stringify({ isOrchestrator: true, autonomyLevel: 'teamplayer' })
         : JSON.stringify({ autonomyLevel: 'copilot' });
 
-      db.insert(experten).values({
+      db.insert(agents).values({
         id: agentId,
-        unternehmenId: targetUnternehmenId,
+        companyId: targetUnternehmenId,
         name,
-        rolle: agentDef.rolle,
-        titel: agentDef.titel,
-        faehigkeiten: agentDef.faehigkeiten,
-        verbindungsTyp,
-        verbindungsConfig: config,
+        role: agentDef.role,
+        title: agentDef.title,
+        capabilities: agentDef.skills,
+        connectionType: verbindungsTyp,
+        connectionConfig: config,
         avatar: agentDef.avatar,
-        avatarFarbe: agentDef.avatarFarbe,
-        budgetMonatCent: agentDef.budgetMonatCent,
-        verbrauchtMonatCent: 0,
+        avatarColor: agentDef.avatarColor,
+        monthlyBudgetCent: agentDef.monthlyBudgetCent,
+        monthlySpendCent: 0,
         systemPrompt: agentDef.systemPrompt,
         status: 'idle',
-        nachrichtenCount: 0,
-        erstelltAm: now,
-        aktualisiertAm: now,
+        messageCount: 0,
+        createdAt: now,
+        updatedAt: now,
       }).run();
 
       // Skills importieren
@@ -251,22 +251,22 @@ export function importCompany(
         const skillId = uuid();
         db.insert(skillsLibrary).values({
           id: skillId,
-          unternehmenId: targetUnternehmenId,
+          companyId: targetUnternehmenId,
           name: skillDef.name,
-          beschreibung: skillDef.beschreibung,
-          inhalt: skillDef.inhalt,
+          description: skillDef.description,
+          content: skillDef.content,
           tags: skillDef.tags,
-          konfidenz: skillDef.konfidenz || 50,
-          nutzungen: 0,
-          erfolge: 0,
-          quelle: (skillDef.quelle as any) || 'manuell',
-          erstelltVon: 'import',
-          erstelltAm: now,
-          aktualisiertAm: now,
+          confidence: skillDef.confidence || 50,
+          uses: 0,
+          successes: 0,
+          source: (skillDef.source as any) || 'manuell',
+          createdBy: 'import',
+          createdAt: now,
+          updatedAt: now,
         }).run();
 
-        db.insert(expertenSkills).values({
-          id: uuid(), expertId: agentId, skillId, erstelltAm: now,
+        db.insert(agentSkills).values({
+          id: uuid(), agentId: agentId, skillId, createdAt: now,
         }).run();
       }
 
@@ -282,31 +282,31 @@ export function importCompany(
       const agentId = nameToId.get(agentDef.name);
       const reportsToId = nameToId.get(agentDef.reportsToName);
       if (agentId && reportsToId) {
-        db.update(experten).set({ reportsTo: reportsToId, aktualisiertAm: now })
-          .where(eq(experten.id, agentId)).run();
+        db.update(agents).set({ reportsTo: reportsToId, updatedAt: now })
+          .where(eq(agents.id, agentId)).run();
       }
     }
   }
 
   // Phase 3: Tasks importieren
   if (options.importTasks !== false) {
-    for (const taskDef of manifest.aufgaben) {
+    for (const taskDef of manifest.tasks) {
       try {
-        const zugewiesenAn = taskDef.zugewiesenAnName ? nameToId.get(taskDef.zugewiesenAnName) || null : null;
-        db.insert(aufgaben).values({
+        const zugewiesenAn = taskDef.assignedToName ? nameToId.get(taskDef.assignedToName) || null : null;
+        db.insert(tasks).values({
           id: uuid(),
-          unternehmenId: targetUnternehmenId,
-          titel: taskDef.titel,
-          beschreibung: taskDef.beschreibung,
+          companyId: targetUnternehmenId,
+          title: taskDef.title,
+          description: taskDef.description,
           status: taskDef.status as any,
-          prioritaet: taskDef.prioritaet as any,
+          priority: taskDef.priority as any,
           zugewiesenAn,
-          erstelltAm: now,
-          aktualisiertAm: now,
+          createdAt: now,
+          updatedAt: now,
         }).run();
         tasksImported++;
       } catch (err: any) {
-        errors.push(`Task "${taskDef.titel}": ${err.message}`);
+        errors.push(`Task "${taskDef.title}": ${err.message}`);
       }
     }
   }

@@ -3,8 +3,8 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Users, ListTodo, Building2,
   Wallet, ShieldCheck, Activity,
-  Settings, LogOut, Globe, Brain,
-  ChevronLeft, ChevronRight, ChevronDown, Clock, FolderOpen, MessagesSquare, Target, Zap, BarChart3, Package, GitBranch, BookOpen,
+  Settings, LogOut, Globe, Brain, Database,
+  ChevronLeft, ChevronRight, ChevronDown, Clock, FolderOpen, MessagesSquare, Target, Zap, BarChart3, Package, GitBranch, BookOpen, MessageSquare,
 } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { useCompany } from '../hooks/useCompany';
@@ -70,21 +70,23 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
   const navItems = [
     // ── Tägliche Nutzung ──
     { section: de ? 'Betrieb' : 'Operations', items: [
-      { to: '/',              icon: LayoutDashboard, label: t.nav.dashboard },
+      { to: '/chat',          icon: MessageSquare,   label: 'Chat',               tourStep: 'chat' },
+      { to: '/',              icon: LayoutDashboard, label: t.nav.dashboard,      tourStep: 'dashboard' },
       { to: '/companies',     icon: Building2,       label: t.nav.unternehmen },
-      { to: '/experts',       icon: Users,           label: t.nav.experten },
+      { to: '/experts',       icon: Users,           label: t.nav.experten,       tourStep: 'experts' },
       { to: '/skill-library', icon: BookOpen,        label: t.nav.skillLibrary },
       { to: '/approvals',     icon: ShieldCheck,     label: t.nav.genehmigungen },
       { to: '/costs',         icon: Wallet,          label: t.nav.kosten },
       { to: '/org-chart',     icon: GitBranch,       label: t.nav.organigramm },
-      { to: '/intelligence',  icon: Brain,           label: t.nav.intelligence },
+      { to: '/company-knowledge', icon: Brain,       label: de ? 'Wissensbasis' : 'Knowledge' },
+      { to: '/memory',        icon: Database,        label: de ? 'Semantic Memory' : 'Semantic Memory' },
     ]},
     // ── Setup-Reihenfolge: was zuerst gemacht werden muss ──
     { section: de ? 'Einrichten' : 'Setup', items: [
       { to: '/settings',     icon: Settings,       label: de ? '1. API Keys & Einstellungen' : '1. API Keys & Settings' },
       { to: '/experts',      icon: Users,          label: de ? '2. Agenten anlegen' : '2. Create Agents' },
       { to: '/projects',     icon: FolderOpen,     label: de ? '3. Projekte anlegen' : '3. Create Projects' },
-      { to: '/tasks',        icon: ListTodo,       label: de ? '4. Aufgaben erstellen' : '4. Create Tasks' },
+      { to: '/tasks',        icon: ListTodo,       label: de ? '4. Aufgaben erstellen' : '4. Create Tasks', tourStep: 'tasks' },
       { to: '/routines',     icon: Clock,          label: de ? '5. Routinen einrichten' : '5. Set up Routines' },
     ]},
     // ── Alles weitere ──
@@ -129,7 +131,7 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
             position: 'absolute',
             width: `${p.size}px`,
             height: `${p.size}px`,
-            background: 'rgba(35, 205, 202, 0.3)',
+            background: 'rgba(197, 160, 89, 0.3)',
             borderRadius: '50%',
             top: p.top,
             left: p.left,
@@ -157,7 +159,7 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
               fontWeight: 700,
               color: '#ffffff',
               letterSpacing: '-0.02em',
-              background: 'linear-gradient(to right, #23CDCB, #ffffff)',
+              background: 'linear-gradient(to right, #c5a059, #ffffff)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
               backgroundClip: 'text',
@@ -165,11 +167,11 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
             }}>
               {t.app.name}
             </span>
-            <img src="/opencognit.png" alt="OpenCognit" style={{ width: 56, height: 56, objectFit: 'contain' }} />
+            <img src="/opencognit.svg" alt="OpenCognit" style={{ width: 56, height: 56, objectFit: 'contain' }} />
           </>
         )}
         {collapsed && (
-          <img src="/opencognit.png" alt="OpenCognit" style={{ width: 48, height: 48, objectFit: 'contain' }} />
+          <img src="/opencognit.svg" alt="OpenCognit" style={{ width: 48, height: 48, objectFit: 'contain' }} />
         )}
         <button
           onClick={onToggle}
@@ -182,20 +184,20 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
             justifyContent: 'center',
             width: '28px',
             height: '28px',
-            borderRadius: '8px',
-            background: 'rgba(35, 205, 202, 0.1)',
-            border: '1px solid rgba(35, 205, 202, 0.2)',
-            color: '#23CDCB',
+            borderRadius: 0,
+            background: 'rgba(197, 160, 89, 0.1)',
+            border: '1px solid rgba(197, 160, 89, 0.2)',
+            color: '#c5a059',
             cursor: 'pointer',
             transition: 'all 0.2s',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(35, 205, 202, 0.2)';
-            e.currentTarget.style.borderColor = 'rgba(35, 205, 202, 0.4)';
+            e.currentTarget.style.background = 'rgba(197, 160, 89, 0.2)';
+            e.currentTarget.style.borderColor = 'rgba(197, 160, 89, 0.4)';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'rgba(35, 205, 202, 0.1)';
-            e.currentTarget.style.borderColor = 'rgba(35, 205, 202, 0.2)';
+            e.currentTarget.style.background = 'rgba(197, 160, 89, 0.1)';
+            e.currentTarget.style.borderColor = 'rgba(197, 160, 89, 0.2)';
           }}
         >
           {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
@@ -218,9 +220,9 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   width: '100%',
-                  background: setupHighlight ? 'rgba(35,205,202,0.05)' : 'none',
-                  border: setupHighlight ? '1px solid rgba(35,205,202,0.15)' : '1px solid transparent',
-                  borderRadius: setupHighlight ? '8px' : '0',
+                  background: setupHighlight ? 'rgba(197,160,89,0.05)' : 'none',
+                  border: setupHighlight ? '1px solid rgba(197,160,89,0.15)' : '1px solid transparent',
+                  borderRadius: 0,
                   cursor: 'pointer',
                   padding: setupHighlight ? '0.3rem 0.5rem' : '0 0.5rem',
                   marginBottom: '0.5rem',
@@ -231,8 +233,8 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
                   {setupHighlight && (
                     <div style={{
                       width: 6, height: 6, borderRadius: '50%',
-                      background: '#23CDCB',
-                      boxShadow: '0 0 6px #23CDCB',
+                      background: '#c5a059',
+                      boxShadow: '0 0 6px #c5a059',
                       animation: 'sidebar-float 2s ease-in-out infinite',
                       flexShrink: 0,
                     }} />
@@ -240,7 +242,7 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
                   <span style={{
                     fontSize: '0.6875rem',
                     fontWeight: 600,
-                    color: setupHighlight ? '#23CDCB' : '#71717a',
+                    color: setupHighlight ? '#c5a059' : '#71717a',
                     textTransform: 'uppercase',
                     letterSpacing: '0.06em',
                   }}>{section.section}</span>
@@ -249,7 +251,7 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
                   {setupHighlight && (
                     <span style={{
                       fontSize: '0.5625rem', fontWeight: 700,
-                      color: '#23CDCB', letterSpacing: '0.04em',
+                      color: '#c5a059', letterSpacing: '0.04em',
                       opacity: 0.75,
                     }}>
                       {de ? 'START' : 'START'}
@@ -258,7 +260,7 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
                   <ChevronDown
                     size={12}
                     style={{
-                      color: setupHighlight ? '#23CDCB' : '#71717a',
+                      color: setupHighlight ? '#c5a059' : '#71717a',
                       flexShrink: 0,
                       transition: 'transform 0.2s ease',
                       transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
@@ -279,13 +281,14 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
                 className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
                 end={item.to === '/'}
                 title={collapsed ? item.label : undefined}
+                {...((item as any).tourStep ? { 'data-tour-step': (item as any).tourStep } : {})}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.75rem',
                   padding: collapsed ? '0.625rem' : '0.625rem 0.75rem',
                   marginBottom: '0.25rem',
-                  borderRadius: '10px',
+                  borderRadius: 0,
                   textDecoration: 'none',
                   transition: 'all 0.2s',
                   backdropFilter: 'blur(10px)',
@@ -321,7 +324,7 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
                     color: '#fff',
                     fontSize: 11,
                     fontWeight: 700,
-                    borderRadius: 10,
+                    borderRadius: 0,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -340,7 +343,7 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
         })}
       </nav>
 
-      {/* Bottom Section */}
+      {/* Bottom Section — order: User → Settings → Language */}
       <div style={{
         padding: collapsed ? '0.75rem' : '1rem',
         borderTop: '1px solid rgba(255, 255, 255, 0.08)',
@@ -350,77 +353,6 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
         position: 'relative',
         zIndex: 1,
       }}>
-        {/* Language Switch */}
-        <button
-          onClick={() => setLanguage(language === 'de' ? 'en' : 'de')}
-          title={collapsed ? (language === 'de' ? 'Deutsch' : 'English') : undefined}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.75rem',
-            padding: collapsed ? '0.625rem' : '0.625rem 0.75rem',
-            background: 'rgba(255, 255, 255, 0.02)',
-            border: '1px solid rgba(255, 255, 255, 0.06)',
-            borderRadius: '10px',
-            color: '#a1a1aa',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            width: collapsed ? '40px' : '100%',
-            justifyContent: collapsed ? 'center' : 'space-between',
-            backdropFilter: 'blur(10px)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
-            e.currentTarget.style.borderColor = 'rgba(35, 205, 202, 0.2)';
-            e.currentTarget.style.color = '#23CDCB';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)';
-            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.06)';
-            e.currentTarget.style.color = '#a1a1aa';
-          }}
-        >
-          <Globe size={18} />
-          {!collapsed && (
-            <>
-              <span style={{ flex: 1, fontSize: '0.8125rem', fontWeight: 500 }}>{language === 'de' ? 'Deutsch' : 'English'}</span>
-              <span style={{
-                fontSize: '10px',
-                padding: '2px 6px',
-                borderRadius: '6px',
-                background: 'rgba(35, 205, 202, 0.1)',
-                color: '#23CDCB',
-                border: '1px solid rgba(35, 205, 202, 0.2)',
-              }}>
-                {language === 'de' ? 'EN' : 'DE'}
-              </span>
-            </>
-          )}
-        </button>
-
-        {/* Settings link (collapsed mode only — in expanded mode it's in the nav) */}
-        {collapsed && (
-          <NavLink
-            to="/settings"
-            title={t.nav.einstellungen}
-            style={({ isActive }) => ({
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '0.625rem',
-              borderRadius: '10px',
-              textDecoration: 'none',
-              transition: 'all 0.2s',
-              background: isActive ? 'rgba(35, 205, 202, 0.12)' : 'rgba(255, 255, 255, 0.02)',
-              border: isActive ? '1px solid rgba(35, 205, 202, 0.3)' : '1px solid rgba(255, 255, 255, 0.06)',
-              color: isActive ? '#23CDCB' : '#a1a1aa',
-              backdropFilter: 'blur(10px)',
-            })}
-          >
-            <Settings size={18} />
-          </NavLink>
-        )}
-
         {/* User Profile */}
         {benutzer && (
           <div
@@ -430,34 +362,34 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
               alignItems: 'center',
               gap: '0.625rem',
               padding: '0.625rem 0.75rem',
-              background: 'rgba(35, 205, 202, 0.06)',
-              border: '1px solid rgba(35, 205, 202, 0.2)',
-              borderRadius: '12px',
+              background: 'rgba(197, 160, 89, 0.06)',
+              border: '1px solid rgba(197, 160, 89, 0.2)',
+              borderRadius: 0,
               marginTop: '0.25rem',
               backdropFilter: 'blur(10px)',
               transition: 'all 0.2s',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'rgba(35, 205, 202, 0.1)';
-              e.currentTarget.style.borderColor = 'rgba(35, 205, 202, 0.3)';
+              e.currentTarget.style.background = 'rgba(197, 160, 89, 0.1)';
+              e.currentTarget.style.borderColor = 'rgba(197, 160, 89, 0.3)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'rgba(35, 205, 202, 0.06)';
-              e.currentTarget.style.borderColor = 'rgba(35, 205, 202, 0.2)';
+              e.currentTarget.style.background = 'rgba(197, 160, 89, 0.06)';
+              e.currentTarget.style.borderColor = 'rgba(197, 160, 89, 0.2)';
             }}
           >
             <div style={{
               width: '32px',
               height: '32px',
-              borderRadius: '10px',
+              borderRadius: 0,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               fontSize: '0.6875rem',
               fontWeight: 700,
-              background: 'rgba(35, 205, 202, 0.15)',
-              border: '1px solid rgba(35, 205, 202, 0.3)',
-              color: '#23CDCB',
+              background: 'rgba(197, 160, 89, 0.15)',
+              border: '1px solid rgba(197, 160, 89, 0.3)',
+              color: '#c5a059',
               flexShrink: 0,
             }}>
               {benutzer.name.slice(0, 2).toUpperCase()}
@@ -477,7 +409,7 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
                 padding: '0.375rem',
                 background: 'transparent',
                 border: 'none',
-                borderRadius: '6px',
+                borderRadius: 0,
                 color: '#71717a',
                 cursor: 'pointer',
                 display: 'flex',
@@ -499,6 +431,89 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
             </button>
           </div>
         )}
+
+        {/* Settings link — always visible at bottom */}
+        <NavLink
+          to="/settings"
+          title={collapsed ? (de ? 'Einstellungen' : 'Settings') : undefined}
+          style={({ isActive }) => ({
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            padding: collapsed ? '0.625rem' : '0.625rem 0.75rem',
+            justifyContent: collapsed ? 'center' : 'flex-start',
+            borderRadius: 0,
+            textDecoration: 'none',
+            transition: 'all 0.2s',
+            background: isActive ? 'rgba(197, 160, 89, 0.12)' : 'rgba(255, 255, 255, 0.02)',
+            border: isActive ? '1px solid rgba(197, 160, 89, 0.3)' : '1px solid rgba(255, 255, 255, 0.06)',
+            color: isActive ? '#c5a059' : '#a1a1aa',
+            backdropFilter: 'blur(10px)',
+            width: collapsed ? '40px' : '100%',
+          })}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)';
+            (e.currentTarget as HTMLElement).style.borderColor = 'rgba(197,160,89,0.2)';
+            (e.currentTarget as HTMLElement).style.color = '#c5a059';
+          }}
+          onMouseLeave={(e) => {
+            const active = e.currentTarget.classList.contains('active');
+            (e.currentTarget as HTMLElement).style.background = active ? 'rgba(197,160,89,0.12)' : 'rgba(255,255,255,0.02)';
+            (e.currentTarget as HTMLElement).style.borderColor = active ? 'rgba(197,160,89,0.3)' : 'rgba(255,255,255,0.06)';
+            (e.currentTarget as HTMLElement).style.color = active ? '#c5a059' : '#a1a1aa';
+          }}
+        >
+          <Settings size={18} />
+          {!collapsed && <span style={{ fontSize: '0.8125rem', fontWeight: 500 }}>{de ? 'Einstellungen' : 'Settings'}</span>}
+        </NavLink>
+
+        {/* Language Switch */}
+        <button
+          onClick={() => setLanguage(language === 'de' ? 'en' : 'de')}
+          title={collapsed ? (language === 'de' ? 'Deutsch' : 'English') : undefined}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            padding: collapsed ? '0.625rem' : '0.625rem 0.75rem',
+            background: 'rgba(255, 255, 255, 0.02)',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+            borderRadius: 0,
+            color: '#a1a1aa',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            width: collapsed ? '40px' : '100%',
+            justifyContent: collapsed ? 'center' : 'space-between',
+            backdropFilter: 'blur(10px)',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
+            e.currentTarget.style.borderColor = 'rgba(197, 160, 89, 0.2)';
+            e.currentTarget.style.color = '#c5a059';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)';
+            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.06)';
+            e.currentTarget.style.color = '#a1a1aa';
+          }}
+        >
+          <Globe size={18} />
+          {!collapsed && (
+            <>
+              <span style={{ flex: 1, fontSize: '0.8125rem', fontWeight: 500 }}>{language === 'de' ? 'Deutsch' : 'English'}</span>
+              <span style={{
+                fontSize: '10px',
+                padding: '2px 6px',
+                borderRadius: 0,
+                background: 'rgba(197, 160, 89, 0.1)',
+                color: '#c5a059',
+                border: '1px solid rgba(197, 160, 89, 0.2)',
+              }}>
+                {language === 'de' ? 'EN' : 'DE'}
+              </span>
+            </>
+          )}
+        </button>
       </div>
 
     </aside>

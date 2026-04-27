@@ -75,7 +75,7 @@ function SkillEditor({
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '0.625rem 0.75rem',
     background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
-    borderRadius: 10, color: '#ffffff', fontSize: '0.875rem', outline: 'none', boxSizing: 'border-box',
+    borderRadius: 0, color: '#ffffff', fontSize: '0.875rem', outline: 'none', boxSizing: 'border-box',
   };
 
   // i18n inside SkillEditor
@@ -85,16 +85,16 @@ function SkillEditor({
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}>
-      <div style={{ width: '100%', maxWidth: 700, maxHeight: '90vh', overflowY: 'auto', background: 'rgba(10,10,20,0.98)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 20, padding: '1.75rem', boxShadow: '0 32px 64px rgba(0,0,0,0.7)' }}>
+      <div style={{ width: '100%', maxWidth: 700, maxHeight: '90vh', overflowY: 'auto', background: 'rgba(10,10,20,0.98)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 0, padding: '1.75rem', boxShadow: '0 32px 64px rgba(0,0,0,0.7)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: '1.5rem' }}>
-          <BookOpen size={18} style={{ color: '#23CDCA' }} />
+          <BookOpen size={18} style={{ color: '#c5a059' }} />
           <h2 style={{ flex: 1, fontSize: '1.1rem', fontWeight: 700, color: '#fff', margin: 0 }}>
             {skill ? sl.editSkill : sl.newSkill}
           </h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}><X size={18} /></button>
         </div>
 
-        {error && <div style={{ padding: '0.75rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, color: '#f87171', fontSize: '0.85rem', marginBottom: '1rem' }}>{error}</div>}
+        {error && <div style={{ padding: '0.75rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 0, color: '#f87171', fontSize: '0.85rem', marginBottom: '1rem' }}>{error}</div>}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div>
@@ -127,13 +127,13 @@ function SkillEditor({
         </div>
 
         <div style={{ display: 'flex', gap: 12, marginTop: '1.5rem', justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={{ padding: '0.625rem 1.25rem', borderRadius: 10, background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', cursor: 'pointer', fontSize: '0.875rem' }}>
+          <button onClick={onClose} style={{ padding: '0.625rem 1.25rem', borderRadius: 0, background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', cursor: 'pointer', fontSize: '0.875rem' }}>
             {lang === 'de' ? 'Abbrechen' : 'Cancel'}
           </button>
           <button
             onClick={handleSave}
             disabled={saving || !name.trim() || !inhalt.trim()}
-            style={{ padding: '0.625rem 1.25rem', borderRadius: 10, background: name.trim() && inhalt.trim() ? '#23CDCA' : 'rgba(35,205,202,0.3)', border: 'none', color: '#000', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}
+            style={{ padding: '0.625rem 1.25rem', borderRadius: 0, background: name.trim() && inhalt.trim() ? '#c5a059' : 'rgba(197,160,89,0.3)', border: 'none', color: '#000', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}
           >
             <Save size={14} /> {saving ? (lang === 'de' ? 'Speichern…' : 'Saving…') : (lang === 'de' ? 'Speichern' : 'Save')}
           </button>
@@ -181,9 +181,9 @@ function ExpertAssignPanel({ skill, experten, onClose }: { skill: Skill; experte
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}>
-      <div style={{ width: '100%', maxWidth: 480, background: 'rgba(10,10,20,0.98)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 20, padding: '1.5rem', boxShadow: '0 32px 64px rgba(0,0,0,0.7)' }}>
+      <div style={{ width: '100%', maxWidth: 480, background: 'rgba(10,10,20,0.98)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 0, padding: '1.5rem', boxShadow: '0 32px 64px rgba(0,0,0,0.7)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: '1.25rem' }}>
-          <Bot size={16} style={{ color: '#23CDCA' }} />
+          <Bot size={16} style={{ color: '#c5a059' }} />
           <h3 style={{ flex: 1, fontSize: '1rem', fontWeight: 700, color: '#fff', margin: 0 }}>
             {lang === 'de' ? `Agenten zuweisen — ${skill.name}` : `Assign agents — ${skill.name}`}
           </h3>
@@ -196,8 +196,8 @@ function ExpertAssignPanel({ skill, experten, onClose }: { skill: Skill; experte
           {experten.map(experte => {
             const isAssigned = assignments[experte.id] ?? false;
             return (
-              <div key={experte.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0.75rem', background: isAssigned ? 'rgba(35,205,202,0.06)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isAssigned ? 'rgba(35,205,202,0.2)' : 'rgba(255,255,255,0.07)'}`, borderRadius: 10 }}>
-                <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(139,92,246,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <div key={experte.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0.75rem', background: isAssigned ? 'rgba(197,160,89,0.06)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isAssigned ? 'rgba(197,160,89,0.2)' : 'rgba(255,255,255,0.07)'}`, borderRadius: 0 }}>
+                <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(155,135,200,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <Bot size={16} style={{ color: '#a78bfa' }} />
                 </div>
                 <div style={{ flex: 1 }}>
@@ -209,9 +209,9 @@ function ExpertAssignPanel({ skill, experten, onClose }: { skill: Skill; experte
                   disabled={loading === experte.id}
                   style={{
                     width: 32, height: 32, borderRadius: '50%', border: 'none', cursor: 'pointer',
-                    background: isAssigned ? 'rgba(35,205,202,0.2)' : 'rgba(255,255,255,0.06)',
+                    background: isAssigned ? 'rgba(197,160,89,0.2)' : 'rgba(255,255,255,0.06)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: isAssigned ? '#23CDCA' : '#475569', transition: 'all 0.15s',
+                    color: isAssigned ? '#c5a059' : '#475569', transition: 'all 0.15s',
                   }}
                 >
                   <CheckCircle2 size={16} />
@@ -221,7 +221,7 @@ function ExpertAssignPanel({ skill, experten, onClose }: { skill: Skill; experte
           })}
           {experten.length === 0 && <p style={{ color: '#334155', fontSize: '0.85rem', textAlign: 'center', padding: '1.5rem' }}>{lang === 'de' ? 'Keine Agenten vorhanden.' : 'No agents available.'}</p>}
         </div>
-        <button onClick={onClose} style={{ marginTop: '1.25rem', width: '100%', padding: '0.625rem', borderRadius: 10, background: 'rgba(35,205,202,0.15)', border: '1px solid rgba(35,205,202,0.3)', color: '#23CDCA', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
+        <button onClick={onClose} style={{ marginTop: '1.25rem', width: '100%', padding: '0.625rem', borderRadius: 0, background: 'rgba(197,160,89,0.15)', border: '1px solid rgba(197,160,89,0.3)', color: '#c5a059', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
           {lang === 'de' ? 'Fertig' : 'Done'}
         </button>
       </div>
@@ -296,7 +296,7 @@ export function SkillLibrary() {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <BookOpen size={24} style={{ color: '#23CDCA' }} /> {sl.title}
+              <BookOpen size={24} style={{ color: '#c5a059' }} /> {sl.title}
             </h1>
             <p style={{ color: '#64748b', marginTop: '0.4rem', fontSize: '0.9rem' }}>
               {sl.subtitle}
@@ -304,14 +304,14 @@ export function SkillLibrary() {
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             {seedResult && (
-              <span style={{ fontSize: '0.8rem', color: '#23CDCA', fontWeight: 600 }}>
+              <span style={{ fontSize: '0.8rem', color: '#c5a059', fontWeight: 600 }}>
                 ✓ {seedResult.added} Skills hinzugefügt
               </span>
             )}
             <button
               onClick={handleSeedStandardSkills}
               disabled={seeding}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.625rem 1.25rem', borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', color: '#94a3b8', cursor: seeding ? 'wait' : 'pointer', fontSize: '0.875rem', fontWeight: 600, opacity: seeding ? 0.6 : 1 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.625rem 1.25rem', borderRadius: 0, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', color: '#94a3b8', cursor: seeding ? 'wait' : 'pointer', fontSize: '0.875rem', fontWeight: 600, opacity: seeding ? 0.6 : 1 }}
               title={lang === 'de' ? '50+ vordefinierte Skills aus der Standard-Bibliothek laden' : 'Load 50+ predefined skills from standard library'}
             >
               <Zap size={15} style={{ color: '#f59e0b' }} />
@@ -319,7 +319,7 @@ export function SkillLibrary() {
             </button>
             <button
               onClick={() => { setEditingSkill(null); setShowEditor(true); }}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.625rem 1.25rem', borderRadius: 12, background: 'rgba(35,205,202,0.15)', border: '1px solid rgba(35,205,202,0.35)', color: '#23CDCA', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.625rem 1.25rem', borderRadius: 0, background: 'rgba(197,160,89,0.15)', border: '1px solid rgba(197,160,89,0.35)', color: '#c5a059', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600 }}
             >
               <Plus size={16} /> {sl.newSkill}
             </button>
@@ -329,8 +329,8 @@ export function SkillLibrary() {
         <PageHelp id="skill-library" lang={lang} />
 
         {/* Info Banner */}
-        <div style={{ padding: '1rem 1.25rem', background: 'rgba(35,205,202,0.05)', border: '1px solid rgba(35,205,202,0.12)', borderRadius: 14, marginBottom: '1.5rem', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-          <Tag size={16} style={{ color: '#23CDCA', flexShrink: 0, marginTop: 2 }} />
+        <div style={{ padding: '1rem 1.25rem', background: 'rgba(197,160,89,0.05)', border: '1px solid rgba(197,160,89,0.12)', borderRadius: 0, marginBottom: '1.5rem', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+          <Tag size={16} style={{ color: '#c5a059', flexShrink: 0, marginTop: 2 }} />
           <div style={{ fontSize: '0.83rem', color: '#64748b', lineHeight: 1.6 }}>
             <strong style={{ color: '#94a3b8' }}>{lang === 'de' ? 'Wie es funktioniert:' : 'How it works:'}</strong> {sl.howItWorks}
           </div>
@@ -343,19 +343,19 @@ export function SkillLibrary() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder={lang === 'de' ? 'Skills durchsuchen…' : 'Search skills…'}
-            style={{ width: '100%', padding: '0.625rem 0.75rem 0.625rem 2.5rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, color: '#e2e8f0', fontSize: '0.875rem', outline: 'none', boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '0.625rem 0.75rem 0.625rem 2.5rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 0, color: '#e2e8f0', fontSize: '0.875rem', outline: 'none', boxSizing: 'border-box' }}
           />
         </div>
 
         {/* Stats */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
           {[
-            { label: sl.totalSkills, value: skills?.length ?? 0, color: '#23CDCA' },
+            { label: sl.totalSkills, value: skills?.length ?? 0, color: '#c5a059' },
             { label: lang === 'de' ? 'Von Learning Loop' : 'By Learning Loop', value: (skills ?? []).filter(s => s.quelle === 'learning-loop').length, color: '#eab308' },
             { label: lang === 'de' ? 'Avg. Konfidenz' : 'Avg. Confidence', value: (skills?.length ?? 0) > 0 ? Math.round((skills ?? []).reduce((a, s) => a + (s.konfidenz ?? 50), 0) / (skills?.length || 1)) + '%' : '—', color: '#22c55e' },
             { label: lang === 'de' ? 'Agenten' : 'Agents', value: experten?.length ?? 0, color: '#3b82f6' },
           ].map(s => (
-            <div key={s.label} style={{ padding: '1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12 }}>
+            <div key={s.label} style={{ padding: '1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 0 }}>
               <div style={{ fontSize: '1.6rem', fontWeight: 700, color: s.color }}>{s.value}</div>
               <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: 2 }}>{s.label}</div>
             </div>
@@ -364,7 +364,7 @@ export function SkillLibrary() {
 
         {/* Skills Grid */}
         {filtered.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '5rem 2rem', background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: 20 }}>
+          <div style={{ textAlign: 'center', padding: '5rem 2rem', background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: 0 }}>
             <BookOpen size={48} style={{ color: '#1e293b', margin: '0 auto 1rem', display: 'block' }} />
             <p style={{ color: '#475569', fontWeight: 600, marginBottom: '0.5rem' }}>
               {search ? (lang === 'de' ? 'Keine Skills gefunden' : 'No skills found') : sl.noSkills}
@@ -375,7 +375,7 @@ export function SkillLibrary() {
             {!search && (
               <button
                 onClick={() => { setEditingSkill(null); setShowEditor(true); }}
-                style={{ padding: '0.625rem 1.5rem', borderRadius: 10, background: 'rgba(35,205,202,0.15)', border: '1px solid rgba(35,205,202,0.3)', color: '#23CDCA', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}
+                style={{ padding: '0.625rem 1.5rem', borderRadius: 0, background: 'rgba(197,160,89,0.15)', border: '1px solid rgba(197,160,89,0.3)', color: '#c5a059', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}
               >
                 {lang === 'de' ? 'Ersten Skill erstellen' : 'Create First Skill'}
               </button>
@@ -395,34 +395,34 @@ export function SkillLibrary() {
                 <div key={skill.id} style={{
                   background: 'rgba(255,255,255,0.025)',
                   border: `1px solid ${konfidenz < 20 ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.08)'}`,
-                  borderRadius: 16, padding: '1.25rem',
+                  borderRadius: 0, padding: '1.25rem',
                   display: 'flex', flexDirection: 'column', gap: 12, transition: 'border-color 0.2s',
                 }}
-                  onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(35,205,202,0.25)')}
+                  onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(197,160,89,0.25)')}
                   onMouseLeave={e => (e.currentTarget.style.borderColor = konfidenz < 20 ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.08)')}
                 >
                   {/* Header */}
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                     <div style={{
-                      width: 38, height: 38, borderRadius: 10,
-                      background: isLearningLoop ? 'rgba(234,179,8,0.1)' : isClipmart ? 'rgba(139,92,246,0.1)' : 'rgba(35,205,202,0.1)',
-                      border: `1px solid ${isLearningLoop ? 'rgba(234,179,8,0.2)' : isClipmart ? 'rgba(139,92,246,0.2)' : 'rgba(35,205,202,0.2)'}`,
+                      width: 38, height: 38, borderRadius: 0,
+                      background: isLearningLoop ? 'rgba(234,179,8,0.1)' : isClipmart ? 'rgba(155,135,200,0.1)' : 'rgba(197,160,89,0.1)',
+                      border: `1px solid ${isLearningLoop ? 'rgba(234,179,8,0.2)' : isClipmart ? 'rgba(155,135,200,0.2)' : 'rgba(197,160,89,0.2)'}`,
                       display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                     }}>
                       {isLearningLoop ? <Zap size={17} style={{ color: '#eab308' }} /> :
                        isClipmart ? <TrendingUp size={17} style={{ color: '#a78bfa' }} /> :
-                       <BookOpen size={17} style={{ color: '#23CDCA' }} />}
+                       <BookOpen size={17} style={{ color: '#c5a059' }} />}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#e2e8f0' }}>{skill.name}</span>
                         {isLearningLoop && (
-                          <span style={{ fontSize: '0.6rem', padding: '1px 6px', borderRadius: 4, background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.3)', color: '#eab308', fontWeight: 700 }}>
+                          <span style={{ fontSize: '0.6rem', padding: '1px 6px', borderRadius: 0, background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.3)', color: '#eab308', fontWeight: 700 }}>
                             LEARNING LOOP
                           </span>
                         )}
                         {isClipmart && (
-                          <span style={{ fontSize: '0.6rem', padding: '1px 6px', borderRadius: 4, background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', color: '#a78bfa', fontWeight: 700 }}>
+                          <span style={{ fontSize: '0.6rem', padding: '1px 6px', borderRadius: 0, background: 'rgba(155,135,200,0.15)', border: '1px solid rgba(155,135,200,0.3)', color: '#a78bfa', fontWeight: 700 }}>
                             CLIPMART
                           </span>
                         )}
@@ -433,11 +433,11 @@ export function SkillLibrary() {
 
                   {/* Konfidenz-Balken */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                    <div style={{ flex: 1, height: 6, borderRadius: 0, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
                       <div style={{
                         height: '100%', width: `${konfidenz}%`,
                         background: konfidenzFarbe,
-                        borderRadius: 3,
+                        borderRadius: 0,
                         transition: 'width 0.5s, background 0.3s',
                       }} />
                     </div>
@@ -448,7 +448,7 @@ export function SkillLibrary() {
                   </div>
 
                   {/* Preview */}
-                  <div style={{ padding: '0.625rem 0.75rem', background: 'rgba(0,0,0,0.3)', borderRadius: 8, fontSize: '0.72rem', color: '#475569', lineHeight: 1.5, maxHeight: 64, overflow: 'hidden', fontFamily: 'monospace' }}>
+                  <div style={{ padding: '0.625rem 0.75rem', background: 'rgba(0,0,0,0.3)', borderRadius: 0, fontSize: '0.72rem', color: '#475569', lineHeight: 1.5, maxHeight: 64, overflow: 'hidden', fontFamily: 'monospace' }}>
                     {skill.inhalt.slice(0, 200)}
                     {skill.inhalt.length > 200 ? '...' : ''}
                   </div>
@@ -457,7 +457,7 @@ export function SkillLibrary() {
                   {tags.length > 0 && (
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       {tags.map(tag => (
-                        <span key={tag} style={{ fontSize: '0.65rem', padding: '2px 8px', borderRadius: 20, background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.2)', color: '#a78bfa' }}>{tag}</span>
+                        <span key={tag} style={{ fontSize: '0.65rem', padding: '2px 8px', borderRadius: 0, background: 'rgba(155,135,200,0.1)', border: '1px solid rgba(155,135,200,0.2)', color: '#a78bfa' }}>{tag}</span>
                       ))}
                     </div>
                   )}
@@ -477,19 +477,19 @@ export function SkillLibrary() {
                   <div style={{ display: 'flex', gap: 8, borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 12 }}>
                     <button
                       onClick={() => setAssigningSkill(skill)}
-                      style={{ flex: 1, padding: '0.5rem', borderRadius: 8, background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.2)', color: '#a78bfa', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                      style={{ flex: 1, padding: '0.5rem', borderRadius: 0, background: 'rgba(155,135,200,0.1)', border: '1px solid rgba(155,135,200,0.2)', color: '#a78bfa', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
                     >
                       <Bot size={13} /> {sl.assignAgents}
                     </button>
                     <button
                       onClick={() => { setEditingSkill(skill); setShowEditor(true); }}
-                      style={{ padding: '0.5rem 0.75rem', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem' }}
+                      style={{ padding: '0.5rem 0.75rem', borderRadius: 0, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem' }}
                     >
                       <Edit3 size={13} /> {lang === 'de' ? 'Bearbeiten' : 'Edit'}
                     </button>
                     <button
                       onClick={() => handleDelete(skill.id)}
-                      style={{ padding: '0.5rem 0.6rem', borderRadius: 8, background: 'transparent', border: '1px solid rgba(239,68,68,0.15)', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                      style={{ padding: '0.5rem 0.6rem', borderRadius: 0, background: 'transparent', border: '1px solid rgba(239,68,68,0.15)', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                       onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#f87171'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(239,68,68,0.4)'; }}
                       onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#64748b'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(239,68,68,0.15)'; }}
                     >

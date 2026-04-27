@@ -1,11 +1,15 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
+import { z } from 'zod';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import { toNodeHandler, fromNodeHeaders } from 'better-auth/node';
+import { auth as betterAuth } from './auth.js';
 import { db, initializeDatabase, sqlite } from './db/client.js';
-import { unternehmen, experten, aufgaben, kommentare, genehmigungen, aktivitaetslog, kostenbuchungen, arbeitszyklen, ziele, einstellungen, chatNachrichten, benutzer, routinen, routineTrigger, routineAusfuehrung, workProducts, projekte, agentPermissions, traceEreignisse, skillsLibrary, expertenSkills, agentWakeupRequests, palaceWings, palaceDrawers, palaceDiary, palaceKg, palaceSummaries, budgetPolicies, budgetIncidents, executionWorkspaces, issueRelations, agentMeetings, openclawTokens, expertConfigHistory, ceoDecisionLog } from './db/schema.js';
+import { companies, agents, tasks, comments, approvals, activityLog, costEntries, workCycles, workCyclesArchive, goals, settings, chatMessages, users, routines, routineTrigger, routineRuns, workProducts, projects, agentPermissions, traceEvents, skillsLibrary, agentSkills, agentWakeupRequests, palaceWings, palaceDrawers, palaceDiary, palaceKg, palaceSummaries, budgetPolicies, budgetIncidents, executionWorkspaces, issueRelations, agentMeetings, openclawTokens, agentConfigHistory, ceoDecisionLog, agentTrustScores, agentVotes, agentCapabilities, contractNetBids } from './db/schema.js';
 import { getWorkspaceInfo, readWorkspaceFile } from './services/workspace.js';
 import { encryptSetting, decryptSetting } from './utils/crypto.js';
 import { eq, desc, asc, and, sql, count, sum, inArray, isNotNull, isNull, or } from 'drizzle-orm';
@@ -22,8 +26,13 @@ import { skillsService } from './services/skills.js';
 import { cleanupService } from './services/cleanup.js';
 import { backupService } from './services/backup.js';
 import { initializePluginSystem, shutdownPluginSystem, pluginManager } from './plugins/index.js';
+import { discordBotService } from './services/discord-bot.js';
 import { runClaudeDirectChat } from './adapters/claude-code.js';
+import { runCodexDirectChat } from './adapters/codex-cli.js';
+import { runGeminiDirectChat } from './adapters/gemini-cli.js';
+import { runKimiDirectChat } from './adapters/kimi-cli.js';
 import { adapterRegistry } from './adapters/registry.js';
+import { setCliPath, getCliPath, getAllCliPaths } from './adapters/cli-paths.js';
 import { ensureWorkspace, listeWorkspaces, raeumeWorkspaceAuf, schliesseWorkspace } from './services/execution-workspaces.js';
 
 import { messagingService, buildConfigContext, executeConfigAction, getUiLanguage, langLine } from './services/messaging.js';
@@ -31,17 +40,55 @@ import { appEvents } from './events.js';
 import { autoSaveInsights, loadRelevantMemory } from './services/memory-auto.js';
 import { nodeManager } from './services/nodeManager.js';
 import webhooksRouter from './routes/webhooks.js';
+import semanticMemoryRouter from './routes/semantic-memory.js';
 
-const DEV_JWT_SECRET = 'opencognit-dev-secret-bitte-aendern';
-const JWT_SECRET = process.env.JWT_SECRET || DEV_JWT_SECRET;
-if (JWT_SECRET === DEV_JWT_SECRET) {
-  const isProduction = process.env.NODE_ENV === 'production';
+const isProduction = process.env.NODE_ENV === 'production';
+if (!process.env.JWT_SECRET) {
   if (isProduction) {
-    console.error('🚨 FATAL: JWT_SECRET ist nicht gesetzt! Setze die Umgebungsvariable JWT_SECRET auf einen sicheren zufälligen Wert bevor du OpenCognit in Produktion betreibst.');
+    console.error('🚨 FATAL: JWT_SECRET is not set. Set a secure random value before running in production.');
     process.exit(1);
   } else {
-    console.warn('⚠️  WARNUNG: JWT_SECRET nicht gesetzt — verwende Entwicklungs-Secret. NIEMALS in Produktion verwenden!');
+    // Generate a fresh random secret each dev restart — sessions don't persist anyway
+    process.env.JWT_SECRET = crypto.randomBytes(32).toString('hex');
+    console.warn('⚠️  JWT_SECRET not set — generated a random dev secret. Set JWT_SECRET in .env for stable sessions.');
   }
+}
+const JWT_SECRET = process.env.JWT_SECRET as string;
+
+// ── Zod schemas for input validation ─────────────────────────────────────────
+const zCompany = z.object({
+  name: z.string().min(1).max(120),
+  beschreibung: z.string().max(1000).optional(),
+  ziel: z.string().max(1000).optional(),
+});
+
+const zAgent = z.object({
+  name: z.string().min(1).max(100),
+  rolle: z.string().min(1).max(100),
+  titel: z.string().max(100).optional(),
+  faehigkeiten: z.string().max(2000).optional(),
+  verbindungsTyp: z.string().max(50).optional(),
+  budgetMonatCent: z.number().int().min(0).max(10_000_000).optional(),
+  systemPrompt: z.string().max(10_000).optional(),
+}).passthrough(); // allow extra fields (verbindungsConfig etc.)
+
+const zTask = z.object({
+  title: z.string().min(1).max(300).optional(),
+  titel: z.string().min(1).max(300).optional(),
+  description: z.string().max(5000).optional(),
+  beschreibung: z.string().max(5000).optional(),
+  priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+  prioritaet: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+}).passthrough();
+
+/** Validates req.body against schema. Returns parsed data or sends 400 and returns null. */
+function validate<T>(schema: z.ZodType<T>, req: express.Request, res: express.Response): T | null {
+  const result = schema.safeParse(req.body);
+  if (!result.success) {
+    res.status(400).json({ error: 'Invalid input', details: result.error.flatten() });
+    return null;
+  }
+  return result.data;
 }
 
 // ── Process-level error safety: log instead of silently crashing ─────────────
@@ -59,31 +106,153 @@ process.on('uncaughtException', (err: any) => {
 });
 
 const app = express();
+
+// ===== DE → EN URL compatibility layer =====
+// The frontend still calls German-named endpoints while the backend
+// routes were refactored to English. This middleware rewrites URLs
+// so old frontend code continues to work.
+app.use((req: express.Request, _res: express.Response, next: express.NextFunction) => {
+  req.url = req.url
+    .replace(/^\/api\/unternehmen/, '/api/companies')
+    .replace(/^\/api\/einstellungen/, '/api/settings')
+    .replace(/\/experten\b/g, '/agents')
+    .replace(/\/mitarbeiter\b/g, '/agents')
+    .replace(/\/aufgaben\b/g, '/tasks')
+    .replace(/\/ziele\b/g, '/goals')
+    .replace(/\/routinen\b/g, '/routines')
+    .replace(/\/genehmigungen\b/g, '/approvals')
+    .replace(/\/projekte\b/g, '/projects')
+    .replace(/\/aktivitaet\b/g, '/activity')
+    .replace(/\/agent-qualitaet\b/g, '/agent-quality')
+    .replace(/\/kosten\b/g, '/costs')
+    .replace(/\/zusammenfassung\b/g, '/summary')
+    .replace(/\/nach-provider\b/g, '/by-provider')
+    .replace(/\/pausieren\b/g, '/pause')
+    .replace(/\/fortsetzen\b/g, '/resume')
+    .replace(/\/genehmigen\b/g, '/approve')
+    .replace(/\/ablehnen\b/g, '/reject');
+  next();
+});
+
+// ===== EN → DE response field aliasing =====
+// Frontend code still reads German field names on many pages.
+// This middleware wraps res.json to add German aliases on responses
+// so old frontend code keeps working until the migration is complete.
+const FIELD_ALIASES: Record<string, string> = {
+  title: 'titel',
+  description: 'beschreibung',
+  createdAt: 'erstelltAm',
+  updatedAt: 'aktualisiertAm',
+  completedAt: 'abgeschlossenAm',
+  assignedTo: 'zugewiesenAn',
+  priority: 'prioritaet',
+  connectionType: 'verbindungsTyp',
+  connectionConfig: 'verbindungsConfig',
+  costCent: 'kostenCent',
+  message: 'nachricht',
+  senderType: 'absenderTyp',
+  agentId: 'expertId',
+  companyId: 'unternehmenId',
+  taskId: 'aufgabeId',
+  key: 'schluessel',
+  value: 'wert',
+  type: 'typ',
+  role: 'rolle',
+  skills: 'faehigkeiten',
+  avatarColor: 'avatarFarbe',
+  autoCycleActive: 'zyklusAktiv',
+  autoCycleIntervalSec: 'zyklusIntervallSek',
+  monthlyBudgetCent: 'budgetMonatCent',
+  monthlySpendCent: 'verbrauchtMonatCent',
+  goal: 'ziel',
+  level: 'ebene',
+  progress: 'fortschritt',
+  ownerAgentId: 'eigentuemerExpertId',
+  organizerAgentId: 'veranstalterExpertId',
+  participantIds: 'teilnehmerIds',
+  result: 'ergebnis',
+  decidedAt: 'entschiedenAm',
+  decisionNote: 'entscheidungsnotiz',
+  requestedBy: 'angefordertVon',
+  actorType: 'akteurTyp',
+  actorId: 'akteurId',
+  actorName: 'akteurName',
+  action: 'aktion',
+  entityType: 'entitaetTyp',
+  entityId: 'entitaetId',
+  read: 'gelesen',
+  active: 'aktiv',
+  content: 'inhalt',
+  lastCycle: 'letzterZyklus',
+  monthlyBudgetCent: 'budgetMonatCent',
+  uses: 'nutzungen',
+  successes: 'erfolge',
+  confidence: 'konfidenz',
+  source: 'quelle',
+  createdBy: 'erstelltVon',
+};
+
+function aliasObject(obj: any): any {
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(aliasObject);
+  const out: any = { ...obj };
+  for (const [eng, de] of Object.entries(FIELD_ALIASES)) {
+    if (eng in out && !(de in out)) out[de] = out[eng];
+  }
+  // Recurse into nested objects (e.g., approval.payload.params)
+  for (const k of Object.keys(out)) {
+    if (out[k] && typeof out[k] === 'object') out[k] = aliasObject(out[k]);
+  }
+  return out;
+}
+
+app.use((_req, res, next) => {
+  const orig = res.json.bind(res);
+  res.json = (body: any) => orig(aliasObject(body));
+  next();
+});
+
 const PORT = parseInt(process.env.PORT || '3201');
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
 
-// ===== WebSocket Auth (token from ?token= query param) =====
-wss.on('upgrade', (request, socket) => {
-  try {
-    const urlParams = new URL(request.url || '', `http://localhost`).searchParams;
-    const token = urlParams.get('token');
-    if (!token) {
+// ===== WebSocket Auth (BetterAuth cookie first, JWT token fallback) =====
+wss.on('upgrade', (request, socket, head) => {
+  (async () => {
+    try {
+      const urlParams = new URL(request.url || '', `http://localhost`).searchParams;
+      const token = urlParams.get('token');
+
+      if (token) {
+        // Legacy JWT auth
+        const payload = jwt.verify(token, JWT_SECRET) as { userId: string };
+        const user = db.select({ id: users.id }).from(users).where(eq(users.id, payload.userId)).get();
+        if (!user) throw new Error('JWT user not found');
+        // Authenticated — proceed with upgrade
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          wss.emit('connection', ws, request);
+        });
+        return;
+      }
+
+      // BetterAuth cookie auth — cookies are sent automatically during WS upgrade
+      const session = await betterAuth.api.getSession({
+        headers: fromNodeHeaders(request.headers),
+      });
+      if (session?.user) {
+        // Authenticated — proceed with upgrade
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          wss.emit('connection', ws, request);
+        });
+        return;
+      }
+
+      throw new Error('No valid auth');
+    } catch {
       socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
       socket.destroy();
-      return;
     }
-    const payload = jwt.verify(token, JWT_SECRET) as { userId: string };
-    const user = db.select({ id: benutzer.id }).from(benutzer).where(eq(benutzer.id, payload.userId)).get();
-    if (!user) {
-      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-      socket.destroy();
-    }
-    // Authenticated — let the connection proceed normally
-  } catch {
-    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-    socket.destroy();
-  }
+  })();
 });
 
 // ===== WebSocket Inbound Handling =====
@@ -115,13 +284,128 @@ wss.on('connection', (ws) => {
   });
 });
 
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:3200', 'http://localhost:3201'],
+  credentials: true,
+}));
+
+// Legacy /api/auth/ich endpoint — MUST be before BetterAuth mount
+app.get('/api/auth/ich', async (req, res) => {
+  try {
+    const session = await betterAuth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
+    if (session?.user) {
+      return res.json({
+        id: session.user.id,
+        name: session.user.name || session.user.email,
+        email: session.user.email,
+        rolle: (session.user as any).role || 'mitglied',
+      });
+    }
+  } catch { /* fall through */ }
+
+  // JWT fallback
+  const authHeader = req.headers.authorization;
+  const queryToken = req.query.token as string;
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : queryToken;
+  if (!token) return res.status(401).json({ error: 'Not logged in.' });
+
+  try {
+    const payload = jwt.verify(token, JWT_SECRET) as { userId: string };
+    const nutzer = db.select().from(users).where(eq(users.id, payload.userId)).get();
+    if (!nutzer) return res.status(401).json({ error: 'User not found.' });
+    res.json({ id: nutzer.id, name: nutzer.name, email: nutzer.email, rolle: nutzer.role });
+  } catch {
+    res.status(401).json({ error: 'Token invalid or expired.' });
+  }
+});
+
+// Mount BetterAuth BEFORE express.json() — per BetterAuth docs
+app.use('/api/auth', toNodeHandler(betterAuth));
+
 app.use(express.json());
 
 // Silence Chrome DevTools probe — harmless 404 spam in dev
 app.get('/.well-known/appspecific/com.chrome.devtools.json', (_req: any, res: any) => res.json({}));
 
 app.use('/api/webhooks', webhooksRouter);
+app.use('/api/semantic-memory', semanticMemoryRouter);
+
+// ── Global API Rate Limiter (all /api routes) ───────────────────────────────
+// Protects against DoS, brute-force, and accidental request floods.
+// Configurable via env vars:
+//   API_RATE_LIMIT_READ=120      (GET/HEAD requests per window)
+//   API_RATE_LIMIT_WRITE=30      (POST/PUT/PATCH/DELETE per window)
+//   API_RATE_LIMIT_WINDOW_MS=60000 (window size in ms)
+//
+// NOTE: In-memory only — use Redis in multi-instance deployments.
+
+const RATE_LIMIT_READ = parseInt(process.env.API_RATE_LIMIT_READ || '120', 10);
+const RATE_LIMIT_WRITE = parseInt(process.env.API_RATE_LIMIT_WRITE || '30', 10);
+const RATE_LIMIT_WINDOW_MS = parseInt(process.env.API_RATE_LIMIT_WINDOW_MS || '60000', 10);
+
+interface RateLimitEntry {
+  readCount: number;
+  writeCount: number;
+  resetAt: number;
+}
+
+const apiRateLimits = new Map<string, RateLimitEntry>();
+
+function apiRateLimit(req: express.Request, res: express.Response, next: express.NextFunction) {
+  // Skip rate limiting for webhooks (they have their own auth)
+  if (req.path.startsWith('/webhooks')) return next();
+
+  // Skip rate limiting for localhost/development
+  const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
+    || req.socket.remoteAddress || 'unknown';
+  if (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1') return next();
+  const isWrite = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
+  const now_ms = Date.now();
+
+  let entry = apiRateLimits.get(ip);
+  if (!entry || now_ms > entry.resetAt) {
+    entry = { readCount: 0, writeCount: 0, resetAt: now_ms + RATE_LIMIT_WINDOW_MS };
+    apiRateLimits.set(ip, entry);
+  }
+
+  const limit = isWrite ? RATE_LIMIT_WRITE : RATE_LIMIT_READ;
+  const current = isWrite ? entry.writeCount : entry.readCount;
+
+  if (current >= limit) {
+    const retryAfter = Math.ceil((entry.resetAt - now_ms) / 1000);
+    res.setHeader('Retry-After', String(retryAfter));
+    return res.status(429).json({
+      error: 'Rate limit exceeded. Please wait.',
+      limit,
+      windowMs: RATE_LIMIT_WINDOW_MS,
+      retryAfter,
+    });
+  }
+
+  if (isWrite) entry.writeCount++;
+  else entry.readCount++;
+
+  // Expose rate limit headers
+  res.setHeader('X-RateLimit-Limit', String(limit));
+  res.setHeader('X-RateLimit-Remaining', String(Math.max(0, limit - (isWrite ? entry.writeCount : entry.readCount))));
+  res.setHeader('X-RateLimit-Reset', String(Math.ceil(entry.resetAt / 1000)));
+
+  next();
+}
+
+// Prune both rate limit maps periodically
+setInterval(() => {
+  const now_ms = Date.now();
+  for (const [ip, entry] of apiRateLimits.entries()) {
+    if (now_ms > entry.resetAt) apiRateLimits.delete(ip);
+  }
+}, 60000);
+
+// Apply global rate limiter to all /api routes
+app.use('/api', apiRateLimit);
+// ────────────────────────────────────────────────────────────────────────────
 
 // ── Simple in-memory rate limiter for auth endpoints ────────────────────────
 const authRateLimits = new Map<string, { count: number; resetAt: number }>();
@@ -135,7 +419,7 @@ function authRateLimit(maxPerWindow: number, windowMs: number) {
       return next();
     }
     if (entry.count >= maxPerWindow) {
-      return res.status(429).json({ error: 'Zu viele Versuche. Bitte warte etwas.' });
+      return res.status(429).json({ error: 'Too many attempts. Please wait.' });
     }
     entry.count++;
     return next();
@@ -177,12 +461,30 @@ setBroadcastUpdate(broadcastUpdate);
 setEmitTrace(emitTrace);
 
 // ===== Auth Middleware =====
-function authMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
+export async function authMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
+  // 1. Try BetterAuth session first
+  try {
+    const session = await betterAuth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
+    if (session?.user) {
+      (req as any).users = {
+        userId: session.user.id,
+        email: session.user.email,
+        rolle: (session.user as any).role ?? 'mitglied',
+      };
+      return next();
+    }
+  } catch (e: any) {
+    // Session check failed — fall through to JWT
+  }
+
+  // 2. JWT fallback (legacy tokens during migration)
   const authHeader = req.headers.authorization;
   const queryToken = req.query.token as string;
 
   if (!authHeader?.startsWith('Bearer ') && !queryToken) {
-    return res.status(401).json({ error: 'Nicht angemeldet.' });
+    return res.status(401).json({ error: 'Not logged in.' });
   }
 
   try {
@@ -190,138 +492,101 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
     if (!token) throw new Error('Kein Token');
     const payload = jwt.verify(token, JWT_SECRET) as { userId: string; email: string; rolle: string };
     // Verify user still exists in DB (prevents stale tokens after user deletion)
-    const user = db.select({ id: benutzer.id }).from(benutzer).where(eq(benutzer.id, payload.userId)).get();
-    if (!user) return res.status(401).json({ error: 'Benutzer nicht gefunden.' });
-    (req as any).benutzer = payload;
+    const user = db.select({ id: users.id }).from(users).where(eq(users.id, payload.userId)).get();
+    if (!user) return res.status(401).json({ error: 'User not found.' });
+    (req as any).users = payload;
     next();
   } catch (err: any) {
     console.error('[Auth] Validierung fehlgeschlagen:', err?.message);
-    return res.status(401).json({ error: 'Token ungültig oder abgelaufen.' });
+    return res.status(401).json({ error: 'Token invalid or expired.' });
   }
 }
-
-// ===== AUTH ROUTEN =====
-app.post('/api/auth/registrieren', authRateLimit(5, 60_000), async (req, res) => {
-  const { name, email, passwort } = req.body;
-  if (!name || !email || !passwort) return res.status(400).json({ error: 'Name, E-Mail und Passwort sind erforderlich.' });
-
-  const existing = db.select().from(benutzer).where(eq(benutzer.email, email.toLowerCase())).get();
-  if (existing) return res.status(409).json({ error: 'E-Mail wird bereits verwendet.' });
-
-  const anzahl = db.select({ value: count(benutzer.id) }).from(benutzer).get();
-  const rolle = (anzahl?.value ?? 0) === 0 ? 'admin' : 'mitglied';
-
-  const id = uuid();
-  const passwortHash = await bcrypt.hash(passwort, 12);
-  const n = now();
-
-  db.insert(benutzer).values({ id, name, email: email.toLowerCase(), passwortHash, rolle, erstelltAm: n, aktualisiertAm: n }).run();
-
-  const token = jwt.sign({ userId: id, email: email.toLowerCase(), rolle }, JWT_SECRET, { expiresIn: '7d' });
-  res.status(201).json({ token, benutzer: { id, name, email: email.toLowerCase(), rolle } });
-});
-
-app.post('/api/auth/anmelden', authRateLimit(10, 60_000), async (req, res) => {
-  const { email, passwort } = req.body;
-  if (!email || !passwort) return res.status(400).json({ error: 'E-Mail und Passwort sind erforderlich.' });
-
-  const nutzer = db.select().from(benutzer).where(eq(benutzer.email, email.toLowerCase())).get();
-  if (!nutzer) return res.status(401).json({ error: 'Ungültige Anmeldedaten.' });
-
-  const passwortKorrekt = await bcrypt.compare(passwort, nutzer.passwortHash);
-  if (!passwortKorrekt) return res.status(401).json({ error: 'Ungültige Anmeldedaten.' });
-
-  const token = jwt.sign({ userId: nutzer.id, email: nutzer.email, rolle: nutzer.rolle }, JWT_SECRET, { expiresIn: '7d' });
-  res.json({ token, benutzer: { id: nutzer.id, name: nutzer.name, email: nutzer.email, rolle: nutzer.rolle } });
-});
-
-app.get('/api/auth/ich', authMiddleware, (req, res) => {
-  const payload = (req as any).benutzer;
-  const nutzer = db.select().from(benutzer).where(eq(benutzer.id, payload.userId)).get();
-  if (!nutzer) return res.status(404).json({ error: 'Benutzer nicht gefunden.' });
-  res.json({ id: nutzer.id, name: nutzer.name, email: nutzer.email, rolle: nutzer.rolle });
-});
 
 // ===== Helper: Aktivität loggen =====
 function logAktivitaet(unternehmenId: string, akteurTyp: 'agent' | 'board' | 'system', akteurId: string, akteurName: string, aktion: string, entitaetTyp: string, entitaetId: string, details?: any) {
   const activity = {
     id: uuid(),
-    unternehmenId,
-    akteurTyp,
-    akteurId,
-    akteurName,
-    aktion,
-    entitaetTyp,
-    entitaetId,
+    companyId: unternehmenId,
+    actorType: akteurTyp,
+    actorId: akteurId,
+    actorName: akteurName,
+    action: aktion,
+    entityType: entitaetTyp,
+    entityId: entitaetId,
     details: details ? JSON.stringify(details) : null,
-    erstelltAm: now(),
+    createdAt: now(),
   };
-  db.insert(aktivitaetslog).values(activity).run();
+  db.insert(activityLog).values(activity).run();
   broadcastUpdate('activity', activity);
 }
 
 // ===== Globaler Auth-Schutz =====
 // Alle /api Routen außer öffentliche sind geschützt
 app.use('/api', (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  const oeffentlich = ['/auth/anmelden', '/auth/registrieren', '/health', '/system/status'];
-  if (oeffentlich.includes(req.path) || req.path.startsWith('/agent/')) return next();
+  const oeffentlich = [
+    '/auth/sign-in', '/auth/sign-up', '/auth/sign-out',
+    '/auth/session', '/auth/callback', '/auth/ich',
+    '/health', '/system/status',
+  ];
+  if (oeffentlich.some(p => req.path.startsWith(p)) || req.path.startsWith('/agent/')) return next();
   return authMiddleware(req, res, next);
 });
 
 // =============================================
 // UNTERNEHMEN
 // =============================================
-app.get('/api/unternehmen', (_req, res) => {
-  const result = db.select().from(unternehmen).orderBy(desc(unternehmen.erstelltAm)).all();
+app.get('/api/companies', (_req, res) => {
+  const result = db.select().from(companies).orderBy(desc(companies.createdAt)).all();
   res.json(result);
 });
 
-app.post('/api/unternehmen', (req, res) => {
-  const { name, beschreibung, ziel } = req.body;
-  if (!name) return res.status(400).json({ error: 'Name ist erforderlich' });
+app.post('/api/companies', (req, res) => {
+  const body = validate(zCompany, req, res);
+  if (!body) return;
+  const { name, beschreibung, ziel } = body;
 
   const id = uuid();
-  db.insert(unternehmen).values({
-    id, name, beschreibung, ziel,
+  db.insert(companies).values({
+    id, name, description: beschreibung, goal: ziel,
     status: 'active',
-    erstelltAm: now(),
-    aktualisiertAm: now(),
+    createdAt: now(),
+    updatedAt: now(),
   }).run();
 
-  const data = db.select().from(unternehmen).where(eq(unternehmen.id, id)).get();
-  logAktivitaet(id, 'board', 'board', 'Board', `hat Unternehmen „${name}" erstellt`, 'unternehmen', id);
+  const data = db.select().from(companies).where(eq(companies.id, id)).get();
+  logAktivitaet(id, 'board', 'board', 'Board', `hat Unternehmen „${name}" erstellt`, 'companies', id);
   res.status(201).json(data);
 });
 
-app.get('/api/unternehmen/:id', (req, res) => {
-  const data = db.select().from(unternehmen).where(eq(unternehmen.id, req.params.id)).get();
-  if (!data) return res.status(404).json({ error: 'Unternehmen nicht gefunden' });
+app.get('/api/companies/:id', (req, res) => {
+  const data = db.select().from(companies).where(eq(companies.id, req.params.id as string)).get();
+  if (!data) return res.status(404).json({ error: 'Company not found' });
   res.json(data);
 });
 
-app.patch('/api/unternehmen/:id', (req, res) => {
+app.patch('/api/companies/:id', (req, res) => {
   const { name, beschreibung, ziel, status, workDir } = req.body;
-  const updates: any = { aktualisiertAm: now() };
+  const updates: any = { updatedAt: now() };
   if (name !== undefined) updates.name = name;
-  if (beschreibung !== undefined) updates.beschreibung = beschreibung;
-  if (ziel !== undefined) updates.ziel = ziel;
+  if (beschreibung !== undefined) updates.description = beschreibung;
+  if (ziel !== undefined) updates.goal = ziel;
   if (status !== undefined) updates.status = status;
   if (workDir !== undefined) updates.workDir = workDir || null;  // empty string clears it
 
-  db.update(unternehmen).set(updates).where(eq(unternehmen.id, req.params.id)).run();
-  const data = db.select().from(unternehmen).where(eq(unternehmen.id, req.params.id)).get();
+  db.update(companies).set(updates).where(eq(companies.id, req.params.id as string)).run();
+  const data = db.select().from(companies).where(eq(companies.id, req.params.id as string)).get();
   res.json(data);
 });
 
 // Workspace directory check
-app.get('/api/unternehmen/:id/workspace/check', (req, res) => {
-  const company = db.select().from(unternehmen).where(eq(unternehmen.id, req.params.id)).get() as any;
+app.get('/api/companies/:id/workspace/check', (req, res) => {
+  const company = db.select().from(companies).where(eq(companies.id, req.params.id as string)).get() as any;
   const dir = (req.query.path as string) || company?.workDir;
-  if (!dir) return res.json({ exists: false, writable: false, error: 'Kein Verzeichnis angegeben' });
+  if (!dir) return res.json({ exists: false, writable: false, error: 'No directory specified' });
   try {
-    if (!path.isAbsolute(dir)) return res.json({ exists: false, writable: false, error: 'Pfad muss absolut sein (z.B. /home/user/projekt)' });
+    if (!path.isAbsolute(dir)) return res.json({ exists: false, writable: false, error: 'Path must be absolute (e.g. /home/user/project)' });
     const exists = fs.existsSync(dir);
-    if (!exists) return res.json({ exists: false, writable: false, error: `Verzeichnis "${dir}" existiert nicht` });
+    if (!exists) return res.json({ exists: false, writable: false, error: `Directory "${dir}" does not exist` });
     const stat = fs.statSync(dir);
     if (!stat.isDirectory()) return res.json({ exists: false, writable: false, error: `"${dir}" ist kein Verzeichnis` });
     // Try writing a temp file to check write access
@@ -331,7 +596,7 @@ app.get('/api/unternehmen/:id/workspace/check', (req, res) => {
       fs.unlinkSync(testFile);
       return res.json({ exists: true, writable: true, path: dir });
     } catch {
-      return res.json({ exists: true, writable: false, error: 'Kein Schreibzugriff auf dieses Verzeichnis' });
+      return res.json({ exists: true, writable: false, error: 'No write access to this directory' });
     }
   } catch (e: any) {
     return res.json({ exists: false, writable: false, error: e.message });
@@ -348,11 +613,11 @@ app.get('/api/fs/dirs', (req: any, res) => {
   const projectRoot = path.resolve(process.cwd());
   const blocked = ['node_modules', 'src', 'server', '.git'].map(d => path.join(projectRoot, d));
   if (blocked.some(b => current.startsWith(b))) {
-    return res.status(403).json({ error: 'Dieser Pfad ist nicht durchsuchbar' });
+    return res.status(403).json({ error: 'This path is not browsable' });
   }
 
   if (!fs.existsSync(current) || !fs.statSync(current).isDirectory()) {
-    return res.status(400).json({ error: 'Pfad existiert nicht oder ist kein Ordner' });
+    return res.status(400).json({ error: 'Path does not exist or is not a folder' });
   }
 
   let dirs: { name: string; path: string }[] = [];
@@ -370,12 +635,12 @@ app.get('/api/fs/dirs', (req: any, res) => {
 // Create a directory (used by FolderPickerModal)
 app.post('/api/fs/mkdir', (req: any, res) => {
   const { path: dirPath } = req.body as { path?: string };
-  if (!dirPath || !path.isAbsolute(dirPath)) return res.status(400).json({ error: 'Absoluter Pfad erforderlich' });
+  if (!dirPath || !path.isAbsolute(dirPath)) return res.status(400).json({ error: 'Absolute path required' });
   // Block creating inside project source tree
   const projectRoot = path.resolve(process.cwd());
   const blocked = ['node_modules', 'src', 'server', '.git'].map(d => path.join(projectRoot, d));
   if (blocked.some(b => path.resolve(dirPath).startsWith(b))) {
-    return res.status(403).json({ error: 'Ordner kann hier nicht erstellt werden' });
+    return res.status(403).json({ error: 'Cannot create folder here' });
   }
   try {
     fs.mkdirSync(dirPath, { recursive: true });
@@ -386,12 +651,12 @@ app.post('/api/fs/mkdir', (req: any, res) => {
 });
 
 // Open company work directory in system file manager
-app.post('/api/unternehmen/:id/open-folder', (req, res) => {
+app.post('/api/companies/:id/open-folder', (req, res) => {
   // Accept path from body (current input value) or fall back to saved DB value
-  const company = db.select().from(unternehmen).where(eq(unternehmen.id, req.params.id)).get() as any;
+  const company = db.select().from(companies).where(eq(companies.id, req.params.id as string)).get() as any;
   const dir = (req.body?.path as string) || company?.workDir;
-  if (!dir) return res.status(400).json({ error: 'Kein Projektverzeichnis konfiguriert' });
-  if (!fs.existsSync(dir)) return res.status(400).json({ error: `Verzeichnis "${dir}" existiert nicht` });
+  if (!dir) return res.status(400).json({ error: 'No project directory configured' });
+  if (!fs.existsSync(dir)) return res.status(400).json({ error: `Directory "${dir}" does not exist` });
 
   const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open';
   spawn(opener, [dir], { detached: true, stdio: 'ignore' }).unref();
@@ -401,16 +666,44 @@ app.post('/api/unternehmen/:id/open-folder', (req, res) => {
 // =============================================
 // MITARBEITER
 // =============================================
-app.get('/api/unternehmen/:unternehmenId/experten', (req, res) => {
+app.get('/api/companies/:unternehmenId/agents', (req, res) => {
   const limit = Math.min(parseInt(req.query.limit as string) || 200, 500);
   const offset = parseInt(req.query.offset as string) || 0;
-  const result = db.select().from(experten)
-    .where(eq(experten.unternehmenId, req.params.unternehmenId))
-    .orderBy(experten.name)
+  const rows = db.select().from(agents)
+    .where(eq(agents.companyId, req.params.unternehmenId))
+    .orderBy(agents.name)
     .limit(limit)
     .offset(offset)
     .all();
-  res.json(result);
+  res.json(rows.map((a: any) => ({
+    id: a.id,
+    unternehmenId: a.companyId,
+    name: a.name,
+    rolle: a.role,
+    titel: a.title,
+    status: a.status,
+    reportsTo: a.reportsTo,
+    faehigkeiten: a.skills,
+    verbindungsTyp: a.connectionType,
+    verbindungsConfig: a.connectionConfig,
+    avatar: a.avatar,
+    avatarFarbe: a.avatarColor,
+    budgetMonatCent: a.monthlyBudgetCent,
+    verbrauchtMonatCent: a.monthlySpendCent,
+    letzterZyklus: a.lastCycle,
+    zyklusIntervallSek: a.autoCycleIntervalSec,
+    zyklusAktiv: a.autoCycleActive,
+    isOrchestrator: a.isOrchestrator,
+    systemPrompt: a.systemPrompt,
+    advisorId: a.advisorId,
+    advisorStrategy: a.advisorStrategy,
+    advisorConfig: a.advisorConfig,
+    soulPath: a.soulPath,
+    soulVersion: a.soulVersion,
+    nachrichtenCount: a.messageCount,
+    erstelltAm: a.createdAt,
+    aktualisiertAm: a.updatedAt,
+  })));
 });
 
 function checkFreeModel(verbindungsConfig: any): string | null {
@@ -422,31 +715,32 @@ function checkFreeModel(verbindungsConfig: any): string | null {
   return null;
 }
 
-app.post('/api/unternehmen/:unternehmenId/experten', (req, res) => {
-  const { name, rolle, titel, faehigkeiten, verbindungsTyp, verbindungsConfig, reportsTo, avatar, avatarFarbe, budgetMonatCent, zyklusIntervallSek, zyklusAktiv, advisorId, advisorStrategy, advisorConfig, systemPrompt, isOrchestrator } = req.body;
-  if (!name || !rolle) return res.status(400).json({ error: 'Name und Rolle sind erforderlich' });
+app.post('/api/companies/:unternehmenId/agents', (req, res) => {
+  const body = validate(zAgent, req, res);
+  if (!body) return;
+  const { name, rolle, titel, faehigkeiten, verbindungsTyp, verbindungsConfig, reportsTo, avatar, avatarFarbe, budgetMonatCent, zyklusIntervallSek, zyklusAktiv, advisorId, advisorStrategy, advisorConfig, systemPrompt, isOrchestrator } = body as any;
 
   const freeModel = checkFreeModel(verbindungsConfig);
-  if (freeModel) return res.status(400).json({ error: `Free-Model "${freeModel}" ist nicht erlaubt. Verwende ein bezahltes Modell.` });
+  if (freeModel) return res.status(400).json({ error: `Free model "${freeModel}" not allowed. Use a paid model.` });
 
   const unternehmenId = req.params.unternehmenId;
   const id = uuid();
   const initials = name.split(' ').map((w: string) => w[0]).join('').substring(0, 2).toUpperCase();
 
-  db.insert(experten).values({
-    id, unternehmenId, name, rolle,
-    titel: titel || rolle,
-    faehigkeiten,
-    verbindungsTyp: verbindungsTyp || 'claude',
-    verbindungsConfig: verbindungsConfig
+  db.insert(agents).values({
+    id, companyId: unternehmenId, name, role: rolle,
+    title: titel || rolle,
+    skills: faehigkeiten,
+    connectionType: verbindungsTyp || 'claude',
+    connectionConfig: verbindungsConfig
       ? (typeof verbindungsConfig === 'string' ? verbindungsConfig : JSON.stringify(verbindungsConfig))
       : null,
     reportsTo: reportsTo || null,
     avatar: avatar || initials,
-    avatarFarbe: avatarFarbe || '#23CDCA',
-    budgetMonatCent: budgetMonatCent ?? 0,
-    zyklusIntervallSek: zyklusIntervallSek || 300,
-    zyklusAktiv: zyklusAktiv || false,
+    avatarColor: avatarFarbe || '#23CDCA',
+    monthlyBudgetCent: budgetMonatCent ?? 0,
+    autoCycleIntervalSec: zyklusIntervallSek || 300,
+    autoCycleActive: zyklusAktiv || false,
     advisorId: advisorId || null,
     advisorStrategy: advisorStrategy || 'none',
     advisorConfig: advisorConfig
@@ -455,79 +749,103 @@ app.post('/api/unternehmen/:unternehmenId/experten', (req, res) => {
     systemPrompt: systemPrompt || null,
     isOrchestrator: isOrchestrator === true || isOrchestrator === 1 || false,
     status: 'idle',
-    erstelltAm: now(),
-    aktualisiertAm: now(),
+    createdAt: now(),
+    updatedAt: now(),
   }).run();
 
-  const agent = db.select().from(experten).where(eq(experten.id, id)).get();
-  logAktivitaet(unternehmenId, 'board', 'board', 'Board', `hat „${name}" als Experten eingestellt`, 'experten', id);
+  const agent = db.select().from(agents).where(eq(agents.id, id)).get();
+  logAktivitaet(unternehmenId, 'board', 'board', 'Board', `hat „${name}" als Experten eingestellt`, 'agents', id);
+  broadcastUpdate('expert_created', { unternehmenId, id, name, rolle });
   res.status(201).json(agent);
 });
 
-app.get('/api/mitarbeiter/:id', (req, res) => {
-  const agent = db.select().from(experten).where(eq(experten.id, req.params.id)).get();
-  if (!agent) return res.status(404).json({ error: 'Experte nicht gefunden' });
+app.get('/api/agents/:id', (req, res) => {
+  const agent = db.select().from(agents).where(eq(agents.id, req.params.id as string)).get();
+  if (!agent) return res.status(404).json({ error: 'Agent not found' });
   res.json(agent);
 });
 
-app.patch('/api/mitarbeiter/:id', (req, res) => {
-  if (req.body.verbindungsConfig !== undefined) {
-    const freeModel = checkFreeModel(req.body.verbindungsConfig);
-    if (freeModel) return res.status(400).json({ error: `Free-Model "${freeModel}" ist nicht erlaubt. Verwende ein bezahltes Modell.` });
+// GET /api/agents/:id/token — returns the HMAC-derived API key for this agent
+// Protected by user session so only the logged-in user can retrieve it
+app.get('/api/agents/:id/token', authMiddleware, (req, res) => {
+  const agent = db.select().from(agents).where(eq(agents.id, req.params.id as string)).get();
+  if (!agent) return res.status(404).json({ error: 'Agent not found' });
+  res.json({ token: deriveAgentToken(agent.id, agent.companyId) });
+});
+
+app.patch('/api/agents/:id', (req, res) => {
+  if (req.body.connectionConfig !== undefined) {
+    const freeModel = checkFreeModel(req.body.connectionConfig);
+    if (freeModel) return res.status(400).json({ error: `Free model "${freeModel}" not allowed. Use a paid model.` });
   }
-  const updates: any = { aktualisiertAm: now() };
+  const updates: any = { updatedAt: now() };
   const allowed = ['name', 'rolle', 'titel', 'faehigkeiten', 'verbindungsTyp', 'verbindungsConfig', 'reportsTo', 'avatar', 'avatarFarbe', 'budgetMonatCent', 'zyklusIntervallSek', 'zyklusAktiv', 'status', 'systemPrompt', 'advisorId', 'advisorStrategy', 'advisorConfig', 'isOrchestrator'];
+  const keyMap: Record<string, string> = {
+    rolle: 'role', titel: 'title', faehigkeiten: 'skills',
+    verbindungsTyp: 'connectionType', verbindungsConfig: 'connectionConfig',
+    avatarFarbe: 'avatarColor', budgetMonatCent: 'monthlyBudgetCent',
+    zyklusIntervallSek: 'autoCycleIntervalSec', zyklusAktiv: 'autoCycleActive',
+  };
   for (const key of allowed) {
     if (req.body[key] !== undefined) {
+      const outKey = keyMap[key] || key;
       if ((key === 'verbindungsConfig' || key === 'advisorConfig') && typeof req.body[key] === 'object' && req.body[key] !== null) {
-        updates[key] = JSON.stringify(req.body[key]);
+        updates[outKey] = JSON.stringify(req.body[key]);
       } else {
-        updates[key] = req.body[key];
+        updates[outKey] = req.body[key];
       }
     }
   }
 
-  db.update(experten).set(updates).where(eq(experten.id, req.params.id)).run();
-  const agent = db.select().from(experten).where(eq(experten.id, req.params.id)).get();
+  db.update(agents).set(updates).where(eq(agents.id, req.params.id as string)).run();
+  const agent = db.select().from(agents).where(eq(agents.id, req.params.id as string)).get();
   res.json(agent);
 });
 
-// Alias: ExpertChatDrawer uses /api/experten/:id for PATCH (e.g. soul editor)
-app.patch('/api/experten/:id', (req, res) => {
-  if (req.body.verbindungsConfig !== undefined) {
-    const freeModel = checkFreeModel(req.body.verbindungsConfig);
-    if (freeModel) return res.status(400).json({ error: `Free-Model "${freeModel}" ist nicht erlaubt.` });
+// Alias: ExpertChatDrawer uses /api/agents/:id for PATCH (e.g. soul editor)
+app.patch('/api/agents/:id', (req, res) => {
+  if (req.body.connectionConfig !== undefined) {
+    const freeModel = checkFreeModel(req.body.connectionConfig);
+    if (freeModel) return res.status(400).json({ error: `Free model "${freeModel}" not allowed.` });
   }
+  const keyMap: Record<string, string> = {
+    rolle: 'role', titel: 'title', faehigkeiten: 'skills',
+    verbindungsTyp: 'connectionType', verbindungsConfig: 'connectionConfig',
+    avatarFarbe: 'avatarColor', budgetMonatCent: 'monthlyBudgetCent',
+    zyklusIntervallSek: 'autoCycleIntervalSec', zyklusAktiv: 'autoCycleActive',
+  };
   const allowed = ['name', 'rolle', 'titel', 'faehigkeiten', 'verbindungsTyp', 'verbindungsConfig', 'reportsTo', 'avatar', 'avatarFarbe', 'budgetMonatCent', 'zyklusIntervallSek', 'zyklusAktiv', 'status', 'systemPrompt', 'advisorId', 'advisorStrategy', 'advisorConfig', 'isOrchestrator'];
-  const updates: any = { aktualisiertAm: now() };
+  const updates: any = { updatedAt: now() };
   const changedFields: Record<string, any> = {};
 
   // Snapshot current values of fields being changed
-  const current = db.select().from(experten).where(eq(experten.id, req.params.id)).get() as any;
+  const current = db.select().from(agents).where(eq(agents.id, req.params.id as string)).get() as any;
   if (current) {
     for (const key of allowed) {
-      if (req.body[key] !== undefined && req.body[key] !== current[key]) {
-        changedFields[key] = current[key]; // old value snapshot
+      const dbKey = keyMap[key] || key;
+      if (req.body[key] !== undefined && req.body[key] !== current[dbKey]) {
+        changedFields[key] = current[dbKey]; // old value snapshot
       }
     }
   }
 
   for (const key of allowed) {
     if (req.body[key] !== undefined) {
-      if ((key === 'verbindungsConfig' || key === 'advisorConfig') && typeof req.body[key] === 'object' && req.body[key] !== null) {
-        updates[key] = JSON.stringify(req.body[key]);
+      const dbKey = keyMap[key] || key;
+      if ((dbKey === 'connectionConfig' || dbKey === 'advisorConfig') && typeof req.body[key] === 'object' && req.body[key] !== null) {
+        updates[dbKey] = JSON.stringify(req.body[key]);
       } else {
-        updates[key] = req.body[key];
+        updates[dbKey] = req.body[key];
       }
     }
   }
-  db.update(experten).set(updates).where(eq(experten.id, req.params.id)).run();
+  db.update(agents).set(updates).where(eq(agents.id, req.params.id as string)).run();
 
   // Save config history snapshot if anything changed
   if (Object.keys(changedFields).length > 0) {
-    db.insert(expertConfigHistory).values({
+    db.insert(agentConfigHistory).values({
       id: uuid(),
-      expertId: req.params.id,
+      agentId: req.params.id,
       changedAt: now(),
       changedBy: (req as any).user?.id || 'board',
       configJson: JSON.stringify(changedFields),
@@ -535,203 +853,236 @@ app.patch('/api/experten/:id', (req, res) => {
     } as any).run();
   }
 
-  const agent = db.select().from(experten).where(eq(experten.id, req.params.id)).get();
+  const agent = db.select().from(agents).where(eq(agents.id, req.params.id as string)).get();
   res.json(agent);
 });
 
-// GET /api/experten/:id/config-history — last N snapshots (default 20)
-app.get('/api/experten/:id/config-history', authMiddleware, (req, res) => {
+// GET /api/agents/:id/config-history — last N snapshots (default 20)
+app.get('/api/agents/:id/config-history', authMiddleware, (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 20, 100);
-  const rows = db.select().from(expertConfigHistory)
-    .where(eq(expertConfigHistory.expertId, req.params.id))
-    .orderBy(desc(expertConfigHistory.changedAt))
+  const rows = db.select().from(agentConfigHistory)
+    .where(eq(agentConfigHistory.agentId, req.params.id as string))
+    .orderBy(desc(agentConfigHistory.changedAt))
     .limit(limit)
     .all();
   res.json(rows);
 });
 
-// POST /api/experten/:id/config-history/:historyId/restore — restore a snapshot
-app.post('/api/experten/:id/config-history/:historyId/restore', authMiddleware, (req, res) => {
-  const snap = db.select().from(expertConfigHistory)
-    .where(and(eq(expertConfigHistory.id, req.params.historyId), eq(expertConfigHistory.expertId, req.params.id)))
+// POST /api/agents/:id/config-history/:historyId/restore — restore a snapshot
+app.post('/api/agents/:id/config-history/:historyId/restore', authMiddleware, (req, res) => {
+  const snap = db.select().from(agentConfigHistory)
+    .where(and(eq(agentConfigHistory.id, req.params.historyId as string), eq(agentConfigHistory.agentId, req.params.id as string)))
     .get() as any;
   if (!snap) return res.status(404).json({ error: 'Snapshot not found' });
 
   let fields: Record<string, any>;
   try { fields = JSON.parse(snap.configJson); } catch { return res.status(422).json({ error: 'Invalid snapshot data' }); }
 
-  const safeFields: any = { aktualisiertAm: now() };
+  const keyMap: Record<string, string> = {
+    rolle: 'role', titel: 'title', faehigkeiten: 'skills',
+    verbindungsTyp: 'connectionType', verbindungsConfig: 'connectionConfig',
+    avatarFarbe: 'avatarColor', budgetMonatCent: 'monthlyBudgetCent',
+    zyklusIntervallSek: 'autoCycleIntervalSec', zyklusAktiv: 'autoCycleActive',
+  };
+  const safeFields: any = { updatedAt: now() };
   const allowed = ['name', 'rolle', 'titel', 'faehigkeiten', 'verbindungsTyp', 'verbindungsConfig', 'reportsTo', 'avatar', 'avatarFarbe', 'budgetMonatCent', 'zyklusIntervallSek', 'zyklusAktiv', 'status', 'systemPrompt', 'advisorId', 'advisorStrategy', 'advisorConfig', 'isOrchestrator'];
   for (const key of allowed) {
-    if (key in fields) safeFields[key] = fields[key];
+    const sourceKey = key in fields ? key : Object.entries(keyMap).find(([de]) => de === key)?.[0];
+    if (sourceKey !== undefined && sourceKey in fields) {
+      const dbKey = keyMap[key] || key;
+      safeFields[dbKey] = fields[sourceKey];
+    }
   }
-  db.update(experten).set(safeFields).where(eq(experten.id, req.params.id)).run();
+  db.update(agents).set(safeFields).where(eq(agents.id, req.params.id as string)).run();
 
   // Record the restore action itself as a new history entry
-  db.insert(expertConfigHistory).values({
+  db.insert(agentConfigHistory).values({
     id: uuid(),
-    expertId: req.params.id,
+    agentId: req.params.id,
     changedAt: now(),
     changedBy: (req as any).user?.id || 'board',
     configJson: JSON.stringify(safeFields),
     note: `Restored from snapshot ${req.params.historyId}`,
   } as any).run();
 
-  const agent = db.select().from(experten).where(eq(experten.id, req.params.id)).get();
+  const agent = db.select().from(agents).where(eq(agents.id, req.params.id as string)).get();
   res.json({ ok: true, agent });
 });
 
-app.post('/api/mitarbeiter/:id/pausieren', (req, res) => {
-  const agent = db.select().from(experten).where(eq(experten.id, req.params.id)).get();
-  if (!agent) return res.status(404).json({ error: 'Nicht gefunden' });
+app.post('/api/agents/:id/pause', (req, res) => {
+  const agent = db.select().from(agents).where(eq(agents.id, req.params.id as string)).get();
+  if (!agent) return res.status(404).json({ error: 'Not found' });
 
-  db.update(experten).set({ status: 'paused', aktualisiertAm: now() }).where(eq(experten.id, req.params.id)).run();
-  logAktivitaet(agent.unternehmenId, 'board', 'board', 'Board', `hat „${agent.name}" pausiert`, 'experten', agent.id);
+  db.update(agents).set({ status: 'paused', updatedAt: now() }).where(eq(agents.id, req.params.id as string)).run();
+  logAktivitaet(agent.companyId, 'board', 'board', 'Board', `hat „${agent.name}" pausiert`, 'agents', agent.id);
   res.json({ success: true });
 });
 
-app.post('/api/mitarbeiter/:id/fortsetzen', (req, res) => {
-  const agent = db.select().from(experten).where(eq(experten.id, req.params.id)).get();
-  if (!agent) return res.status(404).json({ error: 'Nicht gefunden' });
+app.post('/api/agents/:id/resume', (req, res) => {
+  const agent = db.select().from(agents).where(eq(agents.id, req.params.id as string)).get();
+  if (!agent) return res.status(404).json({ error: 'Not found' });
 
-  db.update(experten).set({ status: 'idle', aktualisiertAm: now() }).where(eq(experten.id, req.params.id)).run();
-  logAktivitaet(agent.unternehmenId, 'board', 'board', 'Board', `hat „${agent.name}" fortgesetzt`, 'experten', agent.id);
+  db.update(agents).set({ status: 'idle', updatedAt: now() }).where(eq(agents.id, req.params.id as string)).run();
+  logAktivitaet(agent.companyId, 'board', 'board', 'Board', `hat „${agent.name}" fortgesetzt`, 'agents', agent.id);
   res.json({ success: true });
 });
 
-app.delete('/api/mitarbeiter/:id', (req, res) => {
+app.delete('/api/agents/:id', (req, res) => {
   const agentId = req.params.id;
-  const agent = db.select().from(experten).where(eq(experten.id, agentId)).get();
-  if (!agent) return res.status(404).json({ error: 'Nicht gefunden' });
+  const agent = db.select().from(agents).where(eq(agents.id, agentId)).get();
+  if (!agent) return res.status(404).json({ error: 'Not found' });
 
   try {
     // 1. Identify all execution runs for this agent to clear potential cross-references
-    const runIds = db.select({ id: arbeitszyklen.id })
-      .from(arbeitszyklen)
-      .where(eq(arbeitszyklen.expertId, agentId))
+    const runIds = db.select({ id: workCycles.id })
+      .from(workCycles)
+      .where(eq(workCycles.agentId, agentId))
       .all()
       .map(r => r.id);
 
     // 2. Clear references to these runs in all possible tables (FK cleanup)
     if (runIds.length > 0) {
-      db.update(arbeitszyklen).set({ retryOfRunId: null }).where(inArray(arbeitszyklen.retryOfRunId, runIds)).run();
+      db.update(workCycles).set({ retryOfRunId: null }).where(inArray(workCycles.retryOfRunId, runIds)).run();
       db.update(agentWakeupRequests).set({ runId: null }).where(inArray(agentWakeupRequests.runId, runIds)).run();
       db.update(workProducts).set({ runId: null }).where(inArray(workProducts.runId, runIds)).run();
-      db.update(aufgaben).set({ executionRunId: null }).where(inArray(aufgaben.executionRunId, runIds)).run();
+      db.update(tasks).set({ executionRunId: null }).where(inArray(tasks.executionRunId, runIds)).run();
     }
 
     // 3. Nullify direct agent references (Keep records but remove connection)
-    db.update(kommentare).set({ autorExpertId: null }).where(eq(kommentare.autorExpertId, agentId)).run();
-    db.update(experten).set({ reportsTo: null }).where(eq(experten.reportsTo, agentId)).run();
-    db.update(experten).set({ advisorId: null }).where(eq(experten.advisorId, agentId)).run();
-    db.update(ziele).set({ eigentuemerExpertId: null }).where(eq(ziele.eigentuemerExpertId, agentId)).run();
-    db.update(routinen).set({ zugewiesenAn: null }).where(eq(routinen.zugewiesenAn, agentId)).run();
-    db.update(projekte).set({ eigentuemerId: null }).where(eq(projekte.eigentuemerId, agentId)).run();
-    db.delete(workProducts).where(eq(workProducts.expertId, agentId)).run();
-    db.update(aufgaben).set({ zugewiesenAn: null }).where(eq(aufgaben.zugewiesenAn, agentId)).run();
+    db.update(comments).set({ authorAgentId: null }).where(eq(comments.authorAgentId, agentId)).run();
+    db.update(agents).set({ reportsTo: null }).where(eq(agents.reportsTo, agentId)).run();
+    db.update(agents).set({ advisorId: null }).where(eq(agents.advisorId, agentId)).run();
+    db.update(agents).set({ reportsTo: null }).where(eq(agents.reportsTo, agentId)).run();
+    db.update(goals).set({ ownerAgentId: null }).where(eq(goals.ownerAgentId, agentId)).run();
+    db.update(routines).set({ assignedTo: null }).where(eq(routines.assignedTo, agentId)).run();
+    db.update(projects).set({ ownerAgentId: null }).where(eq(projects.ownerAgentId, agentId)).run();
+    db.update(comments).set({ authorAgentId: null }).where(eq(comments.authorAgentId, agentId)).run();
+    db.update(issueRelations).set({ createdBy: null }).where(eq(issueRelations.createdBy, agentId)).run();
+    db.delete(workProducts).where(eq(workProducts.agentId, agentId)).run();
+    db.update(tasks).set({ assignedTo: null }).where(eq(tasks.assignedTo, agentId)).run();
     // Delete agent meetings where this agent is the organizer (veranstalterExpertId is NOT NULL)
-    db.delete(agentMeetings).where(eq(agentMeetings.veranstalterExpertId, agentId)).run();
+    db.delete(agentMeetings).where(eq(agentMeetings.organizerAgentId, agentId)).run();
 
     // 4. Delete agent-owned coupled data
-    db.delete(agentWakeupRequests).where(eq(agentWakeupRequests.expertId, agentId)).run();
-    db.delete(traceEreignisse).where(eq(traceEreignisse.expertId, agentId)).run();
-    db.delete(arbeitszyklen).where(eq(arbeitszyklen.expertId, agentId)).run();
-    db.delete(chatNachrichten).where(eq(chatNachrichten.expertId, agentId)).run();
-    db.delete(kostenbuchungen).where(eq(kostenbuchungen.expertId, agentId)).run();
-    db.delete(expertenSkills).where(eq(expertenSkills.expertId, agentId)).run();
-    db.delete(agentPermissions).where(eq(agentPermissions.expertId, agentId)).run();
-    db.update(genehmigungen).set({ angefordertVon: null }).where(eq(genehmigungen.angefordertVon, agentId)).run();
+    db.delete(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, agentId)).run();
+    db.delete(agentTrustScores).where(eq(agentTrustScores.subjectAgentId, agentId)).run();
+    db.delete(agentVotes).where(eq(agentVotes.agentId, agentId)).run();
+    db.delete(agentCapabilities).where(eq(agentCapabilities.agentId, agentId)).run();
+    db.delete(contractNetBids).where(eq(contractNetBids.bidderAgentId, agentId)).run();
+    db.delete(traceEvents).where(eq(traceEvents.agentId, agentId)).run();
+    db.delete(workCycles).where(eq(workCycles.agentId, agentId)).run();
+    db.delete(chatMessages).where(eq(chatMessages.agentId, agentId)).run();
+    db.delete(costEntries).where(eq(costEntries.agentId, agentId)).run();
+    db.delete(agentSkills).where(eq(agentSkills.agentId, agentId)).run();
+    db.delete(agentPermissions).where(eq(agentPermissions.agentId, agentId)).run();
+    db.update(approvals).set({ requestedBy: null }).where(eq(approvals.requestedBy, agentId)).run();
 
     // 4b. Memory data (palace_wings → palace_drawers + palace_diary, palace_summaries)
-    const wings = db.select({ id: palaceWings.id }).from(palaceWings).where(eq(palaceWings.expertId, agentId)).all();
+    const wings = db.select({ id: palaceWings.id }).from(palaceWings).where(eq(palaceWings.agentId, agentId)).all();
     if (wings.length > 0) {
       const wingIds = wings.map(w => w.id);
       db.delete(palaceDrawers).where(inArray(palaceDrawers.wingId, wingIds)).run();
       db.delete(palaceDiary).where(inArray(palaceDiary.wingId, wingIds)).run();
-      db.delete(palaceWings).where(eq(palaceWings.expertId, agentId)).run();
+      db.delete(palaceWings).where(eq(palaceWings.agentId, agentId)).run();
     }
-    db.delete(palaceSummaries).where(eq(palaceSummaries.expertId, agentId)).run();
+    db.delete(palaceSummaries).where(eq(palaceSummaries.agentId, agentId)).run();
 
     // 4c. Execution workspaces (expertId nullable — just nullify)
-    db.update(executionWorkspaces).set({ expertId: null }).where(eq(executionWorkspaces.expertId, agentId)).run();
+    db.update(executionWorkspaces).set({ agentId: null }).where(eq(executionWorkspaces.agentId, agentId)).run();
 
     // 4d. Knowledge graph — remove all triples that mention this agent by name
     db.delete(palaceKg)
       .where(and(
-        eq(palaceKg.unternehmenId, agent.unternehmenId),
+        eq(palaceKg.companyId, agent.companyId),
         or(eq(palaceKg.subject, agent.name), eq(palaceKg.object, agent.name))
       ))
       .run();
 
+    // 4e. Archiv, CEO decision log, config history
+    db.delete(workCyclesArchive).where(eq(workCyclesArchive.agentId, agentId)).run();
+    db.delete(ceoDecisionLog).where(eq(ceoDecisionLog.agentId, agentId)).run();
+    db.delete(agentConfigHistory).where(eq(agentConfigHistory.agentId, agentId)).run();
+
     // Count unassigned tasks (from this agent's former assignments) for CEO briefing
-    const freedTaskCount = db.select({ count: count() }).from(aufgaben)
-      .where(and(eq(aufgaben.unternehmenId, agent.unternehmenId), isNull(aufgaben.zugewiesenAn)))
+    const freedTaskCount = db.select({ count: count() }).from(tasks)
+      .where(and(eq(tasks.companyId, agent.companyId), isNull(tasks.assignedTo)))
       .get()?.count ?? 0;
 
     // 5. Finally delete the agent
-    db.delete(experten).where(eq(experten.id, agentId)).run();
+    db.delete(agents).where(eq(agents.id, agentId)).run();
 
     // 6. Notify the CEO (orchestrator) about the dismissal
     try {
-      const ceo = db.select({ id: experten.id, name: experten.name })
-        .from(experten)
-        .where(and(eq(experten.unternehmenId, agent.unternehmenId), eq(experten.isOrchestrator, true)))
+      const ceo = db.select({ id: agents.id, name: agents.name })
+        .from(agents)
+        .where(and(eq(agents.companyId, agent.companyId), eq(agents.isOrchestrator, true)))
         .get() as any;
       if (ceo) {
-        const briefing = `📋 **Personalmeldung**: **${agent.name}** (${agent.rolle}) wurde aus dem Unternehmen entfernt.\n\nSeine/ihre Aufgaben sind jetzt unzugewiesen (${freedTaskCount} offene Tasks). Bitte neue Prioritäten setzen oder jemanden einarbeiten.`;
+        const briefing = `📋 **Personalmeldung**: **${agent.name}** (${agent.role}) wurde aus dem Unternehmen entfernt.\n\nSeine/ihre Aufgaben sind jetzt unzugewiesen (${freedTaskCount} offene Tasks). Bitte neue Prioritäten setzen oder jemanden einarbeiten.`;
         const msgId = uuid();
-        db.insert(chatNachrichten).values({
+        db.insert(chatMessages).values({
           id: msgId,
-          unternehmenId: agent.unternehmenId,
-          expertId: ceo.id,
-          absenderTyp: 'system',
-          nachricht: briefing,
-          gelesen: false,
-          erstelltAm: now(),
+          companyId: agent.companyId,
+          agentId: ceo.id,
+          senderType: 'system',
+          message: briefing,
+          read: false,
+          createdAt: now(),
         }).run();
-        broadcastUpdate('chat_message', { id: msgId, unternehmenId: agent.unternehmenId, expertId: ceo.id, nachricht: briefing });
+        broadcastUpdate('chat_message', { id: msgId, unternehmenId: agent.companyId, expertId: ceo.id, nachricht: briefing });
         // Also notify via Telegram
-        messagingService.sendTelegram(agent.unternehmenId,
-          `🔴 *${agent.name}* (${agent.rolle}) wurde entlassen.\n${freedTaskCount} Aufgaben sind jetzt unzugewiesen.`
+        messagingService.sendTelegram(agent.companyId,
+          `🔴 *${agent.name}* (${agent.role}) wurde entlassen.\n${freedTaskCount} Aufgaben sind jetzt unzugewiesen.`
         ).catch(() => {});
       }
     } catch { /* non-critical */ }
 
-    logAktivitaet(agent.unternehmenId, 'board', 'board', 'Board', `hat „${agent.name}" entlassen`, 'experten', agent.id);
-    broadcastUpdate('expert_deleted', { id: agentId, name: agent.name, unternehmenId: agent.unternehmenId });
+    logAktivitaet(agent.companyId, 'board', 'board', 'Board', `hat „${agent.name}" entlassen`, 'agents', agent.id);
+    broadcastUpdate('expert_deleted', { id: agentId, name: agent.name, unternehmenId: agent.companyId });
     res.json({ success: true });
   } catch (error) {
     console.error(`Fehler beim Löschen des Agenten ${agentId}:`, error);
-    res.status(500).json({ error: 'Fehler beim Löschen des Agenten (Foreign Key / Constraints).' });
+    res.status(500).json({ error: 'Failed to delete agent (Foreign Key / Constraints).' });
   }
 });
 
-app.get('/api/mitarbeiter/:id/aktivitaet', (req, res) => {
+app.get('/api/agents/:id/activity', (req, res) => {
   const limit = parseInt(req.query.limit as string) || 50;
-  const result = db.select().from(aktivitaetslog)
-    .where(eq(aktivitaetslog.akteurId, req.params.id))
-    .orderBy(desc(aktivitaetslog.erstelltAm))
+  const rows = db.select().from(activityLog)
+    .where(eq(activityLog.actorId, req.params.id as string))
+    .orderBy(desc(activityLog.createdAt))
     .limit(limit)
     .all();
-  res.json(result);
+  res.json(rows.map((a: any) => ({
+    id: a.id,
+    unternehmenId: a.companyId,
+    akteurTyp: a.actorType,
+    akteurId: a.actorId,
+    akteurName: a.actorName,
+    aktion: a.action,
+    entitaetTyp: a.entityType,
+    entitaetId: a.entityId,
+    details: a.details,
+    erstelltAm: a.createdAt,
+  })));
 });
 
 // =============================================
 // AUFGABEN
 // =============================================
-app.get('/api/unternehmen/:unternehmenId/aufgaben', (req, res) => {
+app.get('/api/companies/:unternehmenId/tasks', (req, res) => {
   const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
   const offset = parseInt(req.query.offset as string) || 0;
   const status = req.query.status as string | undefined;
-  const zugewiesenAn = req.query.zugewiesenAn as string | undefined;
+  const zugewiesenAn = req.query.assignedTo as string | undefined;
 
-  let query = db.select().from(aufgaben)
+  let query = db.select().from(tasks)
     .where(and(
-      eq(aufgaben.unternehmenId, req.params.unternehmenId),
-      ...(status ? [eq(aufgaben.status, status)] : []),
-      ...(zugewiesenAn ? [eq(aufgaben.zugewiesenAn, zugewiesenAn)] : []),
+      eq(tasks.companyId, req.params.unternehmenId),
+      ...(status ? [eq(tasks.status, status as any)] : []),
+      ...(zugewiesenAn ? [eq(tasks.assignedTo, zugewiesenAn)] : []),
     ))
-    .orderBy(desc(aufgaben.erstelltAm))
+    .orderBy(desc(tasks.createdAt))
     .limit(limit)
     .offset(offset);
 
@@ -739,81 +1090,99 @@ app.get('/api/unternehmen/:unternehmenId/aufgaben', (req, res) => {
   res.json(result);
 });
 
-app.post('/api/unternehmen/:unternehmenId/aufgaben', (req, res) => {
-  const { titel, beschreibung, prioritaet, zugewiesenAn, erstelltVon, parentId, projektId, zielId } = req.body;
-  if (!titel) return res.status(400).json({ error: 'Titel ist erforderlich' });
+app.post('/api/companies/:unternehmenId/tasks', (req, res) => {
+  const body = validate(zTask.refine(d => d.titel || d.title, { message: 'Title required', path: ['titel'] }), req, res);
+  if (!body) return;
+  const b = body as any;
+  const titel = b.titel || b.title;
+  const beschreibung = b.beschreibung || b.description;
+  const prioritaet = b.prioritaet || b.priority;
+  const zugewiesenAn = b.zugewiesenAn || b.assignedTo;
+  const { erstelltVon, parentId, projektId, zielId } = b;
 
   const unternehmenId = req.params.unternehmenId;
 
   // Dedup: reject if an open task with the same title already exists
-  const existing = db.select({ id: aufgaben.id })
-    .from(aufgaben)
+  const existing = db.select({ id: tasks.id })
+    .from(tasks)
     .where(and(
-      eq(aufgaben.unternehmenId, unternehmenId),
-      sql`LOWER(TRIM(${aufgaben.titel})) = LOWER(TRIM(${titel}))`,
-      sql`${aufgaben.status} != 'done'`,
+      eq(tasks.companyId, unternehmenId),
+      sql`LOWER(TRIM(${tasks.title})) = LOWER(TRIM(${titel}))`,
+      sql`${tasks.status} != 'done'`,
     ))
     .limit(1)
     .all();
   if (existing.length > 0) {
-    return res.status(409).json({ error: 'Duplikat: Task mit diesem Titel existiert bereits', existingId: existing[0].id });
+    return res.status(409).json({ error: 'Duplicate: task with this title already exists', existingId: existing[0].id });
   }
 
   const id = uuid();
 
-  db.insert(aufgaben).values({
-    id, unternehmenId, titel, beschreibung,
+  db.insert(tasks).values({
+    id, companyId: unternehmenId, title: titel, description: beschreibung,
     status: 'backlog',
-    prioritaet: prioritaet || 'medium',
-    zugewiesenAn: zugewiesenAn || null,
-    erstelltVon: erstelltVon || 'board',
+    priority: prioritaet || 'medium',
+    assignedTo: zugewiesenAn || null,
+    createdBy: erstelltVon || 'board',
     parentId: parentId || null,
-    projektId: projektId || null,
-    zielId: zielId || null,
-    erstelltAm: now(),
-    aktualisiertAm: now(),
+    projectId: projektId || null,
+    goalId: zielId || null,
+    createdAt: now(),
+    updatedAt: now(),
   }).run();
 
-  const aufgabe = db.select().from(aufgaben).where(eq(aufgaben.id, id)).get();
+  const aufgabe = db.select().from(tasks).where(eq(tasks.id, id)).get();
   logAktivitaet(unternehmenId, 'board', 'board', 'Board', `hat Aufgabe „${titel}" erstellt`, 'aufgabe', id);
   // Wake CEO if task has no assignee yet
   if (!zugewiesenAn) scheduler.triggerCEOForCompany(unternehmenId);
   res.status(201).json(aufgabe);
 });
 
-app.get('/api/aufgaben/:id', (req, res) => {
-  const aufgabe = db.select().from(aufgaben).where(eq(aufgaben.id, req.params.id)).get();
-  if (!aufgabe) return res.status(404).json({ error: 'Aufgabe nicht gefunden' });
+app.get('/api/tasks/:id', (req, res) => {
+  const aufgabe = db.select().from(tasks).where(eq(tasks.id, req.params.id as string)).get();
+  if (!aufgabe) return res.status(404).json({ error: 'Task not found' });
   res.json(aufgabe);
 });
 
-app.patch('/api/aufgaben/:id', (req, res) => {
-  const existing = db.select().from(aufgaben).where(eq(aufgaben.id, req.params.id)).get();
-  if (!existing) return res.status(404).json({ error: 'Aufgabe nicht gefunden' });
+app.patch('/api/tasks/:id', (req, res) => {
+  const existing = db.select().from(tasks).where(eq(tasks.id, req.params.id as string)).get();
+  if (!existing) return res.status(404).json({ error: 'Task not found' });
 
-  const updates: any = { aktualisiertAm: now() };
-  const allowed = ['titel', 'beschreibung', 'status', 'prioritaet', 'zugewiesenAn', 'parentId', 'projektId', 'zielId', 'isMaximizerMode'];
-  for (const key of allowed) {
+  const updates: any = { updatedAt: now() };
+  // Accept both German (legacy) and English field names
+  const aliases: Record<string, string> = {
+    titel: 'title', title: 'title',
+    beschreibung: 'description', description: 'description',
+    prioritaet: 'priority', priority: 'priority',
+    zugewiesenAn: 'assignedTo', assignedTo: 'assignedTo',
+    projektId: 'projectId', projectId: 'projectId',
+    zielId: 'goalId', goalId: 'goalId',
+  };
+  const passthrough = ['status', 'parentId', 'isMaximizerMode'];
+  for (const [key, col] of Object.entries(aliases)) {
+    if (req.body[key] !== undefined) updates[col] = req.body[key];
+  }
+  for (const key of passthrough) {
     if (req.body[key] !== undefined) updates[key] = req.body[key];
   }
 
   // Side effects for status transitions
-  if (updates.status === 'in_progress' && !existing.gestartetAm) {
-    updates.gestartetAm = now();
+  if (updates.status === 'in_progress' && !existing.startedAt) {
+    updates.startedAt = now();
   }
   if (updates.status === 'done') {
-    updates.abgeschlossenAm = now();
+    updates.completedAt = now();
   }
   if (updates.status === 'cancelled') {
-    updates.abgebrochenAm = now();
+    updates.cancelledAt = now();
   }
 
-  db.update(aufgaben).set(updates).where(eq(aufgaben.id, req.params.id)).run();
-  const aufgabe = db.select().from(aufgaben).where(eq(aufgaben.id, req.params.id)).get();
+  db.update(tasks).set(updates).where(eq(tasks.id, req.params.id as string)).run();
+  const aufgabe = db.select().from(tasks).where(eq(tasks.id, req.params.id as string)).get();
 
   // Wenn Aufgabe einem Agenten zugewiesen wird → sofort Wakeup auslösen
-  if (updates.zugewiesenAn && updates.zugewiesenAn !== existing.zugewiesenAn) {
-    wakeupService.wakeupForAssignment(updates.zugewiesenAn, existing.unternehmenId, req.params.id)
+  if (updates.assignedTo && updates.assignedTo !== existing.assignedTo) {
+    wakeupService.wakeupForAssignment(updates.assignedTo, existing.companyId, req.params.id as string)
       .catch(err => console.error('Wakeup bei Zuweisung fehlgeschlagen:', err));
   }
 
@@ -822,31 +1191,31 @@ app.patch('/api/aufgaben/:id', (req, res) => {
     import('./services/issue-dependencies.js').then(({ pruefeUndEntblocke }) => {
       const entblockt = pruefeUndEntblocke(req.params.id as string);
       if (entblockt.length > 0) {
-        broadcastUpdate('tasks_unblocked', { taskIds: entblockt, unternehmenId: existing.unternehmenId });
+        broadcastUpdate('tasks_unblocked', { taskIds: entblockt, unternehmenId: existing.companyId });
       }
     }).catch(() => {});
     // Broadcast task_completed event for real-time notifications
-    const agentName = existing.zugewiesenAn
-      ? (db.select({ name: experten.name }).from(experten).where(eq(experten.id, existing.zugewiesenAn)).get()?.name ?? '')
+    const agentName = existing.assignedTo
+      ? (db.select({ name: agents.name }).from(agents).where(eq(agents.id, existing.assignedTo)).get()?.name ?? '')
       : '';
     broadcastUpdate('task_completed', {
-      unternehmenId: existing.unternehmenId,
+      unternehmenId: existing.companyId,
       taskId: req.params.id,
-      taskTitel: existing.titel,
+      taskTitel: existing.title,
       agentName,
-      agentId: existing.zugewiesenAn ?? null,
+      agentId: existing.assignedTo ?? null,
     });
 
     // Auto-advance goal to 'achieved' when all linked tasks are done
-    const zielId = updates.zielId ?? existing.zielId;
+    const zielId = updates.goalId ?? existing.goalId;
     if (zielId) {
-      const ziel = db.select().from(ziele).where(eq(ziele.id, zielId)).get();
+      const ziel = db.select().from(goals).where(eq(goals.id, zielId)).get();
       if (ziel && ziel.status !== 'achieved' && ziel.status !== 'cancelled') {
-        const allTasks = db.select({ status: aufgaben.status }).from(aufgaben)
-          .where(eq(aufgaben.zielId, zielId)).all();
+        const allTasks = db.select({ status: tasks.status }).from(tasks)
+          .where(eq(tasks.goalId, zielId)).all();
         if (allTasks.length > 0 && allTasks.every(t => t.status === 'done' || t.status === 'cancelled')) {
-          db.update(ziele).set({ status: 'achieved', aktualisiertAm: now() }).where(eq(ziele.id, zielId)).run();
-          broadcastUpdate('goal_achieved', { unternehmenId: existing.unternehmenId, zielId, zielTitel: ziel.titel });
+          db.update(goals).set({ status: 'achieved', updatedAt: now() }).where(eq(goals.id, zielId)).run();
+          broadcastUpdate('goal_achieved', { unternehmenId: existing.companyId, zielId, zielTitel: ziel.title });
         }
       }
     }
@@ -854,14 +1223,14 @@ app.patch('/api/aufgaben/:id', (req, res) => {
 
   // task_started notification
   if (updates.status === 'in_progress' && existing.status !== 'in_progress') {
-    const agentName = (updates.zugewiesenAn || existing.zugewiesenAn)
-      ? (db.select({ name: experten.name }).from(experten).where(eq(experten.id, updates.zugewiesenAn || existing.zugewiesenAn)).get()?.name ?? '')
+    const agentName = (updates.assignedTo || existing.assignedTo)
+      ? (db.select({ name: agents.name }).from(agents).where(eq(agents.id, updates.assignedTo || existing.assignedTo)).get()?.name ?? '')
       : '';
-    const agentIdStarted = updates.zugewiesenAn || existing.zugewiesenAn;
+    const agentIdStarted = updates.assignedTo || existing.assignedTo;
     broadcastUpdate('task_started', {
-      unternehmenId: existing.unternehmenId,
+      unternehmenId: existing.companyId,
       taskId: req.params.id,
-      taskTitel: existing.titel,
+      taskTitel: existing.title,
       agentName,
       agentId: agentIdStarted ?? null,
     });
@@ -871,32 +1240,32 @@ app.patch('/api/aufgaben/:id', (req, res) => {
 });
 
 // Delete a task (removes comments + issue relations too)
-app.delete('/api/aufgaben/:id', authMiddleware, (req, res) => {
-  const existing = db.select().from(aufgaben).where(eq(aufgaben.id, req.params.id)).get();
-  if (!existing) return res.status(404).json({ error: 'Aufgabe nicht gefunden' });
+app.delete('/api/tasks/:id', authMiddleware, (req, res) => {
+  const existing = db.select().from(tasks).where(eq(tasks.id, req.params.id as string)).get();
+  if (!existing) return res.status(404).json({ error: 'Task not found' });
 
   // Remove related data first
-  db.delete(kommentare).where(eq(kommentare.aufgabeId, req.params.id)).run();
+  db.delete(comments).where(eq(comments.taskId, req.params.id as string)).run();
   db.delete(issueRelations).where(
-    or(eq(issueRelations.quellId, req.params.id), eq(issueRelations.zielId, req.params.id))
+    or(eq(issueRelations.sourceId, req.params.id as string), eq(issueRelations.targetId, req.params.id as string))
   ).run();
-  db.delete(aufgaben).where(eq(aufgaben.id, req.params.id)).run();
+  db.delete(tasks).where(eq(tasks.id, req.params.id as string)).run();
 
-  broadcastUpdate('task_deleted', { unternehmenId: existing.unternehmenId, taskId: req.params.id });
+  broadcastUpdate('task_deleted', { unternehmenId: existing.companyId, taskId: req.params.id });
   res.json({ ok: true });
 });
 
 // Atomic Task Checkout (with execution locking)
-app.post('/api/aufgaben/:id/checkout', (req, res) => {
+app.post('/api/tasks/:id/checkout', (req, res) => {
   const { expertId, runId } = req.body;
   if (!expertId) return res.status(400).json({ error: 'expertId ist erforderlich' });
 
-  const aufgabe = db.select().from(aufgaben).where(eq(aufgaben.id, req.params.id)).get();
-  if (!aufgabe) return res.status(404).json({ error: 'Aufgabe nicht gefunden' });
+  const aufgabe = db.select().from(tasks).where(eq(tasks.id, req.params.id as string)).get();
+  if (!aufgabe) return res.status(404).json({ error: 'Task not found' });
 
   // Check if task is already assigned to different expert
-  if (aufgabe.zugewiesenAn && aufgabe.zugewiesenAn !== expertId) {
-    return res.status(409).json({ error: 'Aufgabe ist bereits zugewiesen', aktuellZugewiesen: aufgabe.zugewiesenAn });
+  if (aufgabe.assignedTo && aufgabe.assignedTo !== expertId) {
+    return res.status(409).json({ error: 'Task already assigned', aktuellZugewiesen: aufgabe.assignedTo });
   }
 
   // Check if task is locked by another run (atomic lock check)
@@ -906,7 +1275,7 @@ app.post('/api/aufgaben/:id/checkout', (req, res) => {
 
     if (lockAge < lockTimeout) {
       return res.status(409).json({
-        error: 'Aufgabe ist durch anderen Lauf gesperrt',
+        error: 'Task locked by another run',
         lockedBy: aufgabe.executionRunId,
         lockedAt: aufgabe.executionLockedAt,
       });
@@ -918,104 +1287,105 @@ app.post('/api/aufgaben/:id/checkout', (req, res) => {
 
   // Check valid checkout statuses
   if (!['backlog', 'todo', 'blocked', 'in_progress'].includes(aufgabe.status)) {
-    return res.status(409).json({ error: 'Aufgabe kann in diesem Status nicht ausgecheckt werden', status: aufgabe.status });
+    return res.status(409).json({ error: 'Task cannot be checked out in this status', status: aufgabe.status });
   }
 
   // Atomic checkout with execution lock
   const nowStr = now();
-  db.update(aufgaben).set({
-    zugewiesenAn: expertId,
+  db.update(tasks).set({
+    assignedTo: expertId,
     executionRunId: runId || null,
     executionAgentNameKey: `expert-${expertId}`,
     executionLockedAt: nowStr,
     status: aufgabe.status === 'backlog' ? 'todo' : 'in_progress',
-    gestartetAm: aufgabe.gestartetAm || nowStr,
-    aktualisiertAm: nowStr,
-  }).where(eq(aufgaben.id, req.params.id)).run();
+    startedAt: aufgabe.startedAt || nowStr,
+    updatedAt: nowStr,
+  }).where(eq(tasks.id, req.params.id as string)).run();
 
-  const expert = db.select().from(experten).where(eq(experten.id, expertId)).get();
-  logAktivitaet(aufgabe.unternehmenId, 'agent', expertId, expert?.name || expertId, `hat „${aufgabe.titel}" ausgecheckt`, 'aufgabe', aufgabe.id);
+  const expert = db.select().from(agents).where(eq(agents.id, expertId as string)).get();
+  logAktivitaet(aufgabe.companyId, 'agent', expertId, expert?.name || expertId, `hat „${aufgabe.title}" ausgecheckt`, 'aufgabe', aufgabe.id);
 
-  const updated = db.select().from(aufgaben).where(eq(aufgaben.id, req.params.id)).get();
+  const updated = db.select().from(tasks).where(eq(tasks.id, req.params.id as string)).get();
   res.json(updated);
 });
 
 // Release task lock (when task is completed or agent releases it)
-app.post('/api/aufgaben/:id/release', (req, res) => {
+app.post('/api/tasks/:id/release', (req, res) => {
   const { expertId, runId, status, abgebrochenAm } = req.body;
 
   if (!expertId || !runId) {
     return res.status(400).json({ error: 'expertId und runId sind erforderlich' });
   }
 
-  const aufgabe = db.select().from(aufgaben).where(eq(aufgaben.id, req.params.id)).get();
-  if (!aufgabe) return res.status(404).json({ error: 'Aufgabe nicht gefunden' });
+  const aufgabe = db.select().from(tasks).where(eq(tasks.id, req.params.id as string)).get();
+  if (!aufgabe) return res.status(404).json({ error: 'Task not found' });
 
   // Verify lock ownership
   if (aufgabe.executionRunId !== runId) {
-    return res.status(409).json({ error: 'Aufgabe ist durch anderen Lauf gesperrt' });
+    return res.status(409).json({ error: 'Task locked by another run' });
   }
 
   const updates: any = {
     executionLockedAt: null,
     executionRunId: null,
-    aktualisiertAm: now(),
+    updatedAt: now(),
   };
 
   if (status) updates.status = status;
-  if (abgebrochenAm) updates.abgebrochenAm = abgebrochenAm;
-  if (status === 'done') updates.abgeschlossenAm = now();
+  if (abgebrochenAm) updates.cancelledAt = abgebrochenAm;
+  if (status === 'done') updates.completedAt = now();
 
-  db.update(aufgaben).set(updates).where(eq(aufgaben.id, req.params.id)).run();
+  db.update(tasks).set(updates).where(eq(tasks.id, req.params.id as string)).run();
 
-  const updated = db.select().from(aufgaben).where(eq(aufgaben.id, req.params.id)).get();
+  const updated = db.select().from(tasks).where(eq(tasks.id, req.params.id as string)).get();
   res.json(updated);
 });
 
 // ===== Kommentare =====
-app.get('/api/aufgaben/:id/kommentare', (req, res) => {
-  const result = db.select().from(kommentare).where(eq(kommentare.aufgabeId, req.params.id)).orderBy(kommentare.erstelltAm).all();
+app.get('/api/tasks/:id/comments', (req, res) => {
+  const result = db.select().from(comments).where(eq(comments.taskId, req.params.id as string)).orderBy(comments.createdAt).all();
   res.json(result);
 });
 
-app.post('/api/aufgaben/:id/kommentare', (req, res) => {
-  const { inhalt, autorExpertId, autorTyp } = req.body;
-  if (!inhalt) return res.status(400).json({ error: 'Inhalt ist erforderlich' });
+app.post('/api/tasks/:id/comments', (req, res) => {
+  const inhalt = req.body.inhalt || req.body.content;
+  const { authorAgentId, authorType } = req.body;
+  if (!inhalt) return res.status(400).json({ error: 'Content required' });
 
-  const aufgabe = db.select().from(aufgaben).where(eq(aufgaben.id, req.params.id)).get();
-  if (!aufgabe) return res.status(404).json({ error: 'Aufgabe nicht gefunden' });
+  const aufgabe = db.select().from(tasks).where(eq(tasks.id, req.params.id as string)).get();
+  if (!aufgabe) return res.status(404).json({ error: 'Task not found' });
 
   const id = uuid();
-  db.insert(kommentare).values({
+  db.insert(comments).values({
     id,
-    unternehmenId: aufgabe.unternehmenId,
-    aufgabeId: aufgabe.id,
-    autorExpertId: autorExpertId || null,
-    autorTyp: autorTyp || 'board',
-    inhalt,
-    erstelltAm: now(),
+    companyId: aufgabe.companyId,
+    taskId: aufgabe.id,
+    authorAgentId: authorAgentId || null,
+    authorType: authorType || 'board',
+    content: inhalt,
+    createdAt: now(),
   }).run();
 
-  const kommentar = db.select().from(kommentare).where(eq(kommentare.id, id)).get();
+  const kommentar = db.select().from(comments).where(eq(comments.id, id)).get();
   res.status(201).json(kommentar);
 });
 
 // ===== Work Products =====
-app.get('/api/aufgaben/:id/work-products', (req, res) => {
+app.get('/api/tasks/:id/work-products', (req, res) => {
   const products = db.select().from(workProducts)
-    .where(eq(workProducts.aufgabeId, req.params.id))
-    .orderBy(workProducts.erstelltAm)
+    .where(eq(workProducts.taskId, req.params.id as string))
+    .orderBy(workProducts.createdAt)
     .all();
   res.json(products);
 });
 
 // ===== Timeline (Time-Travel-View) =====
 // Unified chronological timeline for a task: creation, status changes, comments,
-// arbeitszyklen (work cycles), trace events, approvals, cost bookings, activity log.
-app.get('/api/aufgaben/:id/timeline', (req, res) => {
+// workCycles (work cycles), trace events, approvals, cost bookings, activity log.
+app.get('/api/tasks/:id/timeline', (req, res) => {
   const taskId = req.params.id;
-  const task = db.select().from(aufgaben).where(eq(aufgaben.id, taskId)).get();
-  if (!task) return res.status(404).json({ error: 'Aufgabe nicht gefunden' });
+  const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get();
+  if (!task) return res.status(404).json({ error: 'Task not found' });
 
   type TimelineEvent = {
     id: string;
@@ -1031,99 +1401,99 @@ app.get('/api/aufgaben/:id/timeline', (req, res) => {
   // Task lifecycle
   events.push({
     id: `task-created-${task.id}`,
-    at: task.erstelltAm,
+    at: task.createdAt,
     kind: 'task_created',
     title: 'Task created',
-    actor: task.erstelltVon || null,
-    data: { titel: task.titel, prioritaet: task.prioritaet, typ: task.typ },
+    actor: task.createdBy || null,
+    data: { titel: task.title, prioritaet: task.priority, typ: task.type },
   });
-  if (task.gestartetAm) {
-    events.push({ id: `task-started-${task.id}`, at: task.gestartetAm, kind: 'task_started', title: 'Task started', actor: task.zugewiesenAn || null });
+  if (task.startedAt) {
+    events.push({ id: `task-started-${task.id}`, at: task.startedAt, kind: 'task_started', title: 'Task started', actor: task.assignedTo || null });
   }
-  if (task.abgeschlossenAm) {
-    events.push({ id: `task-completed-${task.id}`, at: task.abgeschlossenAm, kind: 'task_completed', title: 'Task completed', actor: task.zugewiesenAn || null, data: { status: task.status } });
+  if (task.completedAt) {
+    events.push({ id: `task-completed-${task.id}`, at: task.completedAt, kind: 'task_completed', title: 'Task completed', actor: task.assignedTo || null, data: { status: task.status } });
   }
-  if (task.abgebrochenAm) {
-    events.push({ id: `task-cancelled-${task.id}`, at: task.abgebrochenAm, kind: 'task_cancelled', title: 'Task cancelled' });
+  if (task.cancelledAt) {
+    events.push({ id: `task-cancelled-${task.id}`, at: task.cancelledAt, kind: 'task_cancelled', title: 'Task cancelled' });
   }
 
   // Kommentare
-  const comments = db.select().from(kommentare).where(eq(kommentare.aufgabeId, taskId)).all();
-  for (const c of comments) {
+  const commentRows = db.select().from(comments).where(eq(comments.taskId, taskId)).all();
+  for (const c of commentRows) {
     events.push({
       id: `comment-${c.id}`,
-      at: c.erstelltAm,
+      at: c.createdAt,
       kind: 'comment',
-      title: c.autorTyp === 'agent' ? 'Agent output' : 'Comment',
-      actor: c.autorExpertId || c.autorTyp,
-      data: { inhalt: c.inhalt, autorTyp: c.autorTyp },
+      title: c.authorType === 'agent' ? 'Agent output' : 'Comment',
+      actor: c.authorAgentId || c.authorType,
+      data: { inhalt: c.content, authorType: c.authorType },
     });
   }
 
   // Kostenbuchungen (also source for runIds)
-  const kb = db.select().from(kostenbuchungen).where(eq(kostenbuchungen.aufgabeId, taskId)).all();
+  const kb = db.select().from(costEntries).where(eq(costEntries.taskId, taskId)).all();
   for (const k of kb) {
     events.push({
       id: `cost-${k.id}`,
-      at: k.zeitpunkt || k.erstelltAm,
+      at: k.timestamp || k.createdAt,
       kind: 'cost',
-      title: `Cost: ${k.modell}`,
-      actor: k.expertId,
-      data: { anbieter: k.anbieter, modell: k.modell, inputTokens: k.inputTokens, outputTokens: k.outputTokens, kostenCent: k.kostenCent },
+      title: `Cost: ${k.model}`,
+      actor: k.agentId,
+      data: { anbieter: k.provider, modell: k.model, inputTokens: k.inputTokens, outputTokens: k.outputTokens, kostenCent: k.costCent },
     });
   }
 
   // Arbeitszyklen for this task — match via context_snapshot (JSON) containing taskId/issueId
-  const allRuns = db.select().from(arbeitszyklen)
-    .where(eq(arbeitszyklen.unternehmenId, task.unternehmenId))
+  const allRuns = db.select().from(workCycles)
+    .where(eq(workCycles.companyId, task.companyId))
     .all();
   const runs = allRuns.filter(r => {
     if (!r.contextSnapshot) return false;
     try {
       const ctx = JSON.parse(r.contextSnapshot);
-      return ctx.taskId === taskId || ctx.issueId === taskId || ctx.aufgabeId === taskId;
+      return ctx.taskId === taskId || ctx.issueId === taskId || ctx.taskId === taskId;
     } catch { return false; }
   });
   const runIds = new Set<string>(runs.map(r => r.id));
   for (const r of runs) {
-    if (r.gestartetAm) {
+    if (r.startedAt) {
       events.push({
         id: `run-start-${r.id}`,
-        at: r.gestartetAm,
+        at: r.startedAt,
         kind: 'run_started',
         title: 'Work cycle started',
-        actor: r.expertId,
+        actor: r.agentId,
         runId: r.id,
-        data: { quelle: r.quelle, invocationSource: r.invocationSource, triggerDetail: r.triggerDetail },
+        data: { quelle: r.source, invocationSource: r.invocationSource, triggerDetail: r.triggerDetail },
       });
     }
-    if (r.beendetAm) {
+    if (r.endedAt) {
       let usage: any = null;
       try { usage = r.usageJson ? JSON.parse(r.usageJson) : null; } catch {}
       events.push({
         id: `run-end-${r.id}`,
-        at: r.beendetAm,
+        at: r.endedAt,
         kind: r.status === 'succeeded' ? 'run_succeeded' : 'run_failed',
         title: r.status === 'succeeded' ? 'Work cycle succeeded' : `Work cycle ${r.status}`,
-        actor: r.expertId,
+        actor: r.agentId,
         runId: r.id,
-        data: { status: r.status, exitCode: r.exitCode, fehler: r.fehler, usage, resultJson: r.resultJson },
+        data: { status: r.status, exitCode: r.exitCode, fehler: r.error, usage, resultJson: r.resultJson },
       });
     }
   }
 
   // Trace events for these runs (+ fallback: trace with aufgabeId in details JSON)
   if (runIds.size > 0) {
-    const traces = db.select().from(traceEreignisse)
-      .where(inArray(traceEreignisse.runId, Array.from(runIds)))
+    const traces = db.select().from(traceEvents)
+      .where(inArray(traceEvents.runId, Array.from(runIds)))
       .all();
     for (const t of traces) {
       events.push({
         id: `trace-${t.id}`,
-        at: t.erstelltAm,
-        kind: `trace_${t.typ}`,
-        title: t.titel,
-        actor: t.expertId || null,
+        at: t.createdAt,
+        kind: `trace_${t.type}`,
+        title: t.title,
+        actor: t.agentId || null,
         runId: t.runId || null,
         data: t.details ? safeParse(t.details) : null,
       });
@@ -1131,48 +1501,48 @@ app.get('/api/aufgaben/:id/timeline', (req, res) => {
   }
 
   // Genehmigungen referencing this task (best-effort: payload contains taskId)
-  const approvals = db.select().from(genehmigungen)
-    .where(eq(genehmigungen.unternehmenId, task.unternehmenId))
+  const approvalRows = db.select().from(approvals)
+    .where(eq(approvals.companyId, task.companyId))
     .all();
-  for (const g of approvals) {
+  for (const g of approvalRows) {
     let matches = false;
     try {
       if (g.payload) {
         const p = JSON.parse(g.payload);
-        if (p.taskId === taskId || p.aufgabeId === taskId || p.issueId === taskId) matches = true;
+        if (p.taskId === taskId || p.taskId === taskId || p.issueId === taskId) matches = true;
       }
     } catch {}
     if (!matches) continue;
     events.push({
       id: `approval-${g.id}`,
-      at: g.erstelltAm,
+      at: g.createdAt,
       kind: 'approval_requested',
-      title: `Approval requested: ${g.titel}`,
-      actor: g.angefordertVon,
-      data: { typ: g.typ, status: g.status, beschreibung: g.beschreibung },
+      title: `Approval requested: ${g.title}`,
+      actor: g.requestedBy,
+      data: { typ: g.type, status: g.status, beschreibung: g.description },
     });
-    if (g.entschiedenAm) {
+    if (g.decidedAt) {
       events.push({
         id: `approval-decided-${g.id}`,
-        at: g.entschiedenAm,
+        at: g.decidedAt,
         kind: `approval_${g.status}`,
         title: `Approval ${g.status}`,
-        data: { entscheidungsnotiz: g.entscheidungsnotiz },
+        data: { entscheidungsnotiz: g.decisionNote },
       });
     }
   }
 
   // Aktivitätslog for this task entity
-  const logs = db.select().from(aktivitaetslog)
-    .where(and(eq(aktivitaetslog.entitaetTyp, 'aufgabe'), eq(aktivitaetslog.entitaetId, taskId)))
+  const logs = db.select().from(activityLog)
+    .where(and(eq(activityLog.entityType, 'aufgabe'), eq(activityLog.entityId, taskId)))
     .all();
   for (const l of logs) {
     events.push({
       id: `log-${l.id}`,
-      at: l.erstelltAm,
-      kind: `log_${l.aktion}`,
-      title: l.aktion,
-      actor: l.akteurName || l.akteurId,
+      at: l.createdAt,
+      kind: `log_${l.action}`,
+      title: l.action,
+      actor: l.actorName || l.actorId,
       data: l.details ? safeParse(l.details) : null,
     });
   }
@@ -1180,25 +1550,25 @@ app.get('/api/aufgaben/:id/timeline', (req, res) => {
   events.sort((a, b) => (a.at || '').localeCompare(b.at || ''));
 
   res.json({
-    task: { id: task.id, titel: task.titel, status: task.status, unternehmenId: task.unternehmenId, zugewiesenAn: task.zugewiesenAn },
+    task: { id: task.id, titel: task.title, status: task.status, unternehmenId: task.companyId, zugewiesenAn: task.assignedTo },
     events,
-    runs: runs.map(r => ({ id: r.id, status: r.status, gestartetAm: r.gestartetAm, beendetAm: r.beendetAm })),
+    runs: runs.map(r => ({ id: r.id, status: r.status, gestartetAm: r.startedAt, beendetAm: r.endedAt })),
   });
 });
 
 function safeParse(s: string) { try { return JSON.parse(s); } catch { return s; } }
 
 // Company-level work products gallery
-app.get('/api/unternehmen/:id/work-products', authMiddleware, (req, res) => {
+app.get('/api/companies/:id/work-products', authMiddleware, (req, res) => {
   const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
   const offset = parseInt(req.query.offset as string) || 0;
-  const typ = req.query.typ as string | undefined;
+  const typ = req.query.type as string | undefined;
   const products = db.select().from(workProducts)
     .where(and(
-      eq(workProducts.unternehmenId, req.params.id),
-      ...(typ ? [eq(workProducts.typ, typ)] : []),
+      eq(workProducts.companyId, req.params.id as string),
+      ...(typ ? [eq(workProducts.type, typ)] : []),
     ))
-    .orderBy(desc(workProducts.erstelltAm))
+    .orderBy(desc(workProducts.createdAt))
     .limit(limit)
     .offset(offset)
     .all();
@@ -1206,27 +1576,67 @@ app.get('/api/unternehmen/:id/work-products', authMiddleware, (req, res) => {
 });
 
 // Workspace info (file listing)
-app.get('/api/aufgaben/:id/workspace', (req, res) => {
-  const info = getWorkspaceInfo(req.params.id);
+app.get('/api/tasks/:id/workspace', (req, res) => {
+  const info = getWorkspaceInfo(req.params.id as string);
   res.json(info);
 });
 
 // Read single workspace file (for preview in UI)
-app.get('/api/aufgaben/:id/workspace/file', (req, res) => {
+app.get('/api/tasks/:id/workspace/file', (req, res) => {
   const filename = req.query.path as string;
   if (!filename) return res.status(400).json({ error: 'path query parameter required' });
 
   const content = readWorkspaceFile(req.params.id, filename);
-  if (content === null) return res.status(404).json({ error: 'Datei nicht gefunden' });
+  if (content === null) return res.status(404).json({ error: 'File not found' });
 
   res.type('text/plain').send(content);
 });
 
 // =============================================
+// COMPANY WORKDIR FILE READ (for chat [FILE] cards)
+// =============================================
+app.get('/api/files/read', (req, res) => {
+  const unternehmenId = (req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
+  const relPath = (req.query.path as string || '').trim();
+  if (!unternehmenId) return res.status(400).json({ error: 'Missing x-company-id header' });
+  if (!relPath) return res.status(400).json({ error: 'path query required' });
+
+  const comp = db.select().from(companies).where(eq(companies.id, unternehmenId)).get() as any;
+  const workDir = comp?.workDir;
+  if (!workDir) return res.status(400).json({ error: 'workdir_not_set' });
+
+  const root = path.resolve(workDir);
+  const target = path.resolve(root, relPath);
+  if (!target.startsWith(root + path.sep) && target !== root) {
+    return res.status(403).json({ error: 'path_escape' });
+  }
+  if (!fs.existsSync(target)) return res.status(404).json({ error: 'not_found' });
+  const stat = fs.statSync(target);
+  if (!stat.isFile()) return res.status(400).json({ error: 'not_a_file' });
+  if (stat.size > 1024 * 1024) return res.status(413).json({ error: 'too_large', size: stat.size });
+
+  const ext = path.extname(target).toLowerCase();
+  const TEXT_EXT = new Set(['.md','.txt','.json','.yaml','.yml','.ts','.tsx','.js','.jsx','.py','.go','.rs','.html','.css','.csv','.log','.sh','.toml','.xml','.sql','.env','.ini','.conf']);
+  const isText = TEXT_EXT.has(ext) || stat.size < 32 * 1024;
+  let content = '';
+  try { content = fs.readFileSync(target, 'utf-8'); } catch { return res.status(500).json({ error: 'read_failed' }); }
+
+  res.json({
+    path: relPath,
+    absPath: target,
+    size: stat.size,
+    mtime: stat.mtime.toISOString(),
+    ext,
+    content: isText ? content : '',
+    binary: !isText,
+  });
+});
+
+// =============================================
 // GENEHMIGUNGEN
 // =============================================
-app.get('/api/unternehmen/:unternehmenId/genehmigungen', (req, res) => {
-  const result = db.select().from(genehmigungen).where(eq(genehmigungen.unternehmenId, req.params.unternehmenId)).orderBy(desc(genehmigungen.erstelltAm)).all();
+app.get('/api/companies/:unternehmenId/approvals', (req, res) => {
+  const result = db.select().from(approvals).where(eq(approvals.companyId, req.params.unternehmenId)).orderBy(desc(approvals.createdAt)).all();
   // Parse payload JSON
   res.json(result.map((g: any) => ({
     ...g,
@@ -1234,56 +1644,56 @@ app.get('/api/unternehmen/:unternehmenId/genehmigungen', (req, res) => {
   })));
 });
 
-app.post('/api/genehmigungen/:id/genehmigen', async (req, res) => {
+app.post('/api/approvals/:id/approve', async (req, res) => {
   const { notiz } = req.body;
-  const genehm = db.select().from(genehmigungen).where(eq(genehmigungen.id, req.params.id)).get();
-  if (!genehm) return res.status(404).json({ error: 'Genehmigung nicht gefunden' });
-  if (genehm.status !== 'pending') return res.status(409).json({ error: 'Genehmigung ist nicht mehr offen' });
+  const genehm = db.select().from(approvals).where(eq(approvals.id, req.params.id as string)).get();
+  if (!genehm) return res.status(404).json({ error: 'Approval not found' });
+  if (genehm.status !== 'pending') return res.status(409).json({ error: 'Approval no longer pending' });
 
   // --- SPEZIAL-HANDLING FÜR AGENT-AKTIONEN ---
-  if (genehm.typ === 'agent_action' && genehm.payload) {
+  if (genehm.type === 'agent_action' && genehm.payload) {
     try {
       const { action, params } = JSON.parse(genehm.payload);
-      const expertId = genehm.angefordertVon;
+      const expertId = genehm.requestedBy;
       if (expertId) {
         console.log(`🚀 Führe genehmigte Aktion aus: ${action} für Agent ${expertId}`);
         // Führe die Aktion über den Scheduler aus (skipAutonomyCheck = true!)
-        await scheduler.executeAgentAction(genehm.unternehmenId, expertId, action, params, true);
+        await scheduler.executeAgentAction(genehm.companyId, expertId, action, params, true);
       }
     } catch (e) {
       console.error('Fehler beim Ausführen der genehmigten Agent-Aktion:', e);
-      return res.status(500).json({ error: 'Aktion konnte nicht ausgeführt werden' });
+      return res.status(500).json({ error: 'Action could not be executed' });
     }
   }
 
-  db.update(genehmigungen).set({
+  db.update(approvals).set({
     status: 'approved',
-    entscheidungsnotiz: notiz || null,
-    entschiedenAm: now(),
-    aktualisiertAm: now(),
-  }).where(eq(genehmigungen.id, req.params.id)).run();
+    decisionNote: notiz || null,
+    decidedAt: now(),
+    updatedAt: now(),
+  }).where(eq(approvals.id, req.params.id as string)).run();
 
-  logAktivitaet(genehm.unternehmenId, 'board', 'board', 'Board', `hat „${genehm.titel}" genehmigt`, 'genehmigung', genehm.id);
-  broadcastUpdate('approval_updated', { unternehmenId: genehm.unternehmenId, id: genehm.id, status: 'approved' });
-  const updated = db.select().from(genehmigungen).where(eq(genehmigungen.id, req.params.id)).get();
+  logAktivitaet(genehm.companyId, 'board', 'board', 'Board', `hat „${genehm.title}" genehmigt`, 'genehmigung', genehm.id);
+  broadcastUpdate('approval_updated', { unternehmenId: genehm.companyId, id: genehm.id, status: 'approved' });
+  const updated = db.select().from(approvals).where(eq(approvals.id, req.params.id as string)).get();
   res.json(updated);
 });
 
-app.post('/api/genehmigungen/:id/ablehnen', (req, res) => {
+app.post('/api/approvals/:id/reject', (req, res) => {
   const { notiz } = req.body;
-  const genehm = db.select().from(genehmigungen).where(eq(genehmigungen.id, req.params.id)).get();
-  if (!genehm) return res.status(404).json({ error: 'Genehmigung nicht gefunden' });
+  const genehm = db.select().from(approvals).where(eq(approvals.id, req.params.id as string)).get();
+  if (!genehm) return res.status(404).json({ error: 'Approval not found' });
 
-  db.update(genehmigungen).set({
+  db.update(approvals).set({
     status: 'rejected',
-    entscheidungsnotiz: notiz || null,
-    entschiedenAm: now(),
-    aktualisiertAm: now(),
-  }).where(eq(genehmigungen.id, req.params.id)).run();
+    decisionNote: notiz || null,
+    decidedAt: now(),
+    updatedAt: now(),
+  }).where(eq(approvals.id, req.params.id as string)).run();
 
-  logAktivitaet(genehm.unternehmenId, 'board', 'board', 'Board', `hat „${genehm.titel}" abgelehnt`, 'genehmigung', genehm.id);
-  broadcastUpdate('approval_updated', { unternehmenId: genehm.unternehmenId, id: genehm.id, status: 'rejected' });
-  const updated = db.select().from(genehmigungen).where(eq(genehmigungen.id, req.params.id)).get();
+  logAktivitaet(genehm.companyId, 'board', 'board', 'Board', `hat „${genehm.title}" abgelehnt`, 'genehmigung', genehm.id);
+  broadcastUpdate('approval_updated', { unternehmenId: genehm.companyId, id: genehm.id, status: 'rejected' });
+  const updated = db.select().from(approvals).where(eq(approvals.id, req.params.id as string)).get();
   res.json(updated);
 });
 
@@ -1292,7 +1702,7 @@ app.post('/api/genehmigungen/:id/ablehnen', (req, res) => {
 // =============================================
 
 // Budget forecast — projected spend trajectory per active policy
-app.get('/api/unternehmen/:unternehmenId/budget/forecast', async (req, res) => {
+app.get('/api/companies/:unternehmenId/budget/forecast', async (req, res) => {
   try {
     const { getForecasts } = await import('./services/budget-forecast.js');
     res.json({ forecasts: getForecasts(req.params.unternehmenId) });
@@ -1301,22 +1711,22 @@ app.get('/api/unternehmen/:unternehmenId/budget/forecast', async (req, res) => {
   }
 });
 
-app.get('/api/unternehmen/:unternehmenId/kosten/zusammenfassung', (req, res) => {
-  const agenten = db.select().from(experten).where(eq(experten.unternehmenId, req.params.unternehmenId)).all();
+app.get('/api/companies/:unternehmenId/costs/summary', (req, res) => {
+  const agenten = db.select().from(agents).where(eq(agents.companyId, req.params.unternehmenId)).all();
 
-  const gesamtVerbraucht = agenten.reduce((s: number, a: any) => s + a.verbrauchtMonatCent, 0);
-  const gesamtBudget = agenten.reduce((s: number, a: any) => s + a.budgetMonatCent, 0);
+  const gesamtVerbraucht = agenten.reduce((s: number, a: any) => s + a.monthlySpendCent, 0);
+  const gesamtBudget = agenten.reduce((s: number, a: any) => s + a.monthlyBudgetCent, 0);
 
   const proAgent = agenten.map((a: any) => ({
     id: a.id,
     name: a.name,
-    titel: a.titel,
+    titel: a.title,
     avatar: a.avatar,
-    avatarFarbe: a.avatarFarbe,
-    verbindungsTyp: a.verbindungsTyp,
-    verbrauchtMonatCent: a.verbrauchtMonatCent,
-    budgetMonatCent: a.budgetMonatCent,
-    prozent: a.budgetMonatCent > 0 ? Math.round((a.verbrauchtMonatCent / a.budgetMonatCent) * 100) : 0,
+    avatarFarbe: a.avatarColor,
+    verbindungsTyp: a.connectionType,
+    verbrauchtMonatCent: a.monthlySpendCent,
+    budgetMonatCent: a.monthlyBudgetCent,
+    prozent: a.monthlyBudgetCent > 0 ? Math.round((a.monthlySpendCent / a.monthlyBudgetCent) * 100) : 0,
   })).sort((a: any, b: any) => b.prozent - a.prozent);
 
   res.json({
@@ -1328,15 +1738,15 @@ app.get('/api/unternehmen/:unternehmenId/kosten/zusammenfassung', (req, res) => 
 });
 
 // Kosten nach Provider aggregiert
-app.get('/api/unternehmen/:unternehmenId/kosten/nach-provider', (req, res) => {
-  const buchungen = db.select().from(kostenbuchungen)
-    .where(eq(kostenbuchungen.unternehmenId, req.params.unternehmenId as string)).all();
+app.get('/api/companies/:unternehmenId/costs/by-provider', (req, res) => {
+  const buchungen = db.select().from(costEntries)
+    .where(eq(costEntries.companyId, req.params.unternehmenId as string)).all();
 
   const providerMap = new Map<string, { kosten: number; tokens: number; buchungen: number }>();
   for (const b of buchungen) {
-    const key = b.anbieter;
+    const key = b.provider;
     const entry = providerMap.get(key) || { kosten: 0, tokens: 0, buchungen: 0 };
-    entry.kosten += b.kostenCent;
+    entry.kosten += b.costCent;
     entry.tokens += b.inputTokens + b.outputTokens;
     entry.buchungen += 1;
     providerMap.set(key, entry);
@@ -1350,16 +1760,16 @@ app.get('/api/unternehmen/:unternehmenId/kosten/nach-provider', (req, res) => {
 });
 
 // Kosten Timeline (letzte 14 Tage, pro Tag aggregiert)
-app.get('/api/unternehmen/:unternehmenId/kosten/timeline', (req, res) => {
+app.get('/api/companies/:unternehmenId/costs/timeline', (req, res) => {
   const tage = parseInt(req.query.tage as string) || 14;
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - tage);
   const startISO = startDate.toISOString();
 
-  const buchungen = db.select().from(kostenbuchungen)
-    .where(eq(kostenbuchungen.unternehmenId, req.params.unternehmenId as string))
+  const buchungen = db.select().from(costEntries)
+    .where(eq(costEntries.companyId, req.params.unternehmenId as string))
     .all()
-    .filter(b => b.zeitpunkt >= startISO);
+    .filter(b => b.timestamp >= startISO);
 
   const tageMap = new Map<string, number>();
   // Alle Tage vorab initialisieren
@@ -1370,8 +1780,8 @@ app.get('/api/unternehmen/:unternehmenId/kosten/timeline', (req, res) => {
   }
 
   for (const b of buchungen) {
-    const tag = b.zeitpunkt.split('T')[0];
-    tageMap.set(tag, (tageMap.get(tag) || 0) + b.kostenCent);
+    const tag = b.timestamp.split('T')[0];
+    tageMap.set(tag, (tageMap.get(tag) || 0) + b.costCent);
   }
 
   const result = Array.from(tageMap.entries())
@@ -1380,40 +1790,40 @@ app.get('/api/unternehmen/:unternehmenId/kosten/timeline', (req, res) => {
   res.json(result);
 });
 
-app.post('/api/unternehmen/:unternehmenId/kostenbuchungen', (req, res) => {
+app.post('/api/companies/:unternehmenId/costEntries', (req, res) => {
   const { expertId, aufgabeId, anbieter, modell, inputTokens, outputTokens, kostenCent } = req.body;
   if (!expertId || !anbieter || !modell || kostenCent === undefined) {
-    return res.status(400).json({ error: 'Pflichtfelder: expertId, anbieter, modell, kostenCent' });
+    return res.status(400).json({ error: 'Required: agentId, provider, model, costCent' });
   }
 
   const id = uuid();
-  db.insert(kostenbuchungen).values({
+  db.insert(costEntries).values({
     id,
-    unternehmenId: req.params.unternehmenId,
-    expertId,
-    aufgabeId: aufgabeId || null,
-    anbieter,
-    modell,
+    companyId: req.params.unternehmenId,
+    agentId: expertId,
+    taskId: aufgabeId || null,
+    provider: anbieter,
+    model: modell,
     inputTokens: inputTokens || 0,
     outputTokens: outputTokens || 0,
-    kostenCent,
-    zeitpunkt: now(),
-    erstelltAm: now(),
+    costCent: kostenCent,
+    timestamp: now(),
+    createdAt: now(),
   }).run();
 
   // Update expert spent
-  db.update(experten).set({
-    verbrauchtMonatCent: sql`${experten.verbrauchtMonatCent} + ${kostenCent}`,
-    aktualisiertAm: now(),
-  }).where(eq(experten.id, expertId)).run();
+  db.update(agents).set({
+    monthlySpendCent: sql`${agents.monthlySpendCent} + ${kostenCent}`,
+    updatedAt: now(),
+  }).where(eq(agents.id, expertId as string)).run();
 
   // Check budget threshold
-  const agent = db.select().from(experten).where(eq(experten.id, expertId)).get();
-  if (agent && agent.budgetMonatCent > 0) {
-    const prozent = Math.round((agent.verbrauchtMonatCent / agent.budgetMonatCent) * 100);
+  const agent = db.select().from(agents).where(eq(agents.id, expertId as string)).get();
+  if (agent && agent.monthlyBudgetCent > 0) {
+    const prozent = Math.round((agent.monthlySpendCent / agent.monthlyBudgetCent) * 100);
     if (prozent >= 100 && agent.status !== 'paused') {
-      db.update(experten).set({ status: 'paused', aktualisiertAm: now() }).where(eq(experten.id, expertId)).run();
-      logAktivitaet(req.params.unternehmenId, 'system', 'system', 'System', `${agent.name} wurde pausiert (Budget ${prozent}%)`, 'experten', expertId);
+      db.update(agents).set({ status: 'paused', updatedAt: now() }).where(eq(agents.id, expertId as string)).run();
+      logAktivitaet(req.params.unternehmenId, 'system', 'system', 'System', `${agent.name} wurde pausiert (Budget ${prozent}%)`, 'agents', expertId);
     }
   }
 
@@ -1423,91 +1833,97 @@ app.post('/api/unternehmen/:unternehmenId/kostenbuchungen', (req, res) => {
 // =============================================
 // PROJEKTE
 // =============================================
-app.get('/api/unternehmen/:unternehmenId/projekte', (req, res) => {
-  const result = db.select().from(projekte)
-    .where(eq(projekte.unternehmenId, req.params.unternehmenId))
-    .orderBy(desc(projekte.erstelltAm))
+app.get('/api/companies/:unternehmenId/projects', (req, res) => {
+  const result = db.select().from(projects)
+    .where(eq(projects.companyId, req.params.unternehmenId))
+    .orderBy(desc(projects.createdAt))
     .all();
   res.json(result);
 });
 
-app.post('/api/unternehmen/:unternehmenId/projekte', (req, res) => {
+app.post('/api/companies/:unternehmenId/projects', (req, res) => {
   const { name, beschreibung, prioritaet, zielId, eigentuemerId, farbe, deadline, workDir } = req.body;
-  if (!name) return res.status(400).json({ error: 'Name ist erforderlich' });
+  if (!name) return res.status(400).json({ error: 'Name required' });
 
   const unternehmenId = req.params.unternehmenId;
   const id = uuid();
-  db.insert(projekte).values({
-    id, unternehmenId, name,
-    beschreibung: beschreibung || null,
-    prioritaet: prioritaet || 'medium',
-    zielId: zielId || null,
-    eigentuemerId: eigentuemerId || null,
-    farbe: farbe || '#23CDCB',
+  db.insert(projects).values({
+    id, companyId: unternehmenId, name,
+    description: beschreibung || null,
+    priority: prioritaet || 'medium',
+    goalId: zielId || null,
+    ownerAgentId: eigentuemerId || null,
+    color: farbe || '#23CDCB',
     deadline: deadline || null,
     workDir: workDir?.trim() || null,
-    fortschritt: 0,
-    erstelltAm: now(),
-    aktualisiertAm: now(),
+    progress: 0,
+    createdAt: now(),
+    updatedAt: now(),
   }).run();
 
-  const projekt = db.select().from(projekte).where(eq(projekte.id, id)).get();
+  const projekt = db.select().from(projects).where(eq(projects.id, id)).get();
   logAktivitaet(unternehmenId, 'board', 'board', 'Board', `hat Projekt „${name}" erstellt`, 'projekt', id);
   res.status(201).json(projekt);
 });
 
-app.get('/api/projekte/:id', (req, res) => {
-  const projekt = db.select().from(projekte).where(eq(projekte.id, req.params.id)).get();
-  if (!projekt) return res.status(404).json({ error: 'Projekt nicht gefunden' });
+app.get('/api/projects/:id', (req, res) => {
+  const projekt = db.select().from(projects).where(eq(projects.id, req.params.id as string)).get();
+  if (!projekt) return res.status(404).json({ error: 'Project not found' });
 
   // Aufgaben für dieses Projekt
-  const tasks = db.select().from(aufgaben)
-    .where(eq(aufgaben.projektId, req.params.id))
-    .orderBy(desc(aufgaben.erstelltAm))
+  const projectTasks = db.select().from(tasks)
+    .where(eq(tasks.projectId, req.params.id as string))
+    .orderBy(desc(tasks.createdAt))
     .all();
 
-  res.json({ ...projekt, aufgaben: tasks });
+  res.json({ ...projekt, tasks: projectTasks });
 });
 
-app.patch('/api/projekte/:id', (req, res) => {
-  const existing = db.select().from(projekte).where(eq(projekte.id, req.params.id)).get();
-  if (!existing) return res.status(404).json({ error: 'Projekt nicht gefunden' });
+app.patch('/api/projects/:id', (req, res) => {
+  const existing = db.select().from(projects).where(eq(projects.id, req.params.id as string)).get();
+  if (!existing) return res.status(404).json({ error: 'Project not found' });
 
-  const updates: any = { aktualisiertAm: now() };
+  const updates: any = { updatedAt: now() };
   const allowed = ['name', 'beschreibung', 'status', 'prioritaet', 'zielId', 'eigentuemerId', 'farbe', 'deadline', 'fortschritt', 'workDir'];
+  const keyMap: Record<string, string> = {
+    beschreibung: 'description', prioritaet: 'priority', zielId: 'goalId',
+    eigentuemerId: 'ownerAgentId', farbe: 'color', fortschritt: 'progress',
+  };
   for (const key of allowed) {
-    if (req.body[key] !== undefined) updates[key] = req.body[key];
+    if (req.body[key] !== undefined) {
+      updates[keyMap[key] || key] = req.body[key];
+    }
   }
 
-  db.update(projekte).set(updates).where(eq(projekte.id, req.params.id)).run();
-  res.json(db.select().from(projekte).where(eq(projekte.id, req.params.id)).get());
+  db.update(projects).set(updates).where(eq(projects.id, req.params.id as string)).run();
+  res.json(db.select().from(projects).where(eq(projects.id, req.params.id as string)).get());
 });
 
-app.delete('/api/projekte/:id', (req, res) => {
-  const existing = db.select().from(projekte).where(eq(projekte.id, req.params.id)).get();
-  if (!existing) return res.status(404).json({ error: 'Projekt nicht gefunden' });
+app.delete('/api/projects/:id', (req, res) => {
+  const existing = db.select().from(projects).where(eq(projects.id, req.params.id as string)).get();
+  if (!existing) return res.status(404).json({ error: 'Project not found' });
 
   // Tasks des Projekts: projektId auf null setzen (Tasks nicht löschen)
-  db.update(aufgaben).set({ projektId: null, aktualisiertAm: now() })
-    .where(eq(aufgaben.projektId, req.params.id)).run();
+  db.update(tasks).set({ projectId: null, updatedAt: now() })
+    .where(eq(tasks.projectId, req.params.id as string)).run();
 
-  db.delete(projekte).where(eq(projekte.id, req.params.id)).run();
-  logAktivitaet(existing.unternehmenId, 'board', 'board', 'Board', `hat Projekt „${existing.name}" gelöscht`, 'projekt', req.params.id);
+  db.delete(projects).where(eq(projects.id, req.params.id as string)).run();
+  logAktivitaet(existing.companyId, 'board', 'board', 'Board', `hat Projekt „${existing.name}" gelöscht`, 'projekt', req.params.id as string);
   res.json({ success: true });
 });
 
 // Fortschritt automatisch berechnen (% done Tasks)
-app.post('/api/projekte/:id/fortschritt-aktualisieren', (req, res) => {
-  const projekt = db.select().from(projekte).where(eq(projekte.id, req.params.id)).get();
-  if (!projekt) return res.status(404).json({ error: 'Projekt nicht gefunden' });
+app.post('/api/projects/:id/fortschritt-aktualisieren', (req, res) => {
+  const projekt = db.select().from(projects).where(eq(projects.id, req.params.id as string)).get();
+  if (!projekt) return res.status(404).json({ error: 'Project not found' });
 
-  const tasks = db.select().from(aufgaben).where(eq(aufgaben.projektId, req.params.id)).all();
-  const total = tasks.length;
-  const done = tasks.filter((t: any) => t.status === 'done').length;
+  const projectTasks = db.select().from(tasks).where(eq(tasks.projectId, req.params.id as string)).all();
+  const total = projectTasks.length;
+  const done = projectTasks.filter((t: any) => t.status === 'done').length;
   const fortschritt = total > 0 ? Math.round((done / total) * 100) : 0;
 
-  db.update(projekte).set({ fortschritt, aktualisiertAm: now() })
-    .where(eq(projekte.id, req.params.id)).run();
+  db.update(projects).set({ progress: fortschritt, updatedAt: now() })
+    .where(eq(projects.id, req.params.id as string)).run();
 
   res.json({ fortschritt, done, total });
 });
@@ -1515,9 +1931,9 @@ app.post('/api/projekte/:id/fortschritt-aktualisieren', (req, res) => {
 // =============================================
 // AGENT PERMISSIONS
 // =============================================
-app.get('/api/mitarbeiter/:id/permissions', (req, res) => {
+app.get('/api/agents/:id/permissions', (req, res) => {
   const perms = db.select().from(agentPermissions)
-    .where(eq(agentPermissions.expertId, req.params.id)).get();
+    .where(eq(agentPermissions.agentId, req.params.id as string)).get();
 
   if (!perms) {
     // Standard-Permissions zurückgeben (nicht gespeichert)
@@ -1536,16 +1952,16 @@ app.get('/api/mitarbeiter/:id/permissions', (req, res) => {
   res.json(perms);
 });
 
-app.put('/api/mitarbeiter/:id/permissions', (req, res) => {
-  const expertId = req.params.id;
-  const expert = db.select().from(experten).where(eq(experten.id, expertId)).get();
-  if (!expert) return res.status(404).json({ error: 'Experte nicht gefunden' });
+app.put('/api/agents/:id/permissions', (req, res) => {
+  const expertId = req.params.id as string;
+  const expert = db.select().from(agents).where(eq(agents.id, expertId as string)).get();
+  if (!expert) return res.status(404).json({ error: 'Agent not found' });
 
   const existing = db.select().from(agentPermissions)
-    .where(eq(agentPermissions.expertId, expertId)).get();
+    .where(eq(agentPermissions.agentId, expertId)).get();
 
   const data = {
-    expertId,
+    agentId: expertId,
     darfAufgabenErstellen: req.body.darfAufgabenErstellen ?? true,
     darfAufgabenZuweisen: req.body.darfAufgabenZuweisen ?? false,
     darfGenehmigungAnfordern: req.body.darfGenehmigungAnfordern ?? true,
@@ -1554,53 +1970,79 @@ app.put('/api/mitarbeiter/:id/permissions', (req, res) => {
     budgetLimitCent: req.body.budgetLimitCent ?? null,
     erlaubtePfade: req.body.erlaubtePfade ? JSON.stringify(req.body.erlaubtePfade) : null,
     erlaubteDomains: req.body.erlaubteDomains ? JSON.stringify(req.body.erlaubteDomains) : null,
-    aktualisiertAm: now(),
+    updatedAt: now(),
   };
 
   if (existing) {
-    db.update(agentPermissions).set(data).where(eq(agentPermissions.expertId, expertId)).run();
+    db.update(agentPermissions).set(data).where(eq(agentPermissions.agentId, expertId)).run();
   } else {
-    db.insert(agentPermissions).values({ id: uuid(), erstelltAm: now(), ...data }).run();
+    db.insert(agentPermissions).values({ id: uuid(), createdAt: now(), ...data }).run();
   }
 
-  res.json(db.select().from(agentPermissions).where(eq(agentPermissions.expertId, expertId)).get());
+  res.json(db.select().from(agentPermissions).where(eq(agentPermissions.agentId, expertId)).get());
 });
 
 // =============================================
 // AKTIVITÄT
 // =============================================
-app.get('/api/unternehmen/:unternehmenId/aktivitaet', (req, res) => {
+app.get('/api/companies/:unternehmenId/activity', (req, res) => {
   const limit = parseInt(req.query.limit as string) || 50;
-  const result = db.select().from(aktivitaetslog)
-    .where(eq(aktivitaetslog.unternehmenId, req.params.unternehmenId))
-    .orderBy(desc(aktivitaetslog.erstelltAm))
+  const rows = db.select().from(activityLog)
+    .where(eq(activityLog.companyId, req.params.unternehmenId))
+    .orderBy(desc(activityLog.createdAt))
     .limit(limit)
     .all();
-  res.json(result);
+  res.json(rows.map((a: any) => ({
+    id: a.id,
+    unternehmenId: a.companyId,
+    akteurTyp: a.actorType,
+    akteurId: a.actorId,
+    akteurName: a.actorName,
+    aktion: a.action,
+    entitaetTyp: a.entityType,
+    entitaetId: a.entityId,
+    details: a.details,
+    erstelltAm: a.createdAt,
+  })));
 });
 
 // =============================================
 // AGENTEN API (Für ausgehende Aufrufe der Agenten)
 // =============================================
 
+// Derives a deterministic, secret-backed token for an agent.
+// Token = "ak_" + HMAC-SHA256(JWT_SECRET, agentId:companyId)[0..31]
+function deriveAgentToken(agentId: string, companyId: string): string {
+  return 'ak_' + crypto.createHmac('sha256', JWT_SECRET).update(`${agentId}:${companyId}`).digest('hex').slice(0, 32);
+}
+// Expose token generation for use in GET /api/agents/:id/token
+(global as any).__deriveAgentToken = deriveAgentToken;
+
 // Middleware für Experten-Authentifizierung
 const agentAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const authHeader = req.headers.authorization;
   const expertId = req.headers['x-expert-id'] || req.headers['x-agent-id'] || process.env.OPENCOGNIT_EXPERT_ID;
-  const unternehmenId = req.headers['x-unternehmen-id'] || req.headers['x-firma-id'] || process.env.OPENCOGNIT_UNTERNEHMEN_ID;
+  const unternehmenId = req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id'] || process.env.OPENCOGNIT_UNTERNEHMEN_ID;
 
   if (!authHeader || !authHeader.startsWith('Bearer ak_')) {
     return res.status(401).json({ error: 'Unauthorized. Invalid API Key format.' });
   }
 
   if (!expertId || !unternehmenId) {
-    return res.status(400).json({ error: 'Missing x-expert-id or x-unternehmen-id headers' });
+    return res.status(400).json({ error: 'Missing x-agent-id or x-company-id headers' });
+  }
+
+  // Verify the token cryptographically — must match HMAC(secret, agentId:companyId)
+  const providedToken = authHeader.slice(7); // strip "Bearer "
+  const expectedToken = deriveAgentToken(expertId as string, unternehmenId as string);
+  if (!crypto.timingSafeEqual(Buffer.from(providedToken), Buffer.from(expectedToken))) {
+    return res.status(401).json({ error: 'Invalid API key.' });
   }
 
   // Verify agent exists and belongs to company
   const expert = db.select()
-    .from(experten)
-    .where(and(eq(experten.id, expertId as string), eq(experten.unternehmenId, unternehmenId as string)))
+    .from(agents)
+    .where(and(eq(agents.id, expertId as string), eq(agents.companyId, unternehmenId as string)))
     .get();
 
   if (!expert) {
@@ -1614,15 +2056,15 @@ const agentAuth = (req: express.Request, res: express.Response, next: express.Ne
 
   // Attach verified agent info to request
   (req as any).expert = expert;
-  req.body.expertId = expertId;
-  req.body.unternehmenId = unternehmenId;
+  req.body.agentId = expertId;
+  req.body.companyId = unternehmenId;
   next();
 };
 
 // ===== Permission Helper =====
 function getAgentPermissions(expertId: string) {
   const perms = db.select().from(agentPermissions)
-    .where(eq(agentPermissions.expertId, expertId)).get();
+    .where(eq(agentPermissions.agentId, expertId)).get();
   // Defaults wenn keine Permissions gesetzt
   return perms ?? {
     darfAufgabenErstellen: true,
@@ -1638,14 +2080,14 @@ function getAgentPermissions(expertId: string) {
 
 // ===== On-Demand Wakeup Endpoint =====
 // Manuelles Aufwecken eines Agenten über das Dashboard
-app.post('/api/experten/:id/wakeup', async (req, res) => {
-  const expertId = req.params.id;
-  const expert = db.select().from(experten).where(eq(experten.id, expertId)).get();
-  if (!expert) return res.status(404).json({ error: 'Agent nicht gefunden' });
+app.post('/api/agents/:id/wakeup', async (req, res) => {
+  const expertId = req.params.id as string;
+  const expert = db.select().from(agents).where(eq(agents.id, expertId as string)).get();
+  if (!expert) return res.status(404).json({ error: 'Agent not found' });
   if (expert.status === 'terminated') return res.status(409).json({ error: 'Agent ist beendet' });
 
   try {
-    const wakeupId = await wakeupService.wakeup(expertId, expert.unternehmenId, {
+    const wakeupId = await wakeupService.wakeup(expertId, expert.companyId, {
       source: 'on_demand',
       triggerDetail: 'manual',
       reason: 'Manuell aufgeweckt über Dashboard',
@@ -1657,19 +2099,19 @@ app.post('/api/experten/:id/wakeup', async (req, res) => {
 });
 
 // ===== Agent Performance (Self-Evolving Agents) =====
-app.get('/api/experten/:id/performance', async (req, res) => {
+app.get('/api/agents/:id/performance', async (req, res) => {
   try {
     const days = Math.max(1, Math.min(180, parseInt(req.query.days as string) || 30));
     const { getAgentPerformance } = await import('./services/agent-performance.js');
     const result = getAgentPerformance(req.params.id, days);
-    if (!result) return res.status(404).json({ error: 'Agent nicht gefunden' });
+    if (!result) return res.status(404).json({ error: 'Agent not found' });
     res.json(result);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
 
-app.get('/api/unternehmen/:id/performance/leaderboard', async (req, res) => {
+app.get('/api/companies/:id/performance/leaderboard', async (req, res) => {
   try {
     const days = Math.max(1, Math.min(180, parseInt(req.query.days as string) || 30));
     const { getCompanyLeaderboard } = await import('./services/agent-performance.js');
@@ -1680,8 +2122,8 @@ app.get('/api/unternehmen/:id/performance/leaderboard', async (req, res) => {
 });
 
 // ===== Inbox Endpoint - Agent fetches assigned tasks =====
-app.get('/api/experten/:id/inbox', (req, res) => {
-  const expertId = req.params.id;
+app.get('/api/agents/:id/inbox', (req, res) => {
+  const expertId = req.params.id as string;
   const unternehmenId = req.query.unternehmenId as string;
 
   if (!unternehmenId) {
@@ -1690,8 +2132,8 @@ app.get('/api/experten/:id/inbox', (req, res) => {
 
   // Verify expert exists and belongs to company
   const expert = db.select()
-    .from(experten)
-    .where(and(eq(experten.id, expertId), eq(experten.unternehmenId, unternehmenId)))
+    .from(agents)
+    .where(and(eq(agents.id, expertId), eq(agents.companyId, unternehmenId)))
     .get();
 
   if (!expert) {
@@ -1704,23 +2146,23 @@ app.get('/api/experten/:id/inbox', (req, res) => {
   }
 
   // Get assigned tasks that are not done
-  const tasks = db.select({
-    id: aufgaben.id,
-    titel: aufgaben.titel,
-    beschreibung: aufgaben.beschreibung,
-    status: aufgaben.status,
-    prioritaet: aufgaben.prioritaet,
-    executionLockedAt: aufgaben.executionLockedAt,
-    executionRunId: aufgaben.executionRunId,
-    erstelltAm: aufgaben.erstelltAm,
-    aktualisiertAm: aufgaben.aktualisiertAm,
+  const assignedTasks = db.select({
+    id: tasks.id,
+    titel: tasks.title,
+    beschreibung: tasks.description,
+    status: tasks.status,
+    prioritaet: tasks.priority,
+    executionLockedAt: tasks.executionLockedAt,
+    executionRunId: tasks.executionRunId,
+    erstelltAm: tasks.createdAt,
+    aktualisiertAm: tasks.updatedAt,
   })
-    .from(aufgaben)
+    .from(tasks)
     .where(
       and(
-        eq(aufgaben.unternehmenId, unternehmenId),
-        eq(aufgaben.zugewiesenAn, expertId),
-        inArray(aufgaben.status, ['backlog', 'todo', 'in_progress', 'blocked'])
+        eq(tasks.companyId, unternehmenId),
+        eq(tasks.assignedTo, expertId),
+        inArray(tasks.status, ['backlog', 'todo', 'in_progress', 'blocked'])
       )
     )
     .all();
@@ -1728,63 +2170,63 @@ app.get('/api/experten/:id/inbox', (req, res) => {
   res.json({
     expertId,
     unternehmenId,
-    inbox: tasks,
-    count: tasks.length,
+    inbox: assignedTasks,
+    count: assignedTasks.length,
   });
 });
 
 // ===== Team Status Endpoint - Orchestrator fetches team overview =====
-app.get('/api/experten/:id/team-status', authMiddleware, (req, res) => {
-  const expertId = req.params.id;
-  const unternehmenId = (req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
+app.get('/api/agents/:id/team-status', authMiddleware, (req, res) => {
+  const expertId = req.params.id as string;
+  const unternehmenId = (req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
 
   if (!unternehmenId) return res.status(400).json({ error: 'unternehmenId header required' });
 
-  const expert = db.select().from(experten).where(and(eq(experten.id, expertId), eq(experten.unternehmenId, unternehmenId))).get();
+  const expert = db.select().from(agents).where(and(eq(agents.id, expertId), eq(agents.companyId, unternehmenId))).get();
   if (!expert) return res.status(404).json({ error: 'Agent not found' });
 
   // Direct reports
   const directReports = db.select({
-    id: experten.id,
-    name: experten.name,
-    rolle: experten.rolle,
-    status: experten.status,
-    letzterZyklus: experten.letzterZyklus,
-    isOrchestrator: experten.isOrchestrator,
-  }).from(experten).where(and(eq(experten.unternehmenId, unternehmenId), eq(experten.reportsTo, expertId))).all();
+    id: agents.id,
+    name: agents.name,
+    rolle: agents.role,
+    status: agents.status,
+    letzterZyklus: agents.lastCycle,
+    isOrchestrator: agents.isOrchestrator,
+  }).from(agents).where(and(eq(agents.companyId, unternehmenId), eq(agents.reportsTo, expertId as string))).all();
 
   const reportIds = directReports.map((e: any) => e.id);
 
   // Tasks for direct reports
   const teamTasks = reportIds.length > 0
     ? db.select({
-        id: aufgaben.id,
-        titel: aufgaben.titel,
-        status: aufgaben.status,
-        prioritaet: aufgaben.prioritaet,
-        zugewiesenAn: aufgaben.zugewiesenAn,
-      }).from(aufgaben)
-        .where(and(eq(aufgaben.unternehmenId, unternehmenId), inArray(aufgaben.zugewiesenAn, reportIds)))
+        id: tasks.id,
+        titel: tasks.title,
+        status: tasks.status,
+        prioritaet: tasks.priority,
+        zugewiesenAn: tasks.assignedTo,
+      }).from(tasks)
+        .where(and(eq(tasks.companyId, unternehmenId), inArray(tasks.assignedTo, reportIds)))
         .all()
     : [];
 
   // Unassigned tasks (orchestrator can delegate)
   const unassigned = db.select({
-    id: aufgaben.id,
-    titel: aufgaben.titel,
-    prioritaet: aufgaben.prioritaet,
-    status: aufgaben.status,
-    beschreibung: aufgaben.beschreibung,
-  }).from(aufgaben)
-    .where(and(eq(aufgaben.unternehmenId, unternehmenId), isNull(aufgaben.zugewiesenAn)))
+    id: tasks.id,
+    titel: tasks.title,
+    prioritaet: tasks.priority,
+    status: tasks.status,
+    beschreibung: tasks.description,
+  }).from(tasks)
+    .where(and(eq(tasks.companyId, unternehmenId), isNull(tasks.assignedTo)))
     .all()
     .filter((t: any) => !['done', 'cancelled', 'abgeschlossen'].includes(t.status));
 
   // Enrich direct reports with task stats
   const tasksByAgent: Record<string, any[]> = {};
   for (const t of teamTasks) {
-    if (!tasksByAgent[t.zugewiesenAn]) tasksByAgent[t.zugewiesenAn] = [];
-    tasksByAgent[t.zugewiesenAn].push(t);
+    if (!tasksByAgent[t.assignedTo]) tasksByAgent[t.assignedTo] = [];
+    tasksByAgent[t.assignedTo].push(t);
   }
 
   const team = directReports.map((e: any) => {
@@ -1800,60 +2242,60 @@ app.get('/api/experten/:id/team-status', authMiddleware, (req, res) => {
   res.json({ team, unassigned });
 });
 
-app.post('/api/agent/aufgaben', agentAuth, (req, res) => {
+app.post('/api/agent/tasks', agentAuth, (req, res) => {
   const { titel, beschreibung, prioritaet, zugewiesenAn, expertId, unternehmenId } = req.body;
-  if (!titel) return res.status(400).json({ error: 'Titel ist erforderlich' });
+  if (!titel) return res.status(400).json({ error: 'Title required' });
 
   // Permission check
   const perms = getAgentPermissions(expertId);
   if (!perms.darfAufgabenErstellen) {
-    return res.status(403).json({ error: 'Keine Berechtigung: Aufgaben erstellen nicht erlaubt' });
+    return res.status(403).json({ error: 'No permission: cannot create tasks' });
   }
   if (zugewiesenAn && !perms.darfAufgabenZuweisen) {
-    return res.status(403).json({ error: 'Keine Berechtigung: Aufgaben zuweisen nicht erlaubt' });
+    return res.status(403).json({ error: 'No permission: cannot assign tasks' });
   }
 
-  const agent = db.select().from(experten).where(eq(experten.id, expertId)).get();
+  const agent = db.select().from(agents).where(eq(agents.id, expertId as string)).get();
   const id = uuid();
 
-  db.insert(aufgaben).values({
-    id, unternehmenId, titel, beschreibung,
+  db.insert(tasks).values({
+    id, companyId: unternehmenId, title: titel, description: beschreibung,
     status: 'backlog',
-    prioritaet: prioritaet || 'medium',
-    zugewiesenAn: zugewiesenAn || null,
-    erstelltVon: expertId,
-    erstelltAm: now(),
-    aktualisiertAm: now(),
+    priority: prioritaet || 'medium',
+    assignedTo: zugewiesenAn || null,
+    createdBy: expertId,
+    createdAt: now(),
+    updatedAt: now(),
   }).run();
 
   logAktivitaet(unternehmenId, 'agent', expertId, agent?.name || 'Experte', `hat Aufgabe „${titel}" erstellt`, 'aufgabe', id);
   res.status(201).json({ success: true, id });
 });
 
-app.post('/api/agent/aufgaben/:id/status', agentAuth, (req, res) => {
+app.post('/api/agent/tasks/:id/status', agentAuth, (req, res) => {
   const id = req.params.id as string;
   const { status } = req.body;
-  const expertId = req.body.expertId as string;
+  const expertId = req.body.agentId as string;
 
   const VALID_STATUSES = ['backlog', 'todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled'];
   if (!status || !VALID_STATUSES.includes(status)) {
     return res.status(400).json({ error: `Ungültiger Status. Erlaubt: ${VALID_STATUSES.join(', ')}` });
   }
 
-  const aufgabe = db.select().from(aufgaben).where(eq(aufgaben.id, id)).get();
-  if (!aufgabe) return res.status(404).json({ error: 'Aufgabe nicht gefunden' });
+  const aufgabe = db.select().from(tasks).where(eq(tasks.id, id)).get();
+  if (!aufgabe) return res.status(404).json({ error: 'Task not found' });
 
-  db.update(aufgaben)
-    .set({ status, aktualisiertAm: new Date().toISOString() })
-    .where(eq(aufgaben.id, id))
+  db.update(tasks)
+    .set({ status, updatedAt: new Date().toISOString() })
+    .where(eq(tasks.id, id))
     .run();
 
   broadcastUpdate('task_updated', { id, status });
 
-  const agent = db.select().from(experten).where(eq(experten.id, expertId)).get();
+  const agent = db.select().from(agents).where(eq(agents.id, expertId as string)).get();
   const agentName = agent?.name || '';
-  const taskTitel = aufgabe?.titel || '';
-  const unternehmenId = aufgabe?.unternehmenId || req.body.unternehmenId;
+  const taskTitel = aufgabe?.title || '';
+  const unternehmenId = aufgabe?.companyId || req.body.companyId;
 
   if (status === 'done') {
     broadcastUpdate('task_completed', { unternehmenId, taskId: id, taskTitel, agentName });
@@ -1868,38 +2310,38 @@ app.post('/api/agent/aufgaben/:id/status', agentAuth, (req, res) => {
 
 // Agent Chat Reply Endpoint
 app.post('/api/agent/chat', agentAuth, (req, res) => {
-  const expertId = req.body.expertId;
-  const unternehmenId = req.body.unternehmenId;
+  const expertId = req.body.agentId;
+  const unternehmenId = req.body.companyId;
   const { nachricht } = req.body;
 
   if (!nachricht) return res.status(400).json({ error: 'Missing nachricht' });
 
   const msg = {
     id: uuid(),
-    unternehmenId,
-    expertId,
-    absenderTyp: 'agent' as const,
-    nachricht,
-    gelesen: false,
-    erstelltAm: new Date().toISOString()
+    companyId: unternehmenId,
+    agentId: expertId,
+    senderType: 'agent' as const,
+    message: nachricht,
+    read: false,
+    createdAt: new Date().toISOString()
   };
 
-  db.insert(chatNachrichten).values(msg).run();
+  db.insert(chatMessages).values(msg).run();
 
   broadcastUpdate('chat_message', msg);
 
   res.json({ status: 'ok', message: msg });
 });
 
-app.post('/api/agent/aufgaben/:id/kommentar', agentAuth, (req, res) => {
+app.post('/api/agent/tasks/:id/kommentar', agentAuth, (req, res) => {
   const aufgabeId = req.params.id as string;
   const { inhalt, expertId, unternehmenId } = req.body;
   const id = uuid();
-  db.insert(kommentare).values({
-    id, unternehmenId, aufgabeId, autorExpertId: expertId, autorTyp: 'agent', inhalt, erstelltAm: now()
+  db.insert(comments).values({
+    id, companyId: unternehmenId, taskId: aufgabeId, authorAgentId: expertId, authorType: 'agent', content: inhalt, createdAt: now()
   }).run();
 
-  const agent = db.select().from(experten).where(eq(experten.id, expertId)).get();
+  const agent = db.select().from(agents).where(eq(agents.id, expertId as string)).get();
   logAktivitaet(unternehmenId, 'agent', expertId, agent?.name || 'Experte', 'hat einen Kommentar hinterlassen', 'aufgabe', aufgabeId);
   res.status(201).json({ success: true });
 });
@@ -1907,102 +2349,119 @@ app.post('/api/agent/aufgaben/:id/kommentar', agentAuth, (req, res) => {
 // =============================================
 // DASHBOARD
 // =============================================
-app.get('/api/unternehmen/:unternehmenId/dashboard', (req, res) => {
+app.get('/api/companies/:unternehmenId/dashboard', (req, res) => {
   const unternehmenId = req.params.unternehmenId;
 
   try {
-    const agenten = db.select().from(experten).where(eq(experten.unternehmenId, unternehmenId)).all();
-    const tasks = db.select().from(aufgaben).where(eq(aufgaben.unternehmenId, unternehmenId)).all();
-    const pendingApprovals = db.select().from(genehmigungen).where(and(eq(genehmigungen.unternehmenId, unternehmenId), eq(genehmigungen.status, 'pending'))).all();
-    const recentActivity = db.select().from(aktivitaetslog).where(eq(aktivitaetslog.unternehmenId, unternehmenId)).orderBy(desc(aktivitaetslog.erstelltAm)).limit(10).all();
-    const unternehmenData = db.select().from(unternehmen).where(eq(unternehmen.id, unternehmenId)).get();
+    const agenten = db.select().from(agents).where(eq(agents.companyId, unternehmenId)).all();
+    const companyTasks = db.select().from(tasks).where(eq(tasks.companyId, unternehmenId)).all();
+    const pendingApprovals = db.select().from(approvals).where(and(eq(approvals.companyId, unternehmenId), eq(approvals.status, 'pending'))).all();
+    const recentActivity = db.select().from(activityLog).where(eq(activityLog.companyId, unternehmenId)).orderBy(desc(activityLog.createdAt)).limit(10).all();
+    const unternehmenData = db.select().from(companies).where(eq(companies.id, unternehmenId)).get();
 
     const aktiveAgenten = agenten.filter((a: any) => ['active', 'running', 'idle'].includes(a.status)).length;
-    const offeneAufgaben = tasks.filter((t: any) => !['done', 'cancelled'].includes(t.status)).length;
-    const inBearbeitung = tasks.filter((t: any) => t.status === 'in_progress').length;
-    const gesamtVerbraucht = agenten.reduce((s: number, a: any) => s + (a.verbrauchtMonatCent || 0), 0);
-    const gesamtBudget = agenten.reduce((s: number, a: any) => s + (a.budgetMonatCent || 0), 0);
+    const offeneAufgaben = companyTasks.filter((t: any) => !['done', 'cancelled'].includes(t.status)).length;
+    const inBearbeitung = companyTasks.filter((t: any) => t.status === 'in_progress').length;
+    const gesamtVerbraucht = agenten.reduce((s: number, a: any) => s + (a.monthlySpendCent || 0), 0);
+    const gesamtBudget = agenten.reduce((s: number, a: any) => s + (a.monthlyBudgetCent || 0), 0);
 
     // Projects: top 5 active by progress descending
-    const alleProj = db.select().from(projekte)
-      .where(and(eq(projekte.unternehmenId, unternehmenId), eq(projekte.status, 'aktiv')))
-      .orderBy(desc(projekte.aktualisiertAm))
+    const alleProj = db.select().from(projects)
+      .where(and(eq(projects.companyId, unternehmenId), eq(projects.status, 'aktiv')))
+      .orderBy(desc(projects.updatedAt))
       .limit(5).all();
 
     // Goals: active/planned company-level
-    const aktiveZiele = db.select().from(ziele)
+    const aktiveZiele = db.select().from(goals)
       .where(and(
-        eq(ziele.unternehmenId, unternehmenId),
-        eq(ziele.ebene, 'company'),
-        sql`${ziele.status} IN ('active','planned')`,
+        eq(goals.companyId, unternehmenId),
+        eq(goals.level, 'company'),
+        sql`${goals.status} IN ('active','planned')`,
       ))
-      .orderBy(asc(ziele.erstelltAm))
+      .orderBy(asc(goals.createdAt))
       .limit(8).all();
 
     // Last trace events (across all agents)
     const letzteTrace = db.select({
-      id: traceEreignisse.id,
-      expertId: traceEreignisse.expertId,
-      typ: traceEreignisse.typ,
-      titel: traceEreignisse.titel,
-      erstelltAm: traceEreignisse.erstelltAm,
-    }).from(traceEreignisse)
-      .where(eq(traceEreignisse.unternehmenId, unternehmenId))
-      .orderBy(desc(traceEreignisse.erstelltAm))
+      id: traceEvents.id,
+      expertId: traceEvents.agentId,
+      typ: traceEvents.type,
+      titel: traceEvents.title,
+      erstelltAm: traceEvents.createdAt,
+    }).from(traceEvents)
+      .where(eq(traceEvents.companyId, unternehmenId))
+      .orderBy(desc(traceEvents.createdAt))
       .limit(10).all();
 
     // Build expert-name lookup for trace events
     const agentNameMap = Object.fromEntries(agenten.map((a: any) => [a.id, a.name]));
 
-    // Enrich agents with their current active task + last trace event
+    // Enrich agents with their current active task + last trace event + principles
     const enrichedAgenten = agenten.map((a: any) => {
-      const currentTask = tasks.find((t: any) =>
-        t.zugewiesenAn === a.id && t.status === 'in_progress'
-      ) || tasks.find((t: any) =>
-        t.zugewiesenAn === a.id && t.status === 'todo'
+      const currentTask = companyTasks.find((t: any) =>
+        t.assignedTo === a.id && t.status === 'in_progress'
+      ) || companyTasks.find((t: any) =>
+        t.assignedTo === a.id && t.status === 'todo'
       ) || null;
-      const lastTrace = letzteTrace.find(t => t.expertId === a.id) || null;
-      const budgetPct = a.budgetMonatCent > 0
-        ? Math.round((a.verbrauchtMonatCent / a.budgetMonatCent) * 100) : 0;
+      const lastTrace = letzteTrace.find(t => t.agentId === a.id) || null;
+      const budgetPct = a.monthlyBudgetCent > 0
+        ? Math.round((a.monthlySpendCent / a.monthlyBudgetCent) * 100) : 0;
+      // Extract principles from system prompt
+      const sp = a.systemPrompt || '';
+      const extract = (tag: string) => {
+        const m = sp.match(new RegExp(`## ${tag}\n([\\s\\S]*?)(?=\n## |$)`));
+        return m ? m[1].trim() : '';
+      };
+      const principlesRaw = extract('ENTSCHEIDUNGSPRINZIPIEN') || extract('DECISION PRINCIPLES');
+      const principles = principlesRaw
+        ? principlesRaw.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0 && /^[-•*\d]/.test(l)).slice(0, 3)
+        : [];
       return {
         ...a,
-        currentTask: currentTask ? { id: currentTask.id, titel: currentTask.titel, status: currentTask.status } : null,
+        currentTask: currentTask ? { id: currentTask.id, titel: currentTask.title, status: currentTask.status } : null,
         lastTrace,
         budgetPct,
+        principles,
       };
     });
 
+    const agentsData = {
+      gesamt: agenten.length,
+      aktiv: aktiveAgenten,
+      running: agenten.filter((a: any) => a.status === 'running').length,
+      paused: agenten.filter((a: any) => a.status === 'paused').length,
+      error: agenten.filter((a: any) => a.status === 'error').length,
+    };
+    const tasksData = {
+      gesamt: companyTasks.length,
+      offen: offeneAufgaben,
+      inBearbeitung,
+      erledigt: companyTasks.filter((t: any) => t.status === 'done').length,
+      fehlgeschlagen: companyTasks.filter((t: any) => t.status === 'failed').length,
+      blockiert: companyTasks.filter((t: any) => t.status === 'blocked').length,
+      completedPerDay: (() => {
+        const days: string[] = [];
+        for (let i = 13; i >= 0; i--) {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          days.push(d.toDateString());
+        }
+        return days.map(day =>
+          companyTasks.filter((t: any) =>
+            t.status === 'done' && t.completedAt &&
+            new Date(t.completedAt).toDateString() === day
+          ).length
+        );
+      })(),
+    };
+
     res.json({
+      companies: unternehmenData,
       unternehmen: unternehmenData,
-      experten: {
-        gesamt: agenten.length,
-        aktiv: aktiveAgenten,
-        running: agenten.filter((a: any) => a.status === 'running').length,
-        paused: agenten.filter((a: any) => a.status === 'paused').length,
-        error: agenten.filter((a: any) => a.status === 'error').length,
-      },
-      aufgaben: {
-        gesamt: tasks.length,
-        offen: offeneAufgaben,
-        inBearbeitung,
-        erledigt: tasks.filter((t: any) => t.status === 'done').length,
-        fehlgeschlagen: tasks.filter((t: any) => t.status === 'failed').length,
-        blockiert: tasks.filter((t: any) => t.status === 'blocked').length,
-        completedPerDay: (() => {
-          const days: string[] = [];
-          for (let i = 13; i >= 0; i--) {
-            const d = new Date();
-            d.setDate(d.getDate() - i);
-            days.push(d.toDateString());
-          }
-          return days.map(day =>
-            tasks.filter((t: any) =>
-              t.status === 'done' && t.abgeschlossenAm &&
-              new Date(t.abgeschlossenAm).toDateString() === day
-            ).length
-          );
-        })(),
-      },
+      agents: agentsData,
+      experten: agentsData,
+      tasks: tasksData,
+      aufgaben: tasksData,
       kosten: {
         gesamtVerbraucht,
         gesamtBudget,
@@ -2010,9 +2469,9 @@ app.get('/api/unternehmen/:unternehmenId/dashboard', (req, res) => {
       },
       zyklen: (() => {
         const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-        const recentZyklen = db.select({ status: arbeitszyklen.status })
-          .from(arbeitszyklen)
-          .where(and(eq(arbeitszyklen.unternehmenId, unternehmenId), sql`${arbeitszyklen.erstelltAm} >= ${cutoff}`))
+        const recentZyklen = db.select({ status: workCycles.status })
+          .from(workCycles)
+          .where(and(eq(workCycles.companyId, unternehmenId), sql`${workCycles.createdAt} >= ${cutoff}`))
           .all();
         return {
           total: recentZyklen.length,
@@ -2022,15 +2481,26 @@ app.get('/api/unternehmen/:unternehmenId/dashboard', (req, res) => {
       })(),
       recentActivityCount: (() => {
         const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-        return agenten.filter((a: any) => a.letzterZyklus && a.letzterZyklus >= cutoff24h).length;
+        return agenten.filter((a: any) => a.lastCycle && a.lastCycle >= cutoff24h).length;
       })(),
       pendingApprovals: pendingApprovals.length,
       topExperten: agenten.slice(0, 5),
       alleExperten: enrichedAgenten,
-      letzteAktivitaet: recentActivity,
+      letzteAktivitaet: recentActivity.map((a: any) => ({
+        id: a.id,
+        unternehmenId: a.companyId,
+        akteurTyp: a.actorType,
+        akteurId: a.actorId,
+        akteurName: a.actorName,
+        aktion: a.action,
+        entitaetTyp: a.entityType,
+        entitaetId: a.entityId,
+        details: a.details,
+        erstelltAm: a.createdAt,
+      })),
       topProjekte: alleProj,
       aktiveZiele,
-      letzteTrace: letzteTrace.map((t: any) => ({ ...t, expertName: agentNameMap[t.expertId] || t.expertId })),
+      letzteTrace: letzteTrace.map((t: any) => ({ ...t, expertName: agentNameMap[t.agentId] || t.agentId })),
     });
   } catch (err: any) {
     console.error('Dashboard Error:', err);
@@ -2041,135 +2511,146 @@ app.get('/api/unternehmen/:unternehmenId/dashboard', (req, res) => {
 // =============================================
 // ZIELE (Goals)
 // =============================================
-app.get('/api/unternehmen/:unternehmenId/ziele', authMiddleware, (req, res) => {
-  const result = db.select().from(ziele)
-    .where(eq(ziele.unternehmenId, req.params.unternehmenId as string))
-    .orderBy(asc(ziele.erstelltAm))
+app.get('/api/companies/:unternehmenId/goals', authMiddleware, (req, res) => {
+  const result = db.select().from(goals)
+    .where(eq(goals.companyId, req.params.unternehmenId as string))
+    .orderBy(asc(goals.createdAt))
     .all();
   res.json(result);
 });
 
-app.post('/api/unternehmen/:unternehmenId/ziele', authMiddleware, (req, res) => {
+app.post('/api/companies/:unternehmenId/goals', authMiddleware, (req, res) => {
   const uid = req.params.unternehmenId as string;
-  const { titel, beschreibung, ebene, parentId, status, fortschritt } = req.body as {
-    titel: string; beschreibung?: string; ebene?: string; parentId?: string; status?: string; fortschritt?: number;
-  };
-  if (!titel?.trim()) return res.status(400).json({ error: 'Titel fehlt' });
+  const b = req.body as any;
+  const titel = b.titel || b.title;
+  const { ebene, parentId, status, fortschritt } = b;
+  const beschreibung = b.beschreibung || b.description;
+  if (!titel?.trim()) return res.status(400).json({ error: 'Title missing' });
   const id = uuid();
   const ts = now();
-  db.insert(ziele).values({
-    id, unternehmenId: uid,
-    titel: titel.trim(),
-    beschreibung: beschreibung || null,
-    ebene: (ebene || 'company') as any,
+  db.insert(goals).values({
+    id, companyId: uid,
+    title: titel.trim(),
+    description: beschreibung || null,
+    level: (ebene || 'company') as any,
     parentId: parentId || null,
     status: (status || 'planned') as any,
-    fortschritt: Math.max(0, Math.min(100, Number(fortschritt ?? 0))),
-    erstelltAm: ts, aktualisiertAm: ts,
+    progress: Math.max(0, Math.min(100, Number(fortschritt ?? 0))),
+    createdAt: ts, updatedAt: ts,
   }).run();
-  logAktivitaet(uid, 'board', 'board', 'Board', `Ziel erstellt: "${titel.trim()}"`, 'unternehmen', uid);
-  res.status(201).json(db.select().from(ziele).where(eq(ziele.id, id)).get());
+  logAktivitaet(uid, 'board', 'board', 'Board', `Ziel erstellt: "${titel.trim()}"`, 'companies', uid);
+  res.status(201).json(db.select().from(goals).where(eq(goals.id, id)).get());
 });
 
-app.patch('/api/ziele/:id', authMiddleware, (req, res) => {
+app.patch('/api/goals/:id', authMiddleware, (req, res) => {
   const id = req.params.id as string;
-  const goal = db.select().from(ziele).where(eq(ziele.id, id)).get() as any;
-  if (!goal) return res.status(404).json({ error: 'Ziel nicht gefunden' });
+  const goal = db.select().from(goals).where(eq(goals.id, id)).get() as any;
+  if (!goal) return res.status(404).json({ error: 'Goal not found' });
   const { titel, beschreibung, status, ebene, fortschritt } = req.body;
-  db.update(ziele).set({
-    ...(titel !== undefined ? { titel } : {}),
-    ...(beschreibung !== undefined ? { beschreibung } : {}),
+  db.update(goals).set({
+    ...(titel !== undefined ? { title: titel } : {}),
+    ...(beschreibung !== undefined ? { description: beschreibung } : {}),
     ...(status !== undefined ? { status } : {}),
-    ...(ebene !== undefined ? { ebene } : {}),
-    ...(fortschritt !== undefined ? { fortschritt: Math.max(0, Math.min(100, Number(fortschritt))) } : {}),
-    aktualisiertAm: now(),
-  }).where(eq(ziele.id, id)).run();
-  res.json(db.select().from(ziele).where(eq(ziele.id, id)).get());
+    ...(ebene !== undefined ? { level: ebene } : {}),
+    ...(fortschritt !== undefined ? { progress: Math.max(0, Math.min(100, Number(fortschritt))) } : {}),
+    updatedAt: now(),
+  }).where(eq(goals.id, id)).run();
+  res.json(db.select().from(goals).where(eq(goals.id, id)).get());
 });
 
-app.delete('/api/ziele/:id', authMiddleware, (req, res) => {
-  db.delete(ziele).where(eq(ziele.id, req.params.id as string)).run();
+app.delete('/api/goals/:id', authMiddleware, (req, res) => {
+  db.delete(goals).where(eq(goals.id, req.params.id as string)).run();
   res.json({ ok: true });
 });
 
 // =============================================
 // ROUTINEN (Autonomous Agents Phase 1)
 // =============================================
-app.get('/api/unternehmen/:unternehmenId/routinen', (req, res) => {
-  const result = db.select().from(routinen)
-    .where(eq(routinen.unternehmenId, req.params.unternehmenId))
+app.get('/api/companies/:unternehmenId/routines', (req, res) => {
+  const result = db.select().from(routines)
+    .where(eq(routines.companyId, req.params.unternehmenId))
     .all();
   res.json(result);
 });
 
-app.post('/api/unternehmen/:unternehmenId/routinen', (req, res) => {
-  const { titel, beschreibung, zugewiesenAn, prioritaet, variablen } = req.body;
-  if (!titel) return res.status(400).json({ error: 'Titel ist erforderlich' });
+app.post('/api/companies/:unternehmenId/routines', (req, res) => {
+  const b = req.body as any;
+  const titel = b.titel || b.title;
+  const beschreibung = b.beschreibung || b.description;
+  const { zugewiesenAn, prioritaet, variablen } = b;
+  if (!titel) return res.status(400).json({ error: 'Title required' });
 
   const id = uuid();
-  db.insert(routinen).values({
+  db.insert(routines).values({
     id,
-    unternehmenId: req.params.unternehmenId,
-    titel,
-    beschreibung,
-    zugewiesenAn: zugewiesenAn || null,
-    prioritaet: prioritaet || 'medium',
+    companyId: req.params.unternehmenId,
+    title: titel,
+    description: beschreibung,
+    assignedTo: zugewiesenAn || null,
+    priority: prioritaet || 'medium',
     status: 'active',
-    variablen: variablen ? JSON.stringify(variablen) : null,
-    erstelltAm: now(),
-    aktualisiertAm: now(),
+    variables: variablen ? JSON.stringify(variablen) : null,
+    createdAt: now(),
+    updatedAt: now(),
   }).run();
 
-  const routine = db.select().from(routinen).where(eq(routinen.id, id)).get();
+  const routine = db.select().from(routines).where(eq(routines.id, id)).get();
   logAktivitaet(req.params.unternehmenId, 'board', 'board', 'Board', `hat Routine „${titel}" erstellt`, 'routine', id);
   res.status(201).json(routine);
 });
 
-app.get('/api/routinen/:id', (req, res) => {
-  const routine = db.select().from(routinen).where(eq(routinen.id, req.params.id)).get();
-  if (!routine) return res.status(404).json({ error: 'Routine nicht gefunden' });
+app.get('/api/routines/:id', (req, res) => {
+  const routine = db.select().from(routines).where(eq(routines.id, req.params.id as string)).get();
+  if (!routine) return res.status(404).json({ error: 'Routine not found' });
   res.json(routine);
 });
 
-app.patch('/api/routinen/:id', (req, res) => {
-  const updates: any = { aktualisiertAm: now() };
-  const allowed = ['titel', 'beschreibung', 'zugewiesenAn', 'prioritaet', 'status', 'variablen'];
-  for (const key of allowed) {
-    if (req.body[key] !== undefined) updates[key] = req.body[key];
+app.patch('/api/routines/:id', (req, res) => {
+  const updates: any = { updatedAt: now() };
+  const allowed: [string, string][] = [
+    ['titel', 'title'],
+    ['beschreibung', 'description'],
+    ['zugewiesenAn', 'assignedTo'],
+    ['prioritaet', 'priority'],
+    ['status', 'status'],
+    ['variablen', 'variables'],
+  ];
+  for (const [bodyKey, dbKey] of allowed) {
+    if (req.body[bodyKey] !== undefined) updates[dbKey] = req.body[bodyKey];
   }
 
-  db.update(routinen).set(updates).where(eq(routinen.id, req.params.id)).run();
-  const routine = db.select().from(routinen).where(eq(routinen.id, req.params.id)).get();
+  db.update(routines).set(updates).where(eq(routines.id, req.params.id as string)).run();
+  const routine = db.select().from(routines).where(eq(routines.id, req.params.id as string)).get();
   res.json(routine);
 });
 
-app.delete('/api/routinen/:id', (req, res) => {
-  const routine = db.select().from(routinen).where(eq(routinen.id, req.params.id)).get();
-  if (!routine) return res.status(404).json({ error: 'Routine nicht gefunden' });
-  db.delete(routinen).where(eq(routinen.id, req.params.id)).run();
-  logAktivitaet(routine.unternehmenId, 'board', 'board', 'Board', `hat Routine „${routine.titel}" gelöscht`, 'routine', routine.id);
+app.delete('/api/routines/:id', (req, res) => {
+  const routine = db.select().from(routines).where(eq(routines.id, req.params.id as string)).get();
+  if (!routine) return res.status(404).json({ error: 'Routine not found' });
+  db.delete(routines).where(eq(routines.id, req.params.id as string)).run();
+  logAktivitaet(routine.companyId, 'board', 'board', 'Board', `hat Routine „${routine.title}" gelöscht`, 'routine', routine.id);
   res.json({ success: true });
 });
 
 // =============================================
 // ROUTINE TRIGGER
 // =============================================
-app.get('/api/routinen/:routineId/triggers', (req, res) => {
+app.get('/api/routines/:routineId/triggers', (req, res) => {
   const result = db.select().from(routineTrigger)
     .where(eq(routineTrigger.routineId, req.params.routineId))
     .all();
   res.json(result);
 });
 
-app.post('/api/routinen/:routineId/triggers', (req, res) => {
+app.post('/api/routines/:routineId/triggers', (req, res) => {
   const { kind, cronExpression, timezone, aktiv } = req.body;
-  if (!kind) return res.status(400).json({ error: 'Trigger-Typ ist erforderlich' });
+  if (!kind) return res.status(400).json({ error: 'Trigger type required' });
   if (kind === 'schedule' && !cronExpression) {
-    return res.status(400).json({ error: 'Cron-Ausdruck ist erforderlich' });
+    return res.status(400).json({ error: 'Cron expression required' });
   }
 
-  const routine = db.select().from(routinen).where(eq(routinen.id, req.params.routineId)).get();
-  if (!routine) return res.status(404).json({ error: 'Routine nicht gefunden' });
+  const routine = db.select().from(routines).where(eq(routines.id, req.params.routineId)).get();
+  if (!routine) return res.status(404).json({ error: 'Routine not found' });
 
   const id = uuid();
   const publicId = kind === 'webhook' ? uuid() : null;
@@ -2177,120 +2658,124 @@ app.post('/api/routinen/:routineId/triggers', (req, res) => {
 
   db.insert(routineTrigger).values({
     id,
-    unternehmenId: routine.unternehmenId,
+    companyId: routine.companyId,
     routineId: req.params.routineId,
     kind,
     cronExpression: cronExpression || null,
     timezone: timezone || 'UTC',
-    aktiv: aktiv !== false,
+    active: aktiv !== false,
     publicId,
     secretId,
-    erstelltAm: now(),
+    createdAt: now(),
   }).run();
 
   // Calculate next run time for schedule triggers
   if (kind === 'schedule' && cronExpression) {
     const nextRun = cronService.nextCronTick(cronExpression);
     if (nextRun) {
-      db.update(routineTrigger).set({ naechsterAusfuehrungAm: nextRun.toISOString() })
+      db.update(routineTrigger).set({ nextExecutionAt: nextRun.toISOString() })
         .where(eq(routineTrigger.id, id)).run();
     }
   }
 
   const trigger = db.select().from(routineTrigger).where(eq(routineTrigger.id, id)).get();
-  logAktivitaet(routine.unternehmenId, 'board', 'board', 'Board', `hat Trigger für Routine „${routine.titel}" erstellt`, 'routine_trigger', id);
+  logAktivitaet(routine.companyId, 'board', 'board', 'Board', `hat Trigger für Routine „${routine.title}" erstellt`, 'routine_trigger', id);
   res.status(201).json(trigger);
 });
 
 app.patch('/api/triggers/:id', (req, res) => {
-  const updates: any = { aktualisiertAm: now() };
-  const allowed = ['aktiv', 'cronExpression', 'timezone'];
-  for (const key of allowed) {
-    if (req.body[key] !== undefined) updates[key] = req.body[key];
+  const updates: any = { updatedAt: now() };
+  const allowed: [string, string][] = [
+    ['aktiv', 'active'],
+    ['cronExpression', 'cronExpression'],
+    ['timezone', 'timezone'],
+  ];
+  for (const [bodyKey, dbKey] of allowed) {
+    if (req.body[bodyKey] !== undefined) updates[dbKey] = req.body[bodyKey];
   }
 
-  const trigger = db.select().from(routineTrigger).where(eq(routineTrigger.id, req.params.id)).get();
-  if (!trigger) return res.status(404).json({ error: 'Trigger nicht gefunden' });
+  const trigger = db.select().from(routineTrigger).where(eq(routineTrigger.id, req.params.id as string)).get();
+  if (!trigger) return res.status(404).json({ error: 'Trigger not found' });
 
   // Recalculate next run time if cron expression changed
   if (updates.cronExpression && trigger.kind === 'schedule') {
     const nextRun = cronService.nextCronTick(updates.cronExpression);
-    updates.naechsterAusfuehrungAm = nextRun?.toISOString() || null;
+    updates.nextExecutionAt = nextRun?.toISOString() || null;
   }
 
-  db.update(routineTrigger).set(updates).where(eq(routineTrigger.id, req.params.id)).run();
-  const updated = db.select().from(routineTrigger).where(eq(routineTrigger.id, req.params.id)).get();
+  db.update(routineTrigger).set(updates).where(eq(routineTrigger.id, req.params.id as string)).run();
+  const updated = db.select().from(routineTrigger).where(eq(routineTrigger.id, req.params.id as string)).get();
   res.json(updated);
 });
 
 app.delete('/api/triggers/:id', (req, res) => {
-  const trigger = db.select().from(routineTrigger).where(eq(routineTrigger.id, req.params.id)).get();
-  if (!trigger) return res.status(404).json({ error: 'Trigger nicht gefunden' });
-  db.delete(routineTrigger).where(eq(routineTrigger.id, req.params.id)).run();
+  const trigger = db.select().from(routineTrigger).where(eq(routineTrigger.id, req.params.id as string)).get();
+  if (!trigger) return res.status(404).json({ error: 'Trigger not found' });
+  db.delete(routineTrigger).where(eq(routineTrigger.id, req.params.id as string)).run();
   res.json({ success: true });
 });
 
 // =============================================
 // ROUTINE AUSFÜHRUNGEN
 // =============================================
-app.get('/api/routinen/:routineId/ausfuehrungen', (req, res) => {
+app.get('/api/routines/:routineId/ausfuehrungen', (req, res) => {
   const limit = parseInt(req.query.limit as string) || 50;
-  const result = db.select().from(routineAusfuehrung)
-    .where(eq(routineAusfuehrung.routineId, req.params.routineId))
-    .orderBy(desc(routineAusfuehrung.erstelltAm))
+  const result = db.select().from(routineRuns)
+    .where(eq(routineRuns.routineId, req.params.routineId))
+    .orderBy(desc(routineRuns.createdAt))
     .limit(limit)
     .all();
   res.json(result);
 });
 
-app.post('/api/routinen/:id/trigger', (req, res) => {
+app.post('/api/routines/:id/trigger', (req, res) => {
   // Manual trigger for a routine
-  const routine = db.select().from(routinen).where(eq(routinen.id, req.params.id)).get();
-  if (!routine) return res.status(404).json({ error: 'Routine nicht gefunden' });
+  const routine = db.select().from(routines).where(eq(routines.id, req.params.id as string)).get();
+  if (!routine) return res.status(404).json({ error: 'Routine not found' });
 
   const executionId = uuid();
-  db.insert(routineAusfuehrung).values({
+  db.insert(routineRuns).values({
     id: executionId,
-    unternehmenId: routine.unternehmenId,
+    companyId: routine.companyId,
     routineId: req.params.id,
-    quelle: 'manual',
+    source: 'manual',
     status: 'enqueued',
     payload: req.body.payload ? JSON.stringify(req.body.payload) : null,
-    erstelltAm: now(),
+    createdAt: now(),
   }).run();
 
   // Queue wakeup for assigned agent
-  if (routine.zugewiesenAn) {
-    wakeupService.wakeup(routine.zugewiesenAn, routine.unternehmenId, {
+  if (routine.assignedTo) {
+    wakeupService.wakeup(routine.assignedTo, routine.companyId, {
       source: 'on_demand',
       triggerDetail: 'manual',
-      reason: `Manuelle Ausführung: ${routine.titel}`,
+      reason: `Manuelle Ausführung: ${routine.title}`,
       payload: { routineId: req.params.id, executionId },
       contextSnapshot: { source: 'manual_routine_trigger', routineId: req.params.id, executionId },
     }).catch(console.error);
   }
 
-  const execution = db.select().from(routineAusfuehrung).where(eq(routineAusfuehrung.id, executionId)).get();
+  const execution = db.select().from(routineRuns).where(eq(routineRuns.id, executionId)).get();
   res.status(201).json(execution);
 });
 
 // =============================================
 // WORKSPACES (Isolation via git worktree)
 // =============================================
-app.get('/api/unternehmen/:id/workspaces', (req, res) => {
+app.get('/api/companies/:id/workspaces', (req, res) => {
   try {
-    res.json(listeWorkspaces(req.params.id));
+    res.json(listeWorkspaces(req.params.id as string));
   } catch (e: any) {
     res.status(500).json({ error: e?.message });
   }
 });
 
-app.post('/api/aufgaben/:id/workspace', (req, res) => {
+app.post('/api/tasks/:id/workspace', (req, res) => {
   try {
-    const task = db.select().from(aufgaben).where(eq(aufgaben.id, req.params.id)).get();
-    if (!task) return res.status(404).json({ error: 'Aufgabe nicht gefunden' });
-    if (!task.zugewiesenAn) return res.status(400).json({ error: 'Aufgabe hat keinen zugewiesenen Agenten' });
-    const ws = ensureWorkspace(task.unternehmenId, task.id, task.zugewiesenAn);
+    const task = db.select().from(tasks).where(eq(tasks.id, req.params.id as string)).get();
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+    if (!task.assignedTo) return res.status(400).json({ error: 'Task has no assigned agent' });
+    const ws = ensureWorkspace(task.companyId, task.id, task.assignedTo);
     res.json(ws);
   } catch (e: any) {
     res.status(500).json({ error: e?.message });
@@ -2299,7 +2784,7 @@ app.post('/api/aufgaben/:id/workspace', (req, res) => {
 
 app.post('/api/workspaces/:id/close', (req, res) => {
   try {
-    schliesseWorkspace(req.params.id);
+    schliesseWorkspace(req.params.id as string);
     res.json({ ok: true });
   } catch (e: any) {
     res.status(500).json({ error: e?.message });
@@ -2413,7 +2898,7 @@ app.post('/api/workers/register', authMiddleware, async (req, res) => {
 app.post('/api/workers/:id/disable', authMiddleware, async (req, res) => {
   try {
     const { disableWorker } = await import('./services/worker-pool.js');
-    disableWorker(req.params.id);
+    disableWorker(req.params.id as string);
     res.json({ ok: true });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
@@ -2462,9 +2947,9 @@ app.get('/api/skills/categories', (_req, res) => {
   res.json(skillsService.getSkillCategories());
 });
 
-app.get('/api/experten/:id/skills', async (req, res) => {
+app.get('/api/agents/:id/skills', async (req, res) => {
   try {
-    const skills = await skillsService.getAgentSkills(req.params.id);
+    const skills = await skillsService.getAgentSkills(req.params.id as string);
     res.json(skills);
   } catch (error) {
     console.error('Failed to get agent skills:', error);
@@ -2472,7 +2957,7 @@ app.get('/api/experten/:id/skills', async (req, res) => {
   }
 });
 
-app.post('/api/experten/:id/skills', async (req, res) => {
+app.post('/api/agents/:id/skills', async (req, res) => {
   const { skillId, proficiency } = req.body;
   if (!skillId) {
     return res.status(400).json({ error: 'skillId is required' });
@@ -2495,7 +2980,7 @@ app.post('/api/experten/:id/skills', async (req, res) => {
   }
 });
 
-app.delete('/api/experten/:id/skills/:skillId', async (req, res) => {
+app.delete('/api/agents/:id/skills/:skillId', async (req, res) => {
   try {
     const success = await skillsService.removeSkillFromAgent(
       req.params.id,
@@ -2513,10 +2998,10 @@ app.delete('/api/experten/:id/skills/:skillId', async (req, res) => {
 });
 
 // ── Export-Soul: migrate existing systemPrompt → SOUL.md file ────────────────
-app.post('/api/experten/:id/export-soul', authMiddleware, async (req, res) => {
+app.post('/api/agents/:id/export-soul', authMiddleware, async (req, res) => {
   try {
-    const agent = db.select().from(experten).where(eq(experten.id, req.params.id)).get();
-    if (!agent) return res.status(404).json({ error: 'Agent nicht gefunden' });
+    const agent = db.select().from(agents).where(eq(agents.id, req.params.id as string)).get();
+    if (!agent) return res.status(404).json({ error: 'Agent not found' });
 
     const soulsDir = path.resolve('data', 'souls');
     if (!fs.existsSync(soulsDir)) fs.mkdirSync(soulsDir, { recursive: true });
@@ -2525,18 +3010,18 @@ app.post('/api/experten/:id/export-soul', authMiddleware, async (req, res) => {
     const soulPath = path.join(soulsDir, `${safeName}.soul.md`);
 
     // Build structured SOUL.md from systemPrompt + agent metadata
-    const company = db.select().from(unternehmen).where(eq(unternehmen.id, agent.unternehmenId)).get();
+    const company = db.select().from(companies).where(eq(companies.id, agent.companyId)).get();
     const soulContent = [
-      `# SOUL — ${agent.name} [${agent.rolle}]`,
+      `# SOUL — ${agent.name} [${agent.role}]`,
       `version: ${new Date().toISOString().slice(0, 10)}`,
       '',
       `## Identität`,
-      `Ich bin ${agent.name}, ${agent.rolle}${company ? ` bei {{company.name}}` : ''}.`,
-      agent.titel ? `Titel: ${agent.titel}` : '',
+      `Ich bin ${agent.name}, ${agent.role}${company ? ` bei {{company.name}}` : ''}.`,
+      agent.title ? `Titel: ${agent.title}` : '',
       '',
       `## Fähigkeiten`,
-      agent.faehigkeiten
-        ? agent.faehigkeiten.split(',').map((s: string) => `- ${s.trim()}`).join('\n')
+      agent.skills
+        ? agent.skills.split(',').map((s: string) => `- ${s.trim()}`).join('\n')
         : `- Allgemeiner Agent`,
       '',
       `## Kernverhalten`,
@@ -2557,9 +3042,9 @@ app.post('/api/experten/:id/export-soul', authMiddleware, async (req, res) => {
     fs.writeFileSync(soulPath, soulContent, 'utf-8');
 
     // Update DB: link soul_path, clear old systemPrompt
-    db.update(experten)
+    db.update(agents)
       .set({ soulPath, soulVersion: null })
-      .where(eq(experten.id, agent.id))
+      .where(eq(agents.id, agent.id))
       .run();
 
     res.json({ soulPath, content: soulContent });
@@ -2569,11 +3054,11 @@ app.post('/api/experten/:id/export-soul', authMiddleware, async (req, res) => {
 });
 
 // ── SOUL.md: read file content ────────────────────────────────────────────────
-app.get('/api/experten/:id/soul', authMiddleware, (req, res) => {
+app.get('/api/agents/:id/soul', authMiddleware, (req, res) => {
   try {
-    const agent = db.select({ soulPath: experten.soulPath, soulVersion: experten.soulVersion, name: experten.name })
-      .from(experten).where(eq(experten.id, req.params.id)).get();
-    if (!agent) return res.status(404).json({ error: 'Agent nicht gefunden' });
+    const agent = db.select({ soulPath: agents.soulPath, soulVersion: agents.soulVersion, name: agents.name })
+      .from(agents).where(eq(agents.id, req.params.id as string)).get();
+    if (!agent) return res.status(404).json({ error: 'Agent not found' });
     if (!agent.soulPath || !fs.existsSync(agent.soulPath)) {
       return res.json({ soulPath: null, content: null });
     }
@@ -2585,14 +3070,14 @@ app.get('/api/experten/:id/soul', authMiddleware, (req, res) => {
 });
 
 // ── SOUL.md: save edited content ──────────────────────────────────────────────
-app.put('/api/experten/:id/soul', authMiddleware, (req, res) => {
+app.put('/api/agents/:id/soul', authMiddleware, (req, res) => {
   try {
     const { content } = req.body;
     if (typeof content !== 'string') return res.status(400).json({ error: 'content required' });
 
-    const agent = db.select({ soulPath: experten.soulPath, name: experten.name, unternehmenId: experten.unternehmenId })
-      .from(experten).where(eq(experten.id, req.params.id)).get();
-    if (!agent) return res.status(404).json({ error: 'Agent nicht gefunden' });
+    const agent = db.select({ soulPath: agents.soulPath, name: agents.name, unternehmenId: agents.companyId })
+      .from(agents).where(eq(agents.id, req.params.id as string)).get();
+    if (!agent) return res.status(404).json({ error: 'Agent not found' });
 
     // If no soul_path yet, create one
     let soulPath = agent.soulPath;
@@ -2604,7 +3089,7 @@ app.put('/api/experten/:id/soul', authMiddleware, (req, res) => {
     }
 
     fs.writeFileSync(soulPath, content, 'utf-8');
-    db.update(experten).set({ soulPath, soulVersion: null }).where(eq(experten.id, req.params.id)).run();
+    db.update(agents).set({ soulPath, soulVersion: null }).where(eq(agents.id, req.params.id as string)).run();
 
     res.json({ success: true, soulPath });
   } catch (e: any) {
@@ -2613,22 +3098,40 @@ app.put('/api/experten/:id/soul', authMiddleware, (req, res) => {
 });
 
 // ─── SOUL Generator ──────────────────────────────────────────────────────────
-app.post('/api/experten/:id/soul/generate', authMiddleware, async (req, res) => {
+app.post('/api/agents/:id/soul/generate', authMiddleware, async (req, res) => {
   try {
-    const expert = db.select().from(experten).where(eq(experten.id, req.params.id)).get() as any;
+    const expert = db.select().from(agents).where(eq(agents.id, req.params.id as string)).get() as any;
     if (!expert) return res.status(404).json({ error: 'Expert not found' });
 
-    const company = db.select().from(unternehmen).where(eq(unternehmen.id, expert.unternehmenId)).get() as any;
+    const company = db.select().from(companies).where(eq(companies.id, expert.companyId)).get() as any;
+    const lang = getUiLanguage(expert.companyId);
+    const isEn = lang === 'en';
 
-    const prompt = `Du bist ein KI-Architekt. Generiere ein strukturiertes SOUL-Dokument für diesen KI-Agenten.
+    const prompt = isEn ? `You are an AI architect. Generate a structured SOUL document for this AI agent.
 
 Agent:
 - Name: ${expert.name}
-- Rolle: ${expert.rolle}
-- Skills: ${expert.faehigkeiten || 'keine angegeben'}
+- Role: ${expert.role}
+- Skills: ${expert.skills || 'none specified'}
+- Is Orchestrator/CEO: ${expert.isOrchestrator ? 'yes' : 'no'}
+- Company: ${company?.name || 'unknown'}
+- Company goal: ${company?.goal || 'not defined'}
+
+Generate a SOUL with exactly these 4 sections. Respond ONLY with this JSON, no text before/after:
+{
+  "identity": "2-3 sentences: Who am I? What is my core task?",
+  "principles": "4-5 decision principles as a numbered list",
+  "checklist": "5-6 bullet points of what the agent does on every wakeup",
+  "personality": "2-3 sentences about communication style and personality"
+}` : `Du bist ein KI-Architekt. Generiere ein strukturiertes SOUL-Dokument für diesen KI-Agenten.
+
+Agent:
+- Name: ${expert.name}
+- Rolle: ${expert.role}
+- Skills: ${expert.skills || 'keine angegeben'}
 - Ist Orchestrator/CEO: ${expert.isOrchestrator ? 'ja' : 'nein'}
 - Unternehmen: ${company?.name || 'unbekannt'}
-- Unternehmensziel: ${company?.ziel || 'nicht definiert'}
+- Unternehmensziel: ${company?.goal || 'nicht definiert'}
 
 Generiere ein SOUL mit genau diesen 4 Abschnitten. Antworte NUR mit diesem JSON, kein Text davor/danach:
 {
@@ -2639,7 +3142,7 @@ Generiere ein SOUL mit genau diesen 4 Abschnitten. Antworte NUR mit diesem JSON,
 }`;
 
     // Try Anthropic first, then OpenRouter
-    const anthropicKeyRaw = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'anthropic_api_key')).get()?.wert;
+    const anthropicKeyRaw = db.select().from(settings).where(eq(settings.key, 'anthropic_api_key')).get()?.value;
     const anthropicKey = anthropicKeyRaw ? decryptSetting('anthropic_api_key', anthropicKeyRaw) : null;
 
     let generated: any = null;
@@ -2659,7 +3162,7 @@ Generiere ein SOUL mit genau diesen 4 Abschnitten. Antworte NUR mit diesem JSON,
     }
 
     if (!generated) {
-      const orKeyRaw = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'openrouter_api_key')).get()?.wert;
+      const orKeyRaw = db.select().from(settings).where(eq(settings.key, 'openrouter_api_key')).get()?.value;
       const orKey = orKeyRaw ? decryptSetting('openrouter_api_key', orKeyRaw) : null;
       if (orKey) {
         const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -2678,8 +3181,13 @@ Generiere ein SOUL mit genau diesen 4 Abschnitten. Antworte NUR mit diesem JSON,
 
     if (!generated) {
       // Fallback: template-based generation
-      generated = {
-        identity: `Ich bin ${expert.name}, ${expert.rolle} bei ${company?.name || 'unserem Unternehmen'}. Meine Hauptaufgabe ist es, ${expert.faehigkeiten ? `Expertise in ${expert.faehigkeiten.split(',')[0].trim()} einzubringen` : 'meine zugewiesenen Aufgaben professionell zu erledigen'} und zum Unternehmensziel beizutragen.`,
+      generated = isEn ? {
+        identity: `I am ${expert.name}, ${expert.role} at ${company?.name || 'our company'}. My main task is to ${expert.skills ? `bring expertise in ${expert.skills.split(',')[0].trim()}` : 'professionally handle my assigned tasks'} and contribute to the company goal.`,
+        principles: `1. Quality over speed — thorough beats fast\n2. Escalate blockers immediately, don't wait\n3. Document every decision\n4. When in doubt, ask the CEO\n5. Always formulate results clearly and measurably`,
+        checklist: `- Check inbox and read all new messages\n- Review active tasks and assess status\n- Identify blockers and report immediately\n- Document progress\n- Define next steps`,
+        personality: `Direct, solution-oriented and professional. Communicate clearly without filler. Take responsibility for results.`,
+      } : {
+        identity: `Ich bin ${expert.name}, ${expert.role} bei ${company?.name || 'unserem Unternehmen'}. Meine Hauptaufgabe ist es, ${expert.skills ? `Expertise in ${expert.skills.split(',')[0].trim()} einzubringen` : 'meine zugewiesenen Aufgaben professionell zu erledigen'} und zum Unternehmensziel beizutragen.`,
         principles: `1. Qualität vor Geschwindigkeit — lieber gründlich als schnell\n2. Bei Blockern sofort eskalieren, nicht warten\n3. Jede Entscheidung dokumentieren\n4. Im Zweifel den CEO fragen\n5. Ergebnisse immer klar und messbar formulieren`,
         checklist: `- Inbox prüfen und alle neuen Nachrichten lesen\n- Aktive Tasks reviewen und Status bewerten\n- Blocker identifizieren und sofort melden\n- Fortschritt dokumentieren\n- Nächste Schritte definieren`,
         personality: `Direkt, lösungsorientiert und professionell. Kommuniziere klar und ohne Umschweife. Übernehme Verantwortung für Ergebnisse.`,
@@ -2694,7 +3202,7 @@ Generiere ein SOUL mit genau diesen 4 Abschnitten. Antworte NUR mit diesem JSON,
 });
 
 // Skill-based agent matching for tasks
-app.post('/api/aufgaben/match-agent', async (req, res) => {
+app.post('/api/tasks/match-agent', async (req, res) => {
   const { unternehmenId, titel, beschreibung } = req.body;
   if (!unternehmenId || !titel) {
     return res.status(400).json({ error: 'unternehmenId and titel are required' });
@@ -2721,25 +3229,35 @@ app.post('/api/aufgaben/match-agent', async (req, res) => {
 // =============================================
 // EINSTELLUNGEN
 // =============================================
-app.get('/api/einstellungen', (req, res) => {
+app.get('/api/settings', (req, res) => {
   const uId = (req.query.unternehmenId as string) || '';
-  // Load global ('') and company-specific keys
-  const result = db.select().from(einstellungen).where(inArray(einstellungen.unternehmenId, ['', uId])).all();
-  
-  const obj: Record<string, string> = {};
-  // Sort by unternehmenId length so that '' (length 0) comes first, and specific uId (length > 0) overwrites
-  const sorted = [...result].sort((a, b) => a.unternehmenId.length - b.unternehmenId.length);
-  
-  for (const e of sorted) {
-    obj[e.schluessel] = decryptSetting(e.schluessel, e.wert);
+  try {
+    // Load global ('') and company-specific keys
+    const result = db.select().from(settings).where(inArray(settings.companyId, ['', uId])).all();
+    
+    const obj: Record<string, string> = {};
+    // Sort by unternehmenId length so that '' (length 0) comes first, and specific uId (length > 0) overwrites
+    const sorted = [...result].sort((a, b) => a.companyId.length - b.companyId.length);
+    
+    for (const e of sorted) {
+      try {
+        obj[e.key] = decryptSetting(e.key, e.value);
+      } catch (decryptErr) {
+        console.warn(`[Settings] Failed to decrypt ${e.key}:`, decryptErr);
+        obj[e.key] = e.value; // fallback: return raw value
+      }
+    }
+    res.json(obj);
+  } catch (err) {
+    console.error('[Settings] Error loading settings:', err);
+    res.status(500).json({ error: 'Failed to load settings' });
   }
-  res.json(obj);
 });
 
-app.put('/api/einstellungen/:key', async (req: express.Request, res: express.Response) => {
+app.put('/api/settings/:key', async (req: express.Request, res: express.Response) => {
   const key = req.params.key;
   const uId = req.body.unternehmenId || '';
-  const wert = typeof req.body.wert === 'string' ? req.body.wert.trim() : req.body.wert;
+  const wert = (req.body.value ?? '') as string;
 
   // Validate Telegram bot token before saving
   if (key === 'telegram_bot_token' && wert) {
@@ -2755,15 +3273,22 @@ app.put('/api/einstellungen/:key', async (req: express.Request, res: express.Res
     }
   }
 
-  const wertToStore = encryptSetting(key, wert);
+  const wertToStore = encryptSetting(key as string, String(wert));
 
-  db.insert(einstellungen)
-    .values({ schluessel: key, unternehmenId: uId, wert: wertToStore, aktualisiertAm: now() })
-    .onConflictDoUpdate({
-      target: [einstellungen.schluessel, einstellungen.unternehmenId],
-      set: { wert: wertToStore, aktualisiertAm: now() }
-    })
-    .run();
+  const existing = db.select().from(settings)
+    .where(and(eq(settings.key, key), eq(settings.companyId, uId)))
+    .get();
+
+  if (existing) {
+    db.update(settings)
+      .set({ value: wertToStore, updatedAt: now() })
+      .where(and(eq(settings.key, key), eq(settings.companyId, uId)))
+      .run();
+  } else {
+    db.insert(settings)
+      .values({ key, companyId: uId, value: wertToStore, updatedAt: now() })
+      .run();
+  }
 
   // If a new Telegram token was saved, clear the invalid-token cache so polling resumes
   if (key === 'telegram_bot_token') {
@@ -2777,14 +3302,14 @@ app.put('/api/einstellungen/:key', async (req: express.Request, res: express.Res
 // R E S E T  E N D P O I N T S
 // =============================================
 
-// DELETE /api/unternehmen/:id — löscht ein Unternehmen inkl. aller abhängigen Daten
-app.delete('/api/unternehmen/:id', authMiddleware, (req, res) => {
+// DELETE /api/companies/:id — löscht ein Unternehmen inkl. aller abhängigen Daten
+app.delete('/api/companies/:id', authMiddleware, (req, res) => {
   const id = req.params.id as string;
-  const company = db.select().from(unternehmen).where(eq(unternehmen.id, id)).get();
-  if (!company) return res.status(404).json({ error: 'Unternehmen nicht gefunden' });
+  const company = db.select().from(companies).where(eq(companies.id, id)).get();
+  if (!company) return res.status(404).json({ error: 'Company not found' });
  
   // Get all experts for this company to cleanup expert-specific mappings
-  const expertIds = db.select({ id: experten.id }).from(experten).where(eq(experten.unternehmenId, id)).all().map((e: any) => e.id);
+  const expertIds = db.select({ id: agents.id }).from(agents).where(eq(agents.companyId, id)).all().map((e: any) => e.id);
 
   // Da wir zirkuläre Abhängigkeiten haben (z.B. Experten -> reportsTo -> Experten) 
   // und die manuelle Sortierung der Löschvorgänge extrem fehleranfällig ist,
@@ -2794,36 +3319,36 @@ app.delete('/api/unternehmen/:id', authMiddleware, (req, res) => {
     
     const runPurge = sqlite.transaction(() => {
       // 1. Zuerst Tabellen löschen, die auf andere Tabellen (außer Unternehmen) verweisen
-      db.delete(agentWakeupRequests).where(eq(agentWakeupRequests.unternehmenId, id)).run();
-      db.delete(workProducts).where(eq(workProducts.unternehmenId, id)).run();
-      db.delete(traceEreignisse).where(eq(traceEreignisse.unternehmenId, id)).run();
-      db.delete(routineAusfuehrung).where(eq(routineAusfuehrung.unternehmenId, id)).run();
-      db.delete(kostenbuchungen).where(eq(kostenbuchungen.unternehmenId, id)).run();
-      db.delete(kommentare).where(eq(kommentare.unternehmenId, id)).run();
+      db.delete(agentWakeupRequests).where(eq(agentWakeupRequests.companyId, id)).run();
+      db.delete(workProducts).where(eq(workProducts.companyId, id)).run();
+      db.delete(traceEvents).where(eq(traceEvents.companyId, id)).run();
+      db.delete(routineRuns).where(eq(routineRuns.companyId, id)).run();
+      db.delete(costEntries).where(eq(costEntries.companyId, id)).run();
+      db.delete(comments).where(eq(comments.companyId, id)).run();
       
       // 2. Dann Tabellen, die die obigen referenzieren könnten
-      db.delete(arbeitszyklen).where(eq(arbeitszyklen.unternehmenId, id)).run();
-      db.delete(genehmigungen).where(eq(genehmigungen.unternehmenId, id)).run();
-      db.delete(routineTrigger).where(eq(routineTrigger.unternehmenId, id)).run();
-      db.delete(routinen).where(eq(routinen.unternehmenId, id)).run();
-      db.delete(aufgaben).where(eq(aufgaben.unternehmenId, id)).run();
-      db.delete(projekte).where(eq(projekte.unternehmenId, id)).run();
-      db.delete(ziele).where(eq(ziele.unternehmenId, id)).run();
+      db.delete(workCycles).where(eq(workCycles.companyId, id)).run();
+      db.delete(approvals).where(eq(approvals.companyId, id)).run();
+      db.delete(routineTrigger).where(eq(routineTrigger.companyId, id)).run();
+      db.delete(routines).where(eq(routines.companyId, id)).run();
+      db.delete(tasks).where(eq(tasks.companyId, id)).run();
+      db.delete(projects).where(eq(projects.companyId, id)).run();
+      db.delete(goals).where(eq(goals.companyId, id)).run();
       
       // 3. Dann die restlichen Unternehmens-Daten
       // agentGedaechtnis (PARA) entfernt — Memory ist jetzt nativ in SQLite gespeichert
-      db.delete(einstellungen).where(eq(einstellungen.unternehmenId, id)).run();
-      db.delete(chatNachrichten).where(eq(chatNachrichten.unternehmenId, id)).run();
-      db.delete(aktivitaetslog).where(eq(aktivitaetslog.unternehmenId, id)).run();
-      db.delete(skillsLibrary).where(eq(skillsLibrary.unternehmenId, id)).run();
+      db.delete(settings).where(eq(settings.companyId, id)).run();
+      db.delete(chatMessages).where(eq(chatMessages.companyId, id)).run();
+      db.delete(activityLog).where(eq(activityLog.companyId, id)).run();
+      db.delete(skillsLibrary).where(eq(skillsLibrary.companyId, id)).run();
       
       if (expertIds.length > 0) {
-        db.delete(expertenSkills).where(inArray(expertenSkills.expertId, expertIds)).run();
-        db.delete(agentPermissions).where(inArray(agentPermissions.expertId, expertIds)).run();
+        db.delete(agentSkills).where(inArray(agentSkills.agentId, expertIds)).run();
+        db.delete(agentPermissions).where(inArray(agentPermissions.agentId, expertIds)).run();
       }
 
-      db.delete(experten).where(eq(experten.unternehmenId, id)).run();
-      db.delete(unternehmen).where(eq(unternehmen.id, id)).run();
+      db.delete(agents).where(eq(agents.companyId, id)).run();
+      db.delete(companies).where(eq(companies.id, id)).run();
     });
 
     runPurge();
@@ -2834,58 +3359,60 @@ app.delete('/api/unternehmen/:id', authMiddleware, (req, res) => {
   } catch (error: any) {
     console.error(`❌ Fehler beim Löschen von Unternehmen ${id}:`, error);
     try { sqlite.exec('PRAGMA foreign_keys = ON'); } catch {}
-    res.status(500).json({ error: 'Interner Serverfehler beim Löschen des Unternehmens.', details: error.message });
+    res.status(500).json({ error: 'Internal server error while deleting company.', details: error.message });
   }
 });
 
-// DELETE /api/unternehmen/:id/reset — löscht alle Daten des Unternehmens außer dem Unternehmen selbst
-app.delete('/api/unternehmen/:id/reset', authMiddleware, (req, res) => {
+// DELETE /api/companies/:id/reset — löscht alle Daten des Unternehmens außer dem Unternehmen selbst
+app.delete('/api/companies/:id/reset', authMiddleware, (req, res) => {
   const id = req.params.id as string;
-  const company = db.select().from(unternehmen).where(eq(unternehmen.id, id)).get();
-  if (!company) return res.status(404).json({ error: 'Unternehmen nicht gefunden' });
+  const company = db.select().from(companies).where(eq(companies.id, id)).get();
+  if (!company) return res.status(404).json({ error: 'Company not found' });
 
   // Delete in correct FK order — leaf tables first, then parents.
   // SQLite FK enforcement is ON so order matters.
-  // sqlite is the raw better-sqlite3 instance, safe for parameterized raw SQL.
-  const execRaw = (sql: string) => { try { sqlite?.prepare(sql).run(); } catch { /* ignore missing tables on older DBs */ } };
+  // sqlite is the raw better-sqlite3 instance — always use ? params, never interpolate.
+  const execRaw = (sql: string, params: unknown[] = []) => {
+    try { sqlite?.prepare(sql).run(...params); } catch { /* ignore missing tables on older DBs */ }
+  };
 
-  // Leaf tables referencing experten (must go before experten)
-  execRaw(`DELETE FROM ceo_decision_log WHERE unternehmen_id = '${id}'`);
-  execRaw(`DELETE FROM expert_config_history WHERE expert_id IN (SELECT id FROM experten WHERE unternehmen_id = '${id}')`);
-  execRaw(`DELETE FROM experten_skills WHERE expert_id IN (SELECT id FROM experten WHERE unternehmen_id = '${id}')`);
-  execRaw(`DELETE FROM agent_permissions WHERE expert_id IN (SELECT id FROM experten WHERE unternehmen_id = '${id}')`);
-  execRaw(`DELETE FROM agent_gedaechtnis WHERE unternehmen_id = '${id}'`);
-  execRaw(`DELETE FROM palace_wings WHERE unternehmen_id = '${id}'`);
-  execRaw(`DELETE FROM palace_summaries WHERE unternehmen_id = '${id}'`);
-  execRaw(`DELETE FROM palace_drawers WHERE expert_id IN (SELECT id FROM experten WHERE unternehmen_id = '${id}')`);
-  execRaw(`DELETE FROM palace_diary WHERE expert_id IN (SELECT id FROM experten WHERE unternehmen_id = '${id}')`);
-  execRaw(`DELETE FROM palace_kg WHERE unternehmen_id = '${id}'`);
-  execRaw(`DELETE FROM budget_policies WHERE unternehmen_id = '${id}'`);
-  execRaw(`DELETE FROM budget_incidents WHERE unternehmen_id = '${id}'`);
-  execRaw(`DELETE FROM execution_workspaces WHERE unternehmen_id = '${id}'`);
-  execRaw(`DELETE FROM openclaw_tokens WHERE unternehmen_id = '${id}'`);
-  execRaw(`DELETE FROM agenten_meetings WHERE unternehmen_id = '${id}'`);
-  execRaw(`DELETE FROM trace_ereignisse WHERE unternehmen_id = '${id}'`);
-  execRaw(`DELETE FROM work_products WHERE unternehmen_id = '${id}'`);
-  execRaw(`DELETE FROM agent_wakeup_requests WHERE unternehmen_id = '${id}'`);
-  // issue_relations references aufgaben
-  execRaw(`DELETE FROM issue_relations WHERE quell_id IN (SELECT id FROM aufgaben WHERE unternehmen_id = '${id}') OR ziel_id IN (SELECT id FROM aufgaben WHERE unternehmen_id = '${id}')`);
-  // routine children before routinen
-  execRaw(`DELETE FROM routine_ausfuehrung WHERE routine_id IN (SELECT id FROM routinen WHERE unternehmen_id = '${id}')`);
-  execRaw(`DELETE FROM routine_trigger WHERE routine_id IN (SELECT id FROM routinen WHERE unternehmen_id = '${id}')`);
-  db.delete(routinen).where(eq(routinen.unternehmenId, id)).run();
-  db.delete(projekte).where(eq(projekte.unternehmenId, id)).run();
-  db.delete(chatNachrichten).where(eq(chatNachrichten.unternehmenId, id)).run();
-  db.delete(kommentare).where(eq(kommentare.unternehmenId, id)).run();
-  db.delete(kostenbuchungen).where(eq(kostenbuchungen.unternehmenId, id)).run();
-  db.delete(arbeitszyklen).where(eq(arbeitszyklen.unternehmenId, id)).run();
-  db.delete(aktivitaetslog).where(eq(aktivitaetslog.unternehmenId, id)).run();
-  db.delete(genehmigungen).where(eq(genehmigungen.unternehmenId, id)).run();
-  db.delete(ziele).where(eq(ziele.unternehmenId, id)).run();
-  db.delete(aufgaben).where(eq(aufgaben.unternehmenId, id)).run();
-  execRaw(`DELETE FROM skills_library WHERE unternehmen_id = '${id}'`);
-  execRaw(`DELETE FROM einstellungen WHERE unternehmen_id = '${id}'`);
-  db.delete(experten).where(eq(experten.unternehmenId, id)).run();
+  // Leaf tables referencing agents (must go before agents)
+  execRaw(`DELETE FROM ceo_decision_log WHERE unternehmen_id = ?`, [id]);
+  execRaw(`DELETE FROM expert_config_history WHERE expert_id IN (SELECT id FROM experten WHERE unternehmen_id = ?)`, [id]);
+  execRaw(`DELETE FROM experten_skills WHERE expert_id IN (SELECT id FROM experten WHERE unternehmen_id = ?)`, [id]);
+  execRaw(`DELETE FROM agent_permissions WHERE expert_id IN (SELECT id FROM experten WHERE unternehmen_id = ?)`, [id]);
+  execRaw(`DELETE FROM agent_gedaechtnis WHERE unternehmen_id = ?`, [id]);
+  execRaw(`DELETE FROM palace_wings WHERE unternehmen_id = ?`, [id]);
+  execRaw(`DELETE FROM palace_summaries WHERE unternehmen_id = ?`, [id]);
+  execRaw(`DELETE FROM palace_drawers WHERE expert_id IN (SELECT id FROM experten WHERE unternehmen_id = ?)`, [id]);
+  execRaw(`DELETE FROM palace_diary WHERE expert_id IN (SELECT id FROM experten WHERE unternehmen_id = ?)`, [id]);
+  execRaw(`DELETE FROM palace_kg WHERE unternehmen_id = ?`, [id]);
+  execRaw(`DELETE FROM budget_policies WHERE unternehmen_id = ?`, [id]);
+  execRaw(`DELETE FROM budget_incidents WHERE unternehmen_id = ?`, [id]);
+  execRaw(`DELETE FROM execution_workspaces WHERE unternehmen_id = ?`, [id]);
+  execRaw(`DELETE FROM openclaw_tokens WHERE unternehmen_id = ?`, [id]);
+  execRaw(`DELETE FROM agenten_meetings WHERE unternehmen_id = ?`, [id]);
+  execRaw(`DELETE FROM trace_ereignisse WHERE unternehmen_id = ?`, [id]);
+  execRaw(`DELETE FROM work_products WHERE unternehmen_id = ?`, [id]);
+  execRaw(`DELETE FROM agent_wakeup_requests WHERE unternehmen_id = ?`, [id]);
+  // issue_relations references tasks
+  execRaw(`DELETE FROM issue_relations WHERE quell_id IN (SELECT id FROM aufgaben WHERE unternehmen_id = ?) OR ziel_id IN (SELECT id FROM aufgaben WHERE unternehmen_id = ?)`, [id, id]);
+  // routine children before routines
+  execRaw(`DELETE FROM routine_ausfuehrung WHERE routine_id IN (SELECT id FROM routinen WHERE unternehmen_id = ?)`, [id]);
+  execRaw(`DELETE FROM routine_trigger WHERE routine_id IN (SELECT id FROM routinen WHERE unternehmen_id = ?)`, [id]);
+  db.delete(routines).where(eq(routines.companyId, id)).run();
+  db.delete(projects).where(eq(projects.companyId, id)).run();
+  db.delete(chatMessages).where(eq(chatMessages.companyId, id)).run();
+  db.delete(comments).where(eq(comments.companyId, id)).run();
+  db.delete(costEntries).where(eq(costEntries.companyId, id)).run();
+  db.delete(workCycles).where(eq(workCycles.companyId, id)).run();
+  db.delete(activityLog).where(eq(activityLog.companyId, id)).run();
+  db.delete(approvals).where(eq(approvals.companyId, id)).run();
+  db.delete(goals).where(eq(goals.companyId, id)).run();
+  db.delete(tasks).where(eq(tasks.companyId, id)).run();
+  execRaw(`DELETE FROM skills_library WHERE unternehmen_id = ?`, [id]);
+  execRaw(`DELETE FROM einstellungen WHERE unternehmen_id = ?`, [id]);
+  db.delete(agents).where(eq(agents.companyId, id)).run();
 
   console.log(`🗑️  Unternehmen ${company.name} (${id}) zurückgesetzt`);
   res.json({ ok: true, name: company.name });
@@ -2916,20 +3443,20 @@ app.delete('/api/system/factory-reset', authMiddleware, (req, res) => {
   execAll(`DELETE FROM issue_relations`);
   execAll(`DELETE FROM routine_ausfuehrung`);
   execAll(`DELETE FROM routine_trigger`);
-  db.delete(routinen).run();
-  db.delete(projekte).run();
-  db.delete(chatNachrichten).run();
-  db.delete(kommentare).run();
-  db.delete(kostenbuchungen).run();
-  db.delete(arbeitszyklen).run();
-  db.delete(aktivitaetslog).run();
-  db.delete(genehmigungen).run();
-  db.delete(ziele).run();
-  db.delete(aufgaben).run();
+  db.delete(routines).run();
+  db.delete(projects).run();
+  db.delete(chatMessages).run();
+  db.delete(comments).run();
+  db.delete(costEntries).run();
+  db.delete(workCycles).run();
+  db.delete(activityLog).run();
+  db.delete(approvals).run();
+  db.delete(goals).run();
+  db.delete(tasks).run();
   execAll(`DELETE FROM skills_library`);
   execAll(`DELETE FROM einstellungen`);
-  db.delete(experten).run();
-  db.delete(unternehmen).run();
+  db.delete(agents).run();
+  db.delete(companies).run();
 
   console.log('🔴 Factory Reset durchgeführt');
   res.json({ ok: true });
@@ -2940,32 +3467,63 @@ app.delete('/api/system/factory-reset', authMiddleware, (req, res) => {
 // =============================================
 function handleChatGet(req: express.Request, res: express.Response) {
   const id = req.params.id as string;
-  const unternehmenId = (req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
-  if (!unternehmenId) return res.status(400).json({ error: 'Missing x-unternehmen-id header' });
+  const unternehmenId = (req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
+  if (!unternehmenId) return res.status(400).json({ error: 'Missing x-company-id header' });
+
   const history = db.select()
-    .from(chatNachrichten)
-    .where(and(eq(chatNachrichten.unternehmenId, unternehmenId), eq(chatNachrichten.expertId, id)))
-    .orderBy(desc(chatNachrichten.erstelltAm))
+    .from(chatMessages)
+    .where(and(eq(chatMessages.companyId, unternehmenId), eq(chatMessages.agentId, id)))
+    .orderBy(desc(chatMessages.createdAt))
     .limit(50)
     .all();
+
+  // First-time welcome: if no messages exist yet, inject a CEO greeting
+  if (history.length === 0) {
+    const agent = db.select().from(agents).where(eq(agents.id, id)).get() as any;
+    const company = db.select().from(companies).where(eq(companies.id, unternehmenId)).get() as any;
+    if (agent && (agent.isOrchestrator === true || agent.isOrchestrator === 1)) {
+      const lang = getUiLanguage(unternehmenId);
+      const isEn = lang === 'en';
+      const companyName = company?.name || 'your company';
+      const agentName = agent.name || 'CEO';
+
+      const welcomeText = isEn
+        ? `Hi! I'm ${agentName}, your AI CEO at **${companyName}**.\n\nI'm here to run your company — I can build teams, manage tasks, set up automations and report back to you. Think of me as your chief of staff.\n\nHere's what you can ask me to do:\n• **"Build me a content team"** — I create the agents, assign them roles, set up daily routines\n• **"Set up a social media bot that posts daily on X"** — I configure the agent and schedule it\n• **"Research competitors and write a weekly report"** — I create a research agent with a cron schedule\n• **"What's the status of my team?"** — I give you a full briefing\n\nWhat should we build first?`
+        : `Hi! Ich bin ${agentName}, dein KI-CEO bei **${companyName}**.\n\nIch bin hier um dein Unternehmen zu führen — ich kann Teams aufbauen, Tasks managen, Automationen einrichten und dir berichten. Denk an mich als deinen Chief of Staff.\n\nHier was du mich fragen kannst:\n• **"Bau mir ein Content-Team"** — ich erstelle die Agenten, gebe ihnen Rollen und Routinen\n• **"Richte einen Social-Media-Bot ein der täglich auf X postet"** — ich konfiguriere den Agenten und plane ihn ein\n• **"Recherchiere Wettbewerber und schreib wöchentlich einen Report"** — ich erstelle einen Research-Agenten mit Cron-Schedule\n• **"Wie ist der Status meines Teams?"** — ich gebe dir ein vollständiges Briefing\n\nWas sollen wir als erstes aufbauen?`;
+
+      const welcomeMsg = {
+        id: uuid(),
+        companyId: unternehmenId,
+        agentId: id,
+        senderType: 'agent',
+        message: welcomeText,
+        read: false,
+        createdAt: new Date().toISOString(),
+      };
+      db.insert(chatMessages).values(welcomeMsg).run();
+      return res.json([welcomeMsg]);
+    }
+  }
+
   res.json(history.reverse());
 }
 
 function handleChatPost(req: express.Request, res: express.Response) {
   const id = req.params.id as string;
-  const unternehmenId = (req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
-  const { nachricht, absenderTyp = 'board' } = req.body;
+  const unternehmenId = (req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id'] || req.body.unternehmenId || req.body.companyId) as string;
+  const nachricht = req.body.nachricht || req.body.message;
+  const absenderTyp = req.body.absenderTyp || req.body.senderType || 'board';
   if (!unternehmenId || !nachricht) return res.status(400).json({ error: 'Missing parameters' });
   const msg = {
     id: uuid(),
-    unternehmenId,
-    expertId: id,
-    absenderTyp,
-    nachricht,
-    gelesen: false,
-    erstelltAm: new Date().toISOString()
+    companyId: unternehmenId,
+    agentId: id,
+    senderType: absenderTyp,
+    message: nachricht,
+    read: false,
+    createdAt: new Date().toISOString()
   };
-  db.insert(chatNachrichten).values(msg).run();
+  db.insert(chatMessages).values(msg).run();
   broadcastUpdate('chat_message', msg);
   res.json({ status: 'ok', message: msg });
   
@@ -2974,11 +3532,9 @@ function handleChatPost(req: express.Request, res: express.Response) {
   }
 }
 
-// Both /api/experten/:id/chat and /api/mitarbeiter/:id/chat point to the same handlers
-app.get('/api/experten/:id/chat', handleChatGet);
-app.post('/api/experten/:id/chat', handleChatPost);
-app.get('/api/mitarbeiter/:id/chat', handleChatGet);
-app.post('/api/mitarbeiter/:id/chat', handleChatPost);
+// Both /api/agents/:id/chat and /api/mitarbeiter/:id/chat point to the same handlers
+app.get('/api/agents/:id/chat', handleChatGet);
+app.post('/api/agents/:id/chat', handleChatPost);
 
 // ─── Direct LLM Chat (fast, context-aware, bypasses heartbeat) ─────────────
 // ── URL-Fetch helper for chat context ───────────────────────────────────────
@@ -3011,59 +3567,59 @@ async function fetchUrlContent(url: string): Promise<string | null> {
 
 const URL_PATTERN = /https?:\/\/[^\s)>"']+/g;
 
-app.post('/api/experten/:id/chat/direct', async (req: express.Request, res: express.Response) => {
+app.post('/api/agents/:id/chat/direct', async (req: express.Request, res: express.Response) => {
   const expertId = req.params.id as string;
-  const unternehmenId = (req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
+  const unternehmenId = (req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
   const { nachricht } = req.body;
   if (!unternehmenId || !nachricht) return res.status(400).json({ error: 'Missing parameters' });
 
   // ── 1. Load expert + company ──────────────────────────────────────────────
-  const expert = db.select().from(experten).where(eq(experten.id, expertId)).get();
-  const unternehmenData = db.select().from(unternehmen).where(eq(unternehmen.id, unternehmenId)).get();
+  const expert = db.select().from(agents).where(eq(agents.id, expertId as string)).get();
+  const unternehmenData = db.select().from(companies).where(eq(companies.id, unternehmenId)).get();
   if (!expert || !unternehmenData) return res.status(404).json({ error: 'Expert or company not found' });
 
   // ── 2. Load API key based on agent's verbindungsTyp ───────────────────────
   let apiKey = '';
   let apiUrl = 'https://api.anthropic.com/v1/messages';
   let modelId = 'claude-haiku-4-5-20251001';
-  let provider = expert.verbindungsTyp;
+  let provider = expert.connectionType;
 
   // CLI-based providers don't need an API key
-  const isCliProvider = ['claude-code', 'codex-cli', 'gemini-cli'].includes(provider || '');
+  const isCliProvider = ['claude-code', 'codex-cli', 'gemini-cli', 'kimi-cli'].includes(provider || '');
 
   try {
-    const cfg = JSON.parse(expert.verbindungsConfig || '{}');
+    const cfg = JSON.parse(expert.connectionConfig || '{}');
     if (cfg.model) modelId = cfg.model;
   } catch {}
 
   // Also read per-agent baseUrl from verbindungsConfig (can override global setting)
   let agentBaseUrl = '';
-  try { agentBaseUrl = JSON.parse(expert.verbindungsConfig || '{}').baseUrl || ''; } catch {}
+  try { agentBaseUrl = JSON.parse(expert.connectionConfig || '{}').baseUrl || ''; } catch {}
 
   if (!isCliProvider) {
     if (provider === 'anthropic' || provider === 'claude') {
-      const row = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'anthropic_api_key')).get();
-      if (row) apiKey = decryptSetting('anthropic_api_key', row.wert);
+      const row = db.select().from(settings).where(eq(settings.key, 'anthropic_api_key')).get();
+      if (row) apiKey = decryptSetting('anthropic_api_key', row.value);
     } else if (provider === 'openrouter') {
-      const row = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'openrouter_api_key')).get();
-      if (row) apiKey = decryptSetting('openrouter_api_key', row.wert);
+      const row = db.select().from(settings).where(eq(settings.key, 'openrouter_api_key')).get();
+      if (row) apiKey = decryptSetting('openrouter_api_key', row.value);
       apiUrl = 'https://openrouter.ai/api/v1/chat/completions';
     } else if (provider === 'openai') {
-      const row = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'openai_api_key')).get();
-      if (row) apiKey = decryptSetting('openai_api_key', row.wert);
+      const row = db.select().from(settings).where(eq(settings.key, 'openai_api_key')).get();
+      if (row) apiKey = decryptSetting('openai_api_key', row.value);
       // Agent-level baseUrl overrides default (e.g. Groq, Together, LM Studio)
       apiUrl = agentBaseUrl || 'https://api.openai.com/v1/chat/completions';
     } else if (provider === 'custom') {
       // Custom OpenAI-compatible provider: resolve named connection or fall back to global key
       let resolvedKey = '';
       let resolvedBaseUrl = agentBaseUrl; // per-agent override takes priority
-      const connId = (() => { try { return JSON.parse(expert.verbindungsConfig || '{}').connectionId || ''; } catch { return ''; } })();
+      const connId = (() => { try { return JSON.parse(expert.connectionConfig || '{}').connectionId || ''; } catch { return ''; } })();
       if (connId) {
         // Named connection: look up from custom_connections JSON
-        const connsRow = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'custom_connections')).get();
-        if (connsRow?.wert) {
+        const connsRow = db.select().from(settings).where(eq(settings.key, 'custom_connections')).get();
+        if (connsRow?.value) {
           try {
-            const conns: { id: string; name: string; apiKey: string; baseUrl: string }[] = JSON.parse(decryptSetting('custom_connections', connsRow.wert));
+            const conns: { id: string; name: string; apiKey: string; baseUrl: string }[] = JSON.parse(decryptSetting('custom_connections', connsRow.value));
             const match = conns.find(c => c.id === connId);
             if (match) {
               resolvedKey = match.apiKey;
@@ -3074,12 +3630,12 @@ app.post('/api/experten/:id/chat/direct', async (req: express.Request, res: expr
       }
       if (!resolvedKey) {
         // Fallback to global custom_api_key
-        const keyRow = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'custom_api_key')).get();
-        if (keyRow) resolvedKey = decryptSetting('custom_api_key', keyRow.wert);
+        const keyRow = db.select().from(settings).where(eq(settings.key, 'custom_api_key')).get();
+        if (keyRow) resolvedKey = decryptSetting('custom_api_key', keyRow.value);
       }
       if (!resolvedBaseUrl) {
-        const urlRow = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'custom_api_base_url')).get();
-        resolvedBaseUrl = urlRow?.wert || '';
+        const urlRow = db.select().from(settings).where(eq(settings.key, 'custom_api_base_url')).get();
+        resolvedBaseUrl = urlRow?.value || '';
       }
       apiKey = resolvedKey;
       apiUrl = (resolvedBaseUrl || 'https://api.openai.com/v1') + '/chat/completions';
@@ -3089,10 +3645,15 @@ app.post('/api/experten/:id/chat/direct', async (req: express.Request, res: expr
       apiUrl = ollamaBase + '/v1/chat/completions';
       apiKey = 'ollama'; // Ollama doesn't require a real key
       provider = 'openai'; // treat as OpenAI-compatible for LLM call below
+    } else if (provider === 'poe') {
+      const row = db.select().from(settings).where(eq(settings.key, 'poe_api_key')).get();
+      if (row) { apiKey = decryptSetting('poe_api_key', row.value); }
+      apiUrl = 'https://api.poe.com/v1/chat/completions';
+      provider = 'openai'; // Poe is OpenAI-compatible
     } else {
       // Fallback: try anthropic key
-      const row = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'anthropic_api_key')).get();
-      if (row) { apiKey = decryptSetting('anthropic_api_key', row.wert); provider = 'anthropic'; }
+      const row = db.select().from(settings).where(eq(settings.key, 'anthropic_api_key')).get();
+      if (row) { apiKey = decryptSetting('anthropic_api_key', row.value); provider = 'anthropic'; }
     }
 
     if (!apiKey) {
@@ -3102,25 +3663,25 @@ app.post('/api/experten/:id/chat/direct', async (req: express.Request, res: expr
 
   // ── 3. Build rich context ─────────────────────────────────────────────────
   // Team: who reports to this agent + who this agent reports to
-  const teamMembers = db.select().from(experten)
-    .where(and(eq(experten.unternehmenId, unternehmenId), eq(experten.reportsTo, expertId)))
+  const teamMembers = db.select().from(agents)
+    .where(and(eq(agents.companyId, unternehmenId), eq(agents.reportsTo, expertId as string)))
     .all();
   const supervisor = expert.reportsTo
-    ? db.select().from(experten).where(eq(experten.id, expert.reportsTo)).get()
+    ? db.select().from(agents).where(eq(agents.id, expert.reportsTo)).get()
     : null;
 
   // Recent chat history (last 12 messages)
-  const chatHistory = db.select().from(chatNachrichten)
-    .where(and(eq(chatNachrichten.unternehmenId, unternehmenId), eq(chatNachrichten.expertId, expertId)))
-    .orderBy(desc(chatNachrichten.erstelltAm))
+  const chatHistory = db.select().from(chatMessages)
+    .where(and(eq(chatMessages.companyId, unternehmenId), eq(chatMessages.agentId, expertId)))
+    .orderBy(desc(chatMessages.createdAt))
     .limit(12)
     .all()
     .reverse();
 
   // Open tasks assigned to this agent
-  const openTasks = db.select().from(aufgaben)
-    .where(and(eq(aufgaben.unternehmenId, unternehmenId), eq(aufgaben.zugewiesenAn, expertId)))
-    .orderBy(desc(aufgaben.erstelltAm))
+  const openTasks = db.select().from(tasks)
+    .where(and(eq(tasks.companyId, unternehmenId), eq(tasks.assignedTo, expertId)))
+    .orderBy(desc(tasks.createdAt))
     .limit(5)
     .all();
 
@@ -3144,11 +3705,11 @@ app.post('/api/experten/:id/chat/direct', async (req: express.Request, res: expr
 
   // ── 6. Build system prompt ────────────────────────────────────────────────
   const teamLine = teamMembers.length > 0
-    ? teamMembers.map(m => `  - ${m.name} (${m.rolle})`).join('\n')
+    ? teamMembers.map(m => `  - ${m.name} (${m.role})`).join('\n')
     : '  (keine direkten Berichte)';
-  const supervisorLine = supervisor ? `  Vorgesetzter: ${supervisor.name} (${supervisor.rolle})` : '  (kein Vorgesetzter — autonome Einheit)';
+  const supervisorLine = supervisor ? `  Vorgesetzter: ${supervisor.name} (${supervisor.role})` : '  (kein Vorgesetzter — autonome Einheit)';
   const tasksLine = openTasks.length > 0
-    ? openTasks.map(t => `  - [${t.status}] ${t.titel}`).join('\n')
+    ? openTasks.map(t => `  - [${t.status}] ${t.title}`).join('\n')
     : '  (keine offenen Aufgaben)';
   const permLine = expert.isOrchestrator
     ? 'Orchestrator-Modus aktiv: du kannst Aufgaben erstellen, delegieren und Genehmigungen einholen.'
@@ -3182,9 +3743,9 @@ ${isEn ? 'OPENCOGNIT PRODUCT KNOWLEDGE (for questions about the system):' : 'OPE
   • Work Products — ${isEn ? 'Agent outputs: files, text, URLs agents have created' : 'Outputs der Agenten: Dateien, Texte, URLs die Agenten erstellt haben'}
   • Settings — ${isEn ? 'API keys, Telegram bot, working directory' : 'API-Keys, Telegram-Bot, Arbeitsverzeichnis konfigurieren'}`;
 
-  const systemPrompt = `${expert.systemPrompt ? expert.systemPrompt + '\n\n' : ''}${isEn ? `You are ${expert.name}, ${expert.rolle} at ${unternehmenData.name}.` : `Du bist ${expert.name}, ${expert.rolle} bei ${unternehmenData.name}.`}
-${unternehmenData.ziel ? (isEn ? `Company goal: ${unternehmenData.ziel}` : `Unternehmensziel: ${unternehmenData.ziel}`) : ''}
-${expert.faehigkeiten ? (isEn ? `Your skills: ${expert.faehigkeiten}` : `Deine Fähigkeiten: ${expert.faehigkeiten}`) : ''}
+  const systemPrompt = `${expert.systemPrompt ? expert.systemPrompt + '\n\n' : ''}${isEn ? `You are ${expert.name}, ${expert.role} at ${unternehmenData.name}.` : `Du bist ${expert.name}, ${expert.role} bei ${unternehmenData.name}.`}
+${unternehmenData.goal ? (isEn ? `Company goal: ${unternehmenData.goal}` : `Unternehmensziel: ${unternehmenData.goal}`) : ''}
+${expert.skills ? (isEn ? `Your skills: ${expert.skills}` : `Deine Fähigkeiten: ${expert.skills}`) : ''}
 
 ${isEn ? 'HIERARCHY:' : 'HIERARCHIE:'}
 ${supervisorLine}
@@ -3203,10 +3764,10 @@ ${langLine(uiLang)} ${isEn ? `You respond directly to board messages. Be precise
 
   // ── 7. Format conversation for LLM ───────────────────────────────────────
   const conversationMessages = chatHistory
-    .filter(m => m.absenderTyp !== 'system')
+    .filter(m => m.senderType !== 'system')
     .map(m => ({
-      role: m.absenderTyp === 'board' ? 'user' : 'assistant',
-      content: m.nachricht,
+      role: m.senderType === 'board' ? 'user' : 'assistant',
+      content: m.message,
     }));
   // Add current message (with URL context appended if any)
   conversationMessages.push({ role: 'user', content: nachricht + urlContext });
@@ -3219,13 +3780,21 @@ ${langLine(uiLang)} ${isEn ? `You respond directly to board messages. Be precise
       .join('\n\n');
     const cliPrompt = `${systemPrompt}\n\n${historyText ? `[BISHERIGER CHAT]\n${historyText}\n\n` : ''}[AKTUELLE NACHRICHT]\n${nachricht}${urlContext}\n\nAntworte direkt und hilfreich.`;
 
-    const boardMsg = { id: uuid(), unternehmenId, expertId, absenderTyp: 'board' as const, nachricht, gelesen: false, erstelltAm: new Date().toISOString() };
-    db.insert(chatNachrichten).values(boardMsg).run();
+    const boardMsg = { id: uuid(), companyId: unternehmenId, agentId: expertId, senderType: 'board' as const, message: nachricht, read: false, createdAt: new Date().toISOString() };
+    db.insert(chatMessages).values(boardMsg).run();
     broadcastUpdate('chat_message', boardMsg);
 
     let cliReply: string;
     try {
-      cliReply = await runClaudeDirectChat(cliPrompt, expertId);
+      if (provider === 'codex-cli') {
+        cliReply = await runCodexDirectChat(cliPrompt, expertId);
+      } else if (provider === 'gemini-cli') {
+        cliReply = await runGeminiDirectChat(cliPrompt, expertId);
+      } else if (provider === 'kimi-cli') {
+        cliReply = await runKimiDirectChat(cliPrompt, expertId);
+      } else {
+        cliReply = await runClaudeDirectChat(cliPrompt, expertId);
+      }
     } catch (err: any) {
       console.error('[DirectChat CLI] error:', err.message);
       return res.status(500).json({ error: 'cli_error', message: err.message });
@@ -3246,8 +3815,8 @@ ${langLine(uiLang)} ${isEn ? `You respond directly to board messages. Be precise
       cleanReply = actionResults.join('\n') + (cleanReply ? '\n\n' + cleanReply : '');
     }
 
-    const agentMsg = { id: uuid(), unternehmenId, expertId, absenderTyp: 'agent' as const, nachricht: cleanReply, gelesen: false, erstelltAm: new Date().toISOString() };
-    db.insert(chatNachrichten).values(agentMsg).run();
+    const agentMsg = { id: uuid(), companyId: unternehmenId, agentId: expertId, senderType: 'agent' as const, message: cleanReply, read: false, createdAt: new Date().toISOString() };
+    db.insert(chatMessages).values(agentMsg).run();
     broadcastUpdate('chat_message', agentMsg);
 
     autoSaveInsights(expertId, unternehmenId, cleanReply, urlContext ? `Chat + Links` : 'Chat').catch(() => {});
@@ -3256,8 +3825,8 @@ ${langLine(uiLang)} ${isEn ? `You respond directly to board messages. Be precise
   }
 
   // ── 8. Save board message ─────────────────────────────────────────────────
-  const boardMsg = { id: uuid(), unternehmenId, expertId, absenderTyp: 'board' as const, nachricht, gelesen: false, erstelltAm: new Date().toISOString() };
-  db.insert(chatNachrichten).values(boardMsg).run();
+  const boardMsg = { id: uuid(), companyId: unternehmenId, agentId: expertId, senderType: 'board' as const, message: nachricht, read: false, createdAt: new Date().toISOString() };
+  db.insert(chatMessages).values(boardMsg).run();
   broadcastUpdate('chat_message', boardMsg);
 
   // ── 9. Call LLM ───────────────────────────────────────────────────────────
@@ -3298,8 +3867,8 @@ ${langLine(uiLang)} ${isEn ? `You respond directly to board messages. Be precise
   if (!agentReply) return res.status(500).json({ error: 'empty_response' });
 
   // ── 10. Save agent reply ──────────────────────────────────────────────────
-  const agentMsg = { id: uuid(), unternehmenId, expertId, absenderTyp: 'agent' as const, nachricht: agentReply, gelesen: false, erstelltAm: new Date().toISOString() };
-  db.insert(chatNachrichten).values(agentMsg).run();
+  const agentMsg = { id: uuid(), companyId: unternehmenId, agentId: expertId, senderType: 'agent' as const, message: agentReply, read: false, createdAt: new Date().toISOString() };
+  db.insert(chatMessages).values(agentMsg).run();
   broadcastUpdate('chat_message', agentMsg);
 
   // ── 11. Auto-save memories from reply (non-blocking) ─────────────────────
@@ -3310,11 +3879,253 @@ ${langLine(uiLang)} ${isEn ? `You respond directly to board messages. Be precise
   const n2 = new Date().toISOString();
   const kostenCent = Math.ceil((inputTokens * 0.0008 + outputTokens * 0.004) / 100);
   if (kostenCent > 0) {
-    db.insert(kostenbuchungen).values({ id: uuid(), unternehmenId, expertId, anbieter: expert.verbindungsTyp || 'custom', modell: modelId, inputTokens, outputTokens, kostenCent, zeitpunkt: n2, erstelltAm: n2 }).run();
-    db.update(experten).set({ verbrauchtMonatCent: sql`${experten.verbrauchtMonatCent} + ${kostenCent}`, aktualisiertAm: n2 }).where(eq(experten.id, expertId)).run();
+    db.insert(costEntries).values({ id: uuid(), companyId: unternehmenId, agentId: expertId, provider: expert.connectionType || 'custom', model: modelId, inputTokens, outputTokens, costCent: kostenCent, timestamp: n2, createdAt: n2 }).run();
+    db.update(agents).set({ monthlySpendCent: sql`${agents.monthlySpendCent} + ${kostenCent}`, updatedAt: n2 }).where(eq(agents.id, expertId as string)).run();
   }
 
-  res.json({ status: 'ok', reply: agentReply, tokensVerwendet: inputTokens + outputTokens, modell: modelId, provider: expert.verbindungsTyp });
+  res.json({ status: 'ok', reply: agentReply, tokensVerwendet: inputTokens + outputTokens, modell: modelId, provider: expert.connectionType });
+});
+
+// =============================================
+// CHAT STREAMING — SSE with thinking + images
+// =============================================
+app.post('/api/agents/:id/chat/stream', authMiddleware, async (req: express.Request, res: express.Response) => {
+  const expertId = req.params.id as string;
+  const unternehmenId = (req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
+  const { nachricht, image } = req.body; // image: { data: string (base64), mimeType: string }
+  if (!unternehmenId || !nachricht) return res.status(400).json({ error: 'Missing parameters' });
+
+  // SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const emit = (type: string, payload: Record<string, unknown>) => {
+    try { res.write(`data: ${JSON.stringify({ type, ...payload })}\n\n`); } catch {}
+  };
+
+  // Load expert + company (same as /chat/direct)
+  const expert = db.select().from(agents).where(eq(agents.id, expertId as string)).get();
+  const unternehmenData = db.select().from(companies).where(eq(companies.id, unternehmenId)).get();
+  if (!expert || !unternehmenData) { emit('error', { message: 'Expert not found' }); return res.end(); }
+
+  let apiKey = '';
+  let apiUrl = 'https://api.anthropic.com/v1/messages';
+  let modelId = 'claude-haiku-4-5-20251001';
+  let provider = expert.connectionType || 'anthropic';
+  try { const c = JSON.parse(expert.connectionConfig || '{}'); if (c.model) modelId = c.model; } catch {}
+  let agentBaseUrl = '';
+  try { agentBaseUrl = JSON.parse(expert.connectionConfig || '{}').baseUrl || ''; } catch {}
+
+  if (provider === 'anthropic' || provider === 'claude') {
+    const row = db.select().from(settings).where(eq(settings.key, 'anthropic_api_key')).get();
+    if (row) apiKey = decryptSetting('anthropic_api_key', row.value);
+  } else if (provider === 'openrouter') {
+    const row = db.select().from(settings).where(eq(settings.key, 'openrouter_api_key')).get();
+    if (row) apiKey = decryptSetting('openrouter_api_key', row.value);
+    apiUrl = 'https://openrouter.ai/api/v1/chat/completions'; provider = 'openai';
+  } else if (provider === 'openai' || provider === 'custom') {
+    const row = db.select().from(settings).where(eq(settings.key, 'openai_api_key')).get();
+    if (row) apiKey = decryptSetting('openai_api_key', row.value);
+    apiUrl = agentBaseUrl ? agentBaseUrl + '/chat/completions' : 'https://api.openai.com/v1/chat/completions';
+    provider = 'openai';
+  } else if (provider === 'ollama') {
+    apiUrl = (agentBaseUrl || 'http://localhost:11434') + '/v1/chat/completions';
+    apiKey = 'ollama'; provider = 'openai';
+  } else if (provider === 'poe') {
+    const row = db.select().from(settings).where(eq(settings.key, 'poe_api_key')).get();
+    if (row) apiKey = decryptSetting('poe_api_key', row.value);
+    apiUrl = 'https://api.poe.com/v1/chat/completions';
+    provider = 'openai'; // Poe is OpenAI-compatible
+  } else {
+    // Fallback anthropic
+    const row = db.select().from(settings).where(eq(settings.key, 'anthropic_api_key')).get();
+    if (row) { apiKey = decryptSetting('anthropic_api_key', row.value); provider = 'anthropic'; }
+  }
+
+  if (!apiKey) { emit('error', { message: 'no_api_key' }); return res.end(); }
+
+  // Build system prompt (reuse same logic)
+  const chatHistory = db.select().from(chatMessages)
+    .where(and(eq(chatMessages.companyId, unternehmenId), eq(chatMessages.agentId, expertId)))
+    .orderBy(desc(chatMessages.createdAt)).limit(12).all().reverse();
+
+  const teamMembers = db.select().from(agents)
+    .where(and(eq(agents.companyId, unternehmenId), eq(agents.reportsTo, expertId as string))).all();
+  const supervisor = expert.reportsTo
+    ? db.select().from(agents).where(eq(agents.id, expert.reportsTo)).get() : null;
+  const openTasks = db.select().from(tasks)
+    .where(and(eq(tasks.companyId, unternehmenId), eq(tasks.assignedTo, expertId)))
+    .orderBy(desc(tasks.createdAt)).limit(5).all();
+
+  const uiLang = getUiLanguage(unternehmenId);
+  const isEn = uiLang === 'en';
+  const memoryContext = loadRelevantMemory(expertId, nachricht.toLowerCase().split(/\W+/).filter((w: string) => w.length > 4));
+  const configCtx = expert.isOrchestrator ? buildConfigContext(unternehmenId) : '';
+
+  const systemPrompt = `${expert.systemPrompt ? expert.systemPrompt + '\n\n' : ''}${isEn ? `You are ${expert.name}, ${expert.role} at ${unternehmenData.name}.` : `Du bist ${expert.name}, ${expert.role} bei ${unternehmenData.name}.`}
+${unternehmenData.goal ? (isEn ? `Company goal: ${unternehmenData.goal}` : `Unternehmensziel: ${unternehmenData.goal}`) : ''}
+${teamMembers.length > 0 ? (isEn ? `Direct reports: ${teamMembers.map(m => m.name).join(', ')}` : `Direkte Berichte: ${teamMembers.map(m => m.name).join(', ')}`) : ''}
+${supervisor ? (isEn ? `Supervisor: ${supervisor.name}` : `Vorgesetzter: ${supervisor.name}`) : ''}
+${openTasks.length > 0 ? (isEn ? `Active tasks: ${openTasks.map(t => t.title).join(', ')}` : `Aktive Tasks: ${openTasks.map(t => t.title).join(', ')}`) : ''}
+${memoryContext}${configCtx}
+${langLine(uiLang)} ${isEn ? 'You respond directly to board messages. Be precise and helpful. Actions only when asked, as [ACTION]{...}[/ACTION].' : 'Du antwortest direkt auf Nachrichten des Boards. Sei präzise und hilfreich. Aktionen nur wenn gewünscht als [ACTION]{...}[/ACTION].'}`;
+
+  const history = chatHistory.filter(m => m.senderType !== 'system').map(m => ({
+    role: m.senderType === 'board' ? 'user' as const : 'assistant' as const,
+    content: m.message,
+  }));
+
+  // Save board message
+  const boardMsg = { id: uuid(), companyId: unternehmenId, agentId: expertId, senderType: 'board' as const, message: nachricht, read: false, createdAt: new Date().toISOString() };
+  db.insert(chatMessages).values(boardMsg).run();
+
+  let fullReply = '';
+  let inputTokens = 0;
+  let outputTokens = 0;
+
+  try {
+    if (provider === 'anthropic') {
+      // Build user content (text + optional image)
+      const userContent: any[] = [];
+      if (image?.data && image?.mimeType) {
+        userContent.push({ type: 'image', source: { type: 'base64', media_type: image.mimeType, data: image.data } });
+      }
+      userContent.push({ type: 'text', text: nachricht });
+
+      const msgs = [...history, { role: 'user' as const, content: userContent }];
+      const useThinking = modelId.includes('claude-3-7') || modelId.includes('claude-opus-4') || modelId.includes('claude-sonnet-4');
+      const body: any = {
+        model: modelId, max_tokens: useThinking ? 16000 : 2048,
+        system: systemPrompt, messages: msgs, stream: true,
+      };
+      if (useThinking) body.thinking = { type: 'enabled', budget_tokens: 8000 };
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json', 'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      };
+      if (useThinking) headers['anthropic-beta'] = 'interleaved-thinking-2025-05-14';
+
+      const llmRes = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers, body: JSON.stringify(body) });
+      if (!llmRes.ok) {
+        let errBody = '';
+        try { errBody = await llmRes.text(); } catch {}
+        throw new Error(`Anthropic ${llmRes.status}: ${errBody.slice(0, 200)}`);
+      }
+
+      const reader = llmRes.body!.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      let inThinking = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (raw === '[DONE]') continue;
+          try {
+            const ev = JSON.parse(raw);
+            if (ev.type === 'content_block_start') {
+              if (ev.content_block?.type === 'thinking') { inThinking = true; emit('thinking_start', {}); }
+              else if (ev.content_block?.type === 'text') { inThinking = false; }
+            }
+            if (ev.type === 'content_block_delta') {
+              if (ev.delta?.type === 'thinking_delta') {
+                emit('thinking_delta', { text: ev.delta.thinking });
+              } else if (ev.delta?.type === 'text_delta') {
+                fullReply += ev.delta.text;
+                emit('text_delta', { text: ev.delta.text });
+              }
+            }
+            if (ev.type === 'message_delta') {
+              outputTokens = ev.usage?.output_tokens || outputTokens;
+            }
+            if (ev.type === 'message_start') {
+              inputTokens = ev.message?.usage?.input_tokens || 0;
+            }
+          } catch {}
+        }
+      }
+    } else {
+      // OpenAI-compatible streaming (OpenRouter, OpenAI, Ollama)
+      const userContent: any[] = [];
+      if (image?.data && image?.mimeType) {
+        userContent.push({ type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.data}` } });
+      }
+      userContent.push({ type: 'text', text: nachricht });
+
+      const msgs = [...history, { role: 'user', content: image ? userContent : nachricht }];
+      const llmRes = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({ model: modelId, messages: [{ role: 'system', content: systemPrompt }, ...msgs], stream: true, max_tokens: 2048 }),
+      });
+      if (!llmRes.ok) {
+        let errBody = '';
+        try { errBody = await llmRes.text(); } catch {}
+        throw new Error(`LLM ${llmRes.status}: ${errBody.slice(0, 200)}`);
+      }
+
+      const reader = llmRes.body!.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (raw === '[DONE]') continue;
+          try {
+            const ev = JSON.parse(raw);
+            const token = ev.choices?.[0]?.delta?.content || '';
+            if (token) { fullReply += token; emit('text_delta', { text: token }); }
+          } catch {}
+        }
+      }
+    }
+  } catch (err: any) {
+    emit('error', { message: err.message || 'LLM error' });
+    return res.end();
+  }
+
+  // Execute [ACTION] blocks and replace them inline with their results
+  let finalReply = fullReply;
+  if (fullReply) {
+    finalReply = fullReply.replace(/\[ACTION\]([\s\S]*?)\[\/ACTION\]/g, (_m, json) => {
+      try {
+        const a = JSON.parse(json);
+        const r = executeConfigAction(a, unternehmenId);
+        return r || '';
+      } catch (e: any) {
+        return `❌ Action-Parse-Fehler: ${e.message?.slice(0, 80) || 'invalid JSON'}`;
+      }
+    }).trim();
+
+    const agentMsg = { id: uuid(), companyId: unternehmenId, agentId: expertId, senderType: 'agent' as const, message: finalReply || fullReply, read: false, createdAt: new Date().toISOString() };
+    db.insert(chatMessages).values(agentMsg).run();
+    broadcastUpdate('chat_message', agentMsg);
+    autoSaveInsights(expertId, unternehmenId, finalReply || fullReply, 'Chat').catch(() => {});
+    const kostenCent = Math.ceil((inputTokens * 0.0008 + outputTokens * 0.004) / 100);
+    if (kostenCent > 0) {
+      const n = new Date().toISOString();
+      db.insert(costEntries).values({ id: uuid(), companyId: unternehmenId, agentId: expertId, provider: expert.connectionType || 'custom', model: modelId, inputTokens, outputTokens, costCent: kostenCent, timestamp: n, createdAt: n }).run();
+    }
+  }
+
+  emit('done', { fullReply: finalReply });
+  res.end();
 });
 
 // =============================================
@@ -3328,7 +4139,7 @@ function emitTrace(expertId: string, unternehmenId: string, typ: string, titel: 
   const id = uuid();
   const erstelltAm = now();
   try {
-    db.insert(traceEreignisse).values({ id, unternehmenId, expertId, runId: runId ?? null, typ, titel, details: details ?? null, erstelltAm }).run();
+    db.insert(traceEvents).values({ id, companyId: unternehmenId, agentId: expertId, runId: runId ?? null, type: typ, title: titel, details: details ?? null, createdAt: erstelltAm }).run();
   } catch { /* non-critical */ }
   const payload = JSON.stringify({ id, expertId, typ, titel, details, erstelltAm });
   const clients = sseClients.get(expertId);
@@ -3350,7 +4161,7 @@ function emitTrace(expertId: string, unternehmenId: string, typ: string, titel: 
 export { emitTrace };
 
 // SSE stream endpoint — accepts token as query param (EventSource limitation)
-app.get('/api/experten/:id/trace', authMiddleware, (req, res) => {
+app.get('/api/agents/:id/trace', authMiddleware, (req, res) => {
   const expertId = req.params.id as string;
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -3359,9 +4170,9 @@ app.get('/api/experten/:id/trace', authMiddleware, (req, res) => {
   res.flushHeaders();
 
   // Send last 50 trace events as replay
-  const history = db.select().from(traceEreignisse)
-    .where(eq(traceEreignisse.expertId, expertId))
-    .orderBy(desc(traceEreignisse.erstelltAm))
+  const history = db.select().from(traceEvents)
+    .where(eq(traceEvents.agentId, expertId))
+    .orderBy(desc(traceEvents.createdAt))
     .limit(50).all().reverse();
   for (const e of history) {
     res.write(`data: ${JSON.stringify(e)}\n\n`);
@@ -3376,16 +4187,29 @@ app.get('/api/experten/:id/trace', authMiddleware, (req, res) => {
 });
 
 // Get trace history (REST fallback for initial load)
-app.get('/api/experten/:id/trace/history', (req, res) => {
-  const queryToken = req.query.token as string;
-  const token = (req.headers.authorization?.slice(7)) || queryToken;
-  if (!token) return res.status(401).json({ error: 'Nicht angemeldet.' });
-  try { jwt.verify(token, JWT_SECRET); } catch { return res.status(401).json({ error: 'Token ungültig.' }); }
+app.get('/api/agents/:id/trace/history', async (req, res) => {
+  // 1. Try BetterAuth session first
+  let authenticated = false;
+  try {
+    const session = await betterAuth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
+    if (session?.user) authenticated = true;
+  } catch {}
+
+  // 2. Fallback to legacy JWT
+  if (!authenticated) {
+    const queryToken = req.query.token as string;
+    const token = (req.headers.authorization?.slice(7)) || queryToken;
+    if (!token) return res.status(401).json({ error: 'Not logged in.' });
+    try { jwt.verify(token, JWT_SECRET); authenticated = true; } catch { return res.status(401).json({ error: 'Token invalid.' }); }
+  }
+
   const expertId = req.params.id as string;
   const limit = Math.min(Number(req.query.limit) || 100, 500);
-  const history = db.select().from(traceEreignisse)
-    .where(eq(traceEreignisse.expertId, expertId))
-    .orderBy(desc(traceEreignisse.erstelltAm))
+  const history = db.select().from(traceEvents)
+    .where(eq(traceEvents.agentId, expertId))
+    .orderBy(desc(traceEvents.createdAt))
     .limit(limit).all().reverse();
   res.json(history);
 });
@@ -3405,15 +4229,15 @@ app.post('/api/onboarding/generate-team', authMiddleware, async (req, res) => {
   const inlineOllamaUrl = inlineKeys?.ollamaUrl?.trim();
   const inlineOllamaModel = inlineKeys?.ollamaModel?.trim();
 
-  const orKey = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'openrouter_api_key')).get();
-  const anthropicKey = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'anthropic_api_key')).get();
-  const ollamaUrlRow = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'ollama_base_url')).get();
-  const ollamaModelRow = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'ollama_default_model')).get();
+  const orKey = db.select().from(settings).where(eq(settings.key, 'openrouter_api_key')).get();
+  const anthropicKey = db.select().from(settings).where(eq(settings.key, 'anthropic_api_key')).get();
+  const ollamaUrlRow = db.select().from(settings).where(eq(settings.key, 'ollama_base_url')).get();
+  const ollamaModelRow = db.select().from(settings).where(eq(settings.key, 'ollama_default_model')).get();
 
-  const effectiveOR = inlineOR || (orKey?.wert ? decryptSetting('openrouter_api_key', orKey.wert) : '');
-  const effectiveAnthropic = inlineAnthropic || (anthropicKey?.wert ? decryptSetting('anthropic_api_key', anthropicKey.wert) : '');
-  const effectiveOllamaUrl = inlineOllamaUrl || (ollamaUrlRow?.wert ? decryptSetting('ollama_base_url', ollamaUrlRow.wert) : '');
-  const effectiveOllamaModel = inlineOllamaModel || (ollamaModelRow?.wert ? decryptSetting('ollama_default_model', ollamaModelRow.wert) : '');
+  const effectiveOR = inlineOR || (orKey?.value ? decryptSetting('openrouter_api_key', orKey.value) : '');
+  const effectiveAnthropic = inlineAnthropic || (anthropicKey?.value ? decryptSetting('anthropic_api_key', anthropicKey.value) : '');
+  const effectiveOllamaUrl = inlineOllamaUrl || (ollamaUrlRow?.value ? decryptSetting('ollama_base_url', ollamaUrlRow.value) : '');
+  const effectiveOllamaModel = inlineOllamaModel || (ollamaModelRow?.value ? decryptSetting('ollama_default_model', ollamaModelRow.value) : '');
 
   let apiKey = '';
   let model = 'openrouter/auto';
@@ -3631,23 +4455,23 @@ function buildDefaultTeam(description: string, language: string): any {
 // DAILY BRIEFING — AI-generated CEO summary
 // =============================================
 
-app.post('/api/unternehmen/:id/briefing', authMiddleware, async (req, res) => {
-  const { id: unternehmenId } = req.params;
+app.post('/api/companies/:id/briefing', authMiddleware, async (req, res) => {
+  const unternehmenId = req.params.id as string;
   const { language = 'de' } = req.body;
   const isDE = language === 'de';
 
   // Gather company snapshot
-  const firma = db.select().from(unternehmen).where(eq(unternehmen.id, unternehmenId)).get();
+  const firma = db.select().from(companies).where(eq(companies.id, unternehmenId)).get();
   if (!firma) return res.status(404).json({ error: 'Company not found' });
 
-  const alleExperten = db.select().from(experten).where(eq(experten.unternehmenId, unternehmenId)).all();
-  const alleAufgaben = db.select().from(aufgaben).where(eq(aufgaben.unternehmenId, unternehmenId)).all();
+  const alleExperten = db.select().from(agents).where(eq(agents.companyId, unternehmenId)).all();
+  const alleAufgaben = db.select().from(tasks).where(eq(tasks.companyId, unternehmenId)).all();
 
   const now = new Date();
   const yesterday = new Date(now.getTime() - 86400000).toISOString();
 
   const today = new Date().toDateString();
-  const aufgabenHeute = alleAufgaben.filter(a => new Date(a.erstelltAm).toDateString() === today);
+  const aufgabenHeute = alleAufgaben.filter(a => new Date(a.createdAt).toDateString() === today);
   const erledigt = alleAufgaben.filter(a => a.status === 'done').length;
   const inProgress = alleAufgaben.filter(a => a.status === 'in_progress').length;
   const blockiert = alleAufgaben.filter(a => a.status === 'blocked').length;
@@ -3656,10 +4480,10 @@ app.post('/api/unternehmen/:id/briefing', authMiddleware, async (req, res) => {
   const aktiv = alleExperten.filter(e => e.status !== 'terminated').length;
 
   // Monthly cost
-  const alleKosten = db.select().from(kostenbuchungen).where(eq(kostenbuchungen.unternehmenId, unternehmenId)).all();
+  const alleKosten = db.select().from(costEntries).where(eq(costEntries.companyId, unternehmenId)).all();
   const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
-  const monthCost = alleKosten.filter((k: any) => k.zeitpunkt?.startsWith(currentMonth))
-    .reduce((s: number, k: any) => s + (k.kostenCent || 0), 0);
+  const monthCost = alleKosten.filter((k: any) => k.timestamp?.startsWith(currentMonth))
+    .reduce((s: number, k: any) => s + (k.costCent || 0), 0);
 
   const context = isDE
     ? `Unternehmensname: ${firma.name}
@@ -3674,10 +4498,10 @@ New tasks today: ${aufgabenHeute.length}
 Monthly costs so far: $${(monthCost / 100).toFixed(2)}`;
 
   // Try LLM
-  const orKey = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'openrouter_api_key')).get();
-  const anthropicKey = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'anthropic_api_key')).get();
-  const effectiveOR = orKey?.wert ? decryptSetting('openrouter_api_key', orKey.wert) : '';
-  const effectiveAnthropic = anthropicKey?.wert ? decryptSetting('anthropic_api_key', anthropicKey.wert) : '';
+  const orKey = db.select().from(settings).where(eq(settings.key, 'openrouter_api_key')).get();
+  const anthropicKey = db.select().from(settings).where(eq(settings.key, 'anthropic_api_key')).get();
+  const effectiveOR = orKey?.value ? decryptSetting('openrouter_api_key', orKey.value) : '';
+  const effectiveAnthropic = anthropicKey?.value ? decryptSetting('anthropic_api_key', anthropicKey.value) : '';
 
   const systemPrompt = isDE
     ? 'Du bist ein KI-Unternehmensassistent. Schreibe eine knappe, aufschlussreiche CEO-Zusammenfassung (3-4 Sätze) basierend auf dem Tagesstatus. Sei direkt, klar und handlungsorientiert. Kein Markdown, kein Aufzählung – Fließtext.'
@@ -3735,21 +4559,21 @@ Monthly costs so far: $${(monthCost / 100).toFixed(2)}`;
 // TASK DECOMPOSER — AI-powered subtask creation
 // =============================================
 
-app.post('/api/aufgaben/:id/decompose', authMiddleware, async (req, res) => {
-  const { id: aufgabeId } = req.params;
+app.post('/api/tasks/:id/decompose', authMiddleware, async (req, res) => {
+  const aufgabeId = req.params.id as string;
   const { language = 'de' } = req.body;
   const isDE = language === 'de';
 
-  const aufgabe = db.select().from(aufgaben).where(eq(aufgaben.id, aufgabeId)).get();
+  const aufgabe = db.select().from(tasks).where(eq(tasks.id, aufgabeId)).get();
   if (!aufgabe) return res.status(404).json({ error: 'Task not found' });
 
-  const context = `${aufgabe.titel}${aufgabe.beschreibung ? `\n\n${aufgabe.beschreibung}` : ''}`;
+  const context = `${aufgabe.title}${aufgabe.description ? `\n\n${aufgabe.description}` : ''}`;
 
   // Try LLM
-  const orKey = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'openrouter_api_key')).get();
-  const anthropicKey = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'anthropic_api_key')).get();
-  const effectiveOR = orKey?.wert ? decryptSetting('openrouter_api_key', orKey.wert) : '';
-  const effectiveAnthropic = anthropicKey?.wert ? decryptSetting('anthropic_api_key', anthropicKey.wert) : '';
+  const orKey = db.select().from(settings).where(eq(settings.key, 'openrouter_api_key')).get();
+  const anthropicKey = db.select().from(settings).where(eq(settings.key, 'anthropic_api_key')).get();
+  const effectiveOR = orKey?.value ? decryptSetting('openrouter_api_key', orKey.value) : '';
+  const effectiveAnthropic = anthropicKey?.value ? decryptSetting('anthropic_api_key', anthropicKey.value) : '';
 
   const systemPrompt = isDE
     ? 'Du bist ein Projektmanager-Assistent. Zerlege die gegebene Aufgabe in 3-5 konkrete, ausführbare Teilaufgaben. Antworte NUR mit einem JSON-Array von Strings, keine anderen Texte.'
@@ -3794,7 +4618,7 @@ app.post('/api/aufgaben/:id/decompose', authMiddleware, async (req, res) => {
   }
 
   // Template-based fallback
-  const title = aufgabe.titel;
+  const title = aufgabe.title;
   const subtasks = isDE
     ? [
         `Anforderungen für "${title}" analysieren`,
@@ -3818,15 +4642,15 @@ app.post('/api/aufgaben/:id/decompose', authMiddleware, async (req, res) => {
 // FOCUS MODE — human daily command center
 // =============================================
 
-app.get('/api/unternehmen/:id/focus', authMiddleware, (req, res) => {
-  const { id: unternehmenId } = req.params;
+app.get('/api/companies/:id/focus', authMiddleware, (req, res) => {
+  const unternehmenId = req.params.id as string;
 
-  const firma = db.select().from(unternehmen).where(eq(unternehmen.id, unternehmenId)).get();
+  const firma = db.select().from(companies).where(eq(companies.id, unternehmenId)).get();
   if (!firma) return res.status(404).json({ error: 'Company not found' });
 
-  const alleExperten = db.select().from(experten).where(eq(experten.unternehmenId, unternehmenId)).all();
-  const alleAufgaben = db.select().from(aufgaben).where(eq(aufgaben.unternehmenId, unternehmenId)).all();
-  const alleGenehmigungen = db.select().from(genehmigungen).where(eq(genehmigungen.unternehmenId, unternehmenId)).all();
+  const alleExperten = db.select().from(agents).where(eq(agents.companyId, unternehmenId)).all();
+  const alleAufgaben = db.select().from(tasks).where(eq(tasks.companyId, unternehmenId)).all();
+  const alleGenehmigungen = db.select().from(approvals).where(eq(approvals.companyId, unternehmenId)).all();
 
   const todayStr = new Date().toDateString();
   const weekAgo = Date.now() - 7 * 86400_000;
@@ -3835,25 +4659,25 @@ app.get('/api/unternehmen/:id/focus', authMiddleware, (req, res) => {
   const human_actions = alleAufgaben
     .filter(a =>
       a.status === 'blocked' ||
-      (!a.zugewiesenAn && (a.prioritaet === 'critical' || a.prioritaet === 'high') && a.status !== 'done' && a.status !== 'cancelled') ||
+      (!a.assignedTo && (a.priority === 'critical' || a.priority === 'high') && a.status !== 'done' && a.status !== 'cancelled') ||
       a.status === 'in_review'
     )
     .slice(0, 8)
     .map(a => {
-      const agent = a.zugewiesenAn ? alleExperten.find(e => e.id === a.zugewiesenAn) : null;
+      const agent = a.assignedTo ? alleExperten.find(e => e.id === a.assignedTo) : null;
       return {
         id: a.id,
-        titel: a.titel,
+        titel: a.title,
         status: a.status,
-        prioritaet: a.prioritaet,
+        prioritaet: a.priority,
         reason: a.status === 'blocked' ? 'blocked'
           : a.status === 'in_review' ? 'needs_review'
-          : !a.zugewiesenAn ? 'unassigned'
+          : !a.assignedTo ? 'unassigned'
           : 'high_priority',
         agentName: agent?.name ?? null,
         agentAvatar: agent?.avatar ?? null,
-        agentFarbe: agent?.avatarFarbe ?? null,
-        erstelltAm: a.erstelltAm,
+        agentFarbe: agent?.avatarColor ?? null,
+        erstelltAm: a.createdAt,
       };
     });
 
@@ -3861,30 +4685,30 @@ app.get('/api/unternehmen/:id/focus', authMiddleware, (req, res) => {
   const ai_active = alleExperten
     .filter(e => e.status === 'running' || e.status === 'active')
     .map(e => {
-      const currentTask = alleAufgaben.find(a => a.zugewiesenAn === e.id && a.status === 'in_progress') ?? null;
+      const currentTask = alleAufgaben.find(a => a.assignedTo === e.id && a.status === 'in_progress') ?? null;
       return {
         id: e.id,
         name: e.name,
-        rolle: e.rolle,
+        rolle: e.role,
         avatar: e.avatar,
-        avatarFarbe: e.avatarFarbe,
+        avatarFarbe: e.avatarColor,
         status: e.status,
-        currentTask: currentTask ? { id: currentTask.id, titel: currentTask.titel, prioritaet: currentTask.prioritaet } : null,
+        currentTask: currentTask ? { id: currentTask.id, titel: currentTask.title, prioritaet: currentTask.priority } : null,
       };
     });
 
   // Completed today
   const completed_today = alleAufgaben
-    .filter(a => a.status === 'done' && a.abgeschlossenAm && new Date(a.abgeschlossenAm).toDateString() === todayStr)
+    .filter(a => a.status === 'done' && a.completedAt && new Date(a.completedAt).toDateString() === todayStr)
     .slice(0, 5)
     .map(a => {
-      const agent = a.zugewiesenAn ? alleExperten.find(e => e.id === a.zugewiesenAn) : null;
-      return { id: a.id, titel: a.titel, agentName: agent?.name ?? null, abgeschlossenAm: a.abgeschlossenAm };
+      const agent = a.assignedTo ? alleExperten.find(e => e.id === a.assignedTo) : null;
+      return { id: a.id, titel: a.title, agentName: agent?.name ?? null, abgeschlossenAm: a.completedAt };
     });
 
   // Velocity
   const doneThisWeek = alleAufgaben.filter(a =>
-    a.status === 'done' && a.abgeschlossenAm && new Date(a.abgeschlossenAm).getTime() >= weekAgo
+    a.status === 'done' && a.completedAt && new Date(a.completedAt).getTime() >= weekAgo
   );
   const doneToday = completed_today.length;
   const week_avg = Math.round(doneThisWeek.length / 7 * 10) / 10;
@@ -3911,18 +4735,18 @@ app.get('/api/unternehmen/:id/focus', authMiddleware, (req, res) => {
 // =============================================
 
 // GET: check if focus mode is currently active
-app.get('/api/unternehmen/:id/focus-mode', authMiddleware, (req, res) => {
-  const { id: unternehmenId } = req.params;
+app.get('/api/companies/:id/focus-mode', authMiddleware, (req, res) => {
+  const unternehmenId = req.params.id as string;
 
-  const activeRow = db.select().from(einstellungen)
-    .where(and(eq(einstellungen.schluessel, 'focus_mode_active'), eq(einstellungen.unternehmenId, unternehmenId)))
+  const activeRow = db.select().from(settings)
+    .where(and(eq(settings.key, 'focus_mode_active'), eq(settings.companyId, unternehmenId)))
     .get();
-  const untilRow = db.select().from(einstellungen)
-    .where(and(eq(einstellungen.schluessel, 'focus_mode_until'), eq(einstellungen.unternehmenId, unternehmenId)))
+  const untilRow = db.select().from(settings)
+    .where(and(eq(settings.key, 'focus_mode_until'), eq(settings.companyId, unternehmenId)))
     .get();
 
-  const active = activeRow?.wert === 'true';
-  const until = untilRow?.wert ?? null;
+  const active = activeRow?.value === 'true';
+  const until = untilRow?.value ?? null;
 
   // Auto-expire: if until is in the past, treat as inactive
   const expired = until ? new Date(until) < new Date() : false;
@@ -3932,8 +4756,8 @@ app.get('/api/unternehmen/:id/focus-mode', authMiddleware, (req, res) => {
 });
 
 // PUT: enable or disable focus mode
-app.put('/api/unternehmen/:id/focus-mode', authMiddleware, (req, res) => {
-  const { id: unternehmenId } = req.params;
+app.put('/api/companies/:id/focus-mode', authMiddleware, (req, res) => {
+  const unternehmenId = req.params.id as string;
   const { active, durationMinutes } = req.body as { active: boolean; durationMinutes?: number };
 
   const now = new Date().toISOString();
@@ -3942,24 +4766,24 @@ app.put('/api/unternehmen/:id/focus-mode', authMiddleware, (req, res) => {
     : null;
 
   // Upsert focus_mode_active
-  db.insert(einstellungen)
-    .values({ schluessel: 'focus_mode_active', unternehmenId, wert: active ? 'true' : 'false', aktualisiertAm: now })
+  db.insert(settings)
+    .values({ key: 'focus_mode_active', companyId: unternehmenId, value: active ? 'true' : 'false', updatedAt: now })
     .onConflictDoUpdate({
-      target: [einstellungen.schluessel, einstellungen.unternehmenId],
-      set: { wert: active ? 'true' : 'false', aktualisiertAm: now },
+      target: [settings.key, settings.companyId],
+      set: { value: active ? 'true' : 'false', updatedAt: now },
     }).run();
 
   // Upsert focus_mode_until
   if (until) {
-    db.insert(einstellungen)
-      .values({ schluessel: 'focus_mode_until', unternehmenId, wert: until, aktualisiertAm: now })
+    db.insert(settings)
+      .values({ key: 'focus_mode_until', companyId: unternehmenId, value: until, updatedAt: now })
       .onConflictDoUpdate({
-        target: [einstellungen.schluessel, einstellungen.unternehmenId],
-        set: { wert: until, aktualisiertAm: now },
+        target: [settings.key, settings.companyId],
+        set: { value: until, updatedAt: now },
       }).run();
   } else {
-    db.delete(einstellungen)
-      .where(and(eq(einstellungen.schluessel, 'focus_mode_until'), eq(einstellungen.unternehmenId, unternehmenId)))
+    db.delete(settings)
+      .where(and(eq(settings.key, 'focus_mode_until'), eq(settings.companyId, unternehmenId)))
       .run();
   }
 
@@ -3970,12 +4794,12 @@ app.put('/api/unternehmen/:id/focus-mode', authMiddleware, (req, res) => {
 // WEEKLY REPORT — AI-generated performance digest
 // =============================================
 
-app.get('/api/unternehmen/:id/weekly-report', authMiddleware, async (req, res) => {
-  const { id: unternehmenId } = req.params;
+app.get('/api/companies/:id/weekly-report', authMiddleware, async (req, res) => {
+  const unternehmenId = req.params.id as string;
   const { language = 'de' } = req.query as Record<string, string>;
   const isDE = language === 'de';
 
-  const firma = db.select().from(unternehmen).where(eq(unternehmen.id, unternehmenId)).get();
+  const firma = db.select().from(companies).where(eq(companies.id, unternehmenId)).get();
   if (!firma) return res.status(404).json({ error: 'Company not found' });
 
   // Week boundaries: Monday 00:00 → Sunday 23:59
@@ -3991,15 +4815,15 @@ app.get('/api/unternehmen/:id/weekly-report', authMiddleware, async (req, res) =
   const weekStartISO = weekStart.toISOString();
   const weekEndISO = weekEnd.toISOString();
 
-  const alleExperten = db.select().from(experten).where(eq(experten.unternehmenId, unternehmenId)).all();
-  const alleAufgaben = db.select().from(aufgaben).where(eq(aufgaben.unternehmenId, unternehmenId)).all();
-  const alleBuchungen = db.select().from(kostenbuchungen).where(eq(kostenbuchungen.unternehmenId, unternehmenId)).all();
-  const alleZiele = db.select().from(ziele).where(eq(ziele.unternehmenId, unternehmenId)).all();
+  const alleExperten = db.select().from(agents).where(eq(agents.companyId, unternehmenId)).all();
+  const alleAufgaben = db.select().from(tasks).where(eq(tasks.companyId, unternehmenId)).all();
+  const alleBuchungen = db.select().from(costEntries).where(eq(costEntries.companyId, unternehmenId)).all();
+  const alleZiele = db.select().from(goals).where(eq(goals.companyId, unternehmenId)).all();
 
   // Tasks created this week
-  const tasksCreated = alleAufgaben.filter(a => a.erstelltAm >= weekStartISO && a.erstelltAm < weekEndISO);
+  const tasksCreated = alleAufgaben.filter(a => a.createdAt >= weekStartISO && a.createdAt < weekEndISO);
   // Tasks completed this week
-  const tasksCompleted = alleAufgaben.filter(a => a.status === 'done' && a.abgeschlossenAm && a.abgeschlossenAm >= weekStartISO && a.abgeschlossenAm < weekEndISO);
+  const tasksCompleted = alleAufgaben.filter(a => a.status === 'done' && a.completedAt && a.completedAt >= weekStartISO && a.completedAt < weekEndISO);
   // Tasks blocked
   const tasksBlocked = alleAufgaben.filter(a => a.status === 'blocked');
   // Tasks in progress
@@ -4013,7 +4837,7 @@ app.get('/api/unternehmen/:id/weekly-report', authMiddleware, async (req, res) =
     return {
       day: day.toLocaleDateString(isDE ? 'de-DE' : 'en-US', { weekday: 'short' }),
       date: day.toLocaleDateString(isDE ? 'de-DE' : 'en-US', { month: 'short', day: 'numeric' }),
-      count: tasksCompleted.filter(a => new Date(a.abgeschlossenAm!).toDateString() === dayStr).length,
+      count: tasksCompleted.filter(a => new Date(a.completedAt!).toDateString() === dayStr).length,
     };
   });
 
@@ -4021,22 +4845,22 @@ app.get('/api/unternehmen/:id/weekly-report', authMiddleware, async (req, res) =
   const agentMetrics = alleExperten
     .filter(e => e.status !== 'terminated')
     .map(e => {
-      const completed = tasksCompleted.filter(a => a.zugewiesenAn === e.id).length;
-      const inProgress = tasksInProgress.filter(a => a.zugewiesenAn === e.id).length;
-      const weekCosts = alleBuchungen.filter(k => k.expertId === e.id && k.zeitpunkt >= weekStartISO && k.zeitpunkt < weekEndISO).reduce((s, k) => s + (k.kostenCent || 0), 0);
-      return { id: e.id, name: e.name, avatar: e.avatar, avatarFarbe: e.avatarFarbe, rolle: e.rolle, completed, inProgress, costCent: weekCosts };
+      const completed = tasksCompleted.filter(a => a.assignedTo === e.id).length;
+      const inProgress = tasksInProgress.filter(a => a.assignedTo === e.id).length;
+      const weekCosts = alleBuchungen.filter(k => k.agentId === e.id && k.timestamp >= weekStartISO && k.timestamp < weekEndISO).reduce((s, k) => s + (k.costCent || 0), 0);
+      return { id: e.id, name: e.name, avatar: e.avatar, avatarFarbe: e.avatarColor, rolle: e.role, completed, inProgress, costCent: weekCosts };
     })
     .filter(m => m.completed > 0 || m.inProgress > 0)
     .sort((a, b) => b.completed - a.completed);
 
   // Cost summary
   const weekCostTotal = alleBuchungen
-    .filter(k => k.zeitpunkt >= weekStartISO && k.zeitpunkt < weekEndISO)
-    .reduce((s, k) => s + (k.kostenCent || 0), 0);
+    .filter(k => k.timestamp >= weekStartISO && k.timestamp < weekEndISO)
+    .reduce((s, k) => s + (k.costCent || 0), 0);
 
   // Goal progress
   const activeGoals = alleZiele.filter(z => z.status === 'active').slice(0, 5).map(z => ({
-    id: z.id, titel: z.titel, fortschritt: z.fortschritt, status: z.status,
+    id: z.id, titel: z.title, fortschritt: z.progress, status: z.status,
   }));
 
   // Build the report
@@ -4057,16 +4881,16 @@ app.get('/api/unternehmen/:id/weekly-report', authMiddleware, async (req, res) =
     agentMetrics,
     activeGoals,
     topCompletions: tasksCompleted.slice(-5).reverse().map(a => {
-      const agent = a.zugewiesenAn ? alleExperten.find(e => e.id === a.zugewiesenAn) : null;
-      return { id: a.id, titel: a.titel, agentName: agent?.name ?? null, abgeschlossenAm: a.abgeschlossenAm };
+      const agent = a.assignedTo ? alleExperten.find(e => e.id === a.assignedTo) : null;
+      return { id: a.id, titel: a.title, agentName: agent?.name ?? null, abgeschlossenAm: a.completedAt };
     }),
   };
 
   // Try AI narrative
-  const orKey = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'openrouter_api_key')).get();
-  const anthropicKey = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'anthropic_api_key')).get();
-  const effectiveOR = orKey?.wert ? decryptSetting('openrouter_api_key', orKey.wert) : '';
-  const effectiveAnthropic = anthropicKey?.wert ? decryptSetting('anthropic_api_key', anthropicKey.wert) : '';
+  const orKey = db.select().from(settings).where(eq(settings.key, 'openrouter_api_key')).get();
+  const anthropicKey = db.select().from(settings).where(eq(settings.key, 'anthropic_api_key')).get();
+  const effectiveOR = orKey?.value ? decryptSetting('openrouter_api_key', orKey.value) : '';
+  const effectiveAnthropic = anthropicKey?.value ? decryptSetting('anthropic_api_key', anthropicKey.value) : '';
 
   let aiNarrative: string | null = null;
 
@@ -4104,18 +4928,18 @@ app.get('/api/unternehmen/:id/weekly-report', authMiddleware, async (req, res) =
 // AI WORKSPACE ASSISTANT — ask anything
 // =============================================
 
-app.post('/api/unternehmen/:id/ask', authMiddleware, async (req, res) => {
-  const { id: unternehmenId } = req.params;
+app.post('/api/companies/:id/ask', authMiddleware, async (req, res) => {
+  const unternehmenId = req.params.id as string;
   const { question, language = 'de' } = req.body;
   if (!question?.trim()) return res.status(400).json({ error: 'question required' });
 
-  const firma = db.select().from(unternehmen).where(eq(unternehmen.id, unternehmenId)).get();
+  const firma = db.select().from(companies).where(eq(companies.id, unternehmenId)).get();
   if (!firma) return res.status(404).json({ error: 'Company not found' });
 
-  const alleExperten = db.select().from(experten).where(eq(experten.unternehmenId, unternehmenId)).all();
-  const alleAufgaben = db.select().from(aufgaben).where(eq(aufgaben.unternehmenId, unternehmenId)).all();
-  const alleBuchungen2 = db.select().from(kostenbuchungen).where(eq(kostenbuchungen.unternehmenId, unternehmenId)).all();
-  const alleZiele2 = db.select().from(ziele).where(eq(ziele.unternehmenId, unternehmenId)).all();
+  const alleExperten = db.select().from(agents).where(eq(agents.companyId, unternehmenId)).all();
+  const alleAufgaben = db.select().from(tasks).where(eq(tasks.companyId, unternehmenId)).all();
+  const alleBuchungen2 = db.select().from(costEntries).where(eq(costEntries.companyId, unternehmenId)).all();
+  const alleZiele2 = db.select().from(goals).where(eq(goals.companyId, unternehmenId)).all();
 
   const running = alleExperten.filter(e => e.status === 'running').map(e => e.name);
   const idle = alleExperten.filter(e => e.status === 'idle' || e.status === 'active').map(e => e.name);
@@ -4123,13 +4947,13 @@ app.post('/api/unternehmen/:id/ask', authMiddleware, async (req, res) => {
   const blocked = alleAufgaben.filter(a => a.status === 'blocked');
   const done = alleAufgaben.filter(a => a.status === 'done');
   const activeGoals2 = alleZiele2.filter(z => z.status === 'active');
-  const monthCost2 = alleBuchungen2.filter(k => k.zeitpunkt?.startsWith(new Date().toISOString().slice(0, 7))).reduce((s, k) => s + (k.kostenCent || 0), 0);
+  const monthCost2 = alleBuchungen2.filter(k => k.timestamp?.startsWith(new Date().toISOString().slice(0, 7))).reduce((s, k) => s + (k.costCent || 0), 0);
 
   const context = `Company: ${firma.name}
 Agents: ${alleExperten.length} total — ${running.length} running (${running.slice(0, 3).join(', ')}), ${idle.length} idle (${idle.slice(0, 3).join(', ')})
 Tasks: ${inProgress.length} in progress, ${blocked.length} blocked, ${done.length} done
-Blocked tasks: ${blocked.slice(0, 3).map(t => `"${t.titel}"`).join(', ')}
-Active goals: ${activeGoals2.slice(0, 3).map(z => `${z.titel} (${z.fortschritt}%)`).join(', ')}
+Blocked tasks: ${blocked.slice(0, 3).map(t => `"${t.title}"`).join(', ')}
+Active goals: ${activeGoals2.slice(0, 3).map(z => `${z.title} (${z.progress}%)`).join(', ')}
 Monthly AI cost so far: ${(monthCost2 / 100).toFixed(2)} EUR`;
 
   const isDE = language === 'de';
@@ -4137,10 +4961,10 @@ Monthly AI cost so far: ${(monthCost2 / 100).toFixed(2)} EUR`;
     ? `Du bist ein intelligenter Unternehmensassistent für das KI-Agentenmanagement-Tool OpenCognit. Du hast Zugriff auf aktuelle Workspace-Daten. Beantworte Fragen präzise und hilfreich auf Deutsch. Sei konkret, verwende die echten Daten. Maximal 3-4 Sätze.`
     : `You are an intelligent workspace assistant for OpenCognit, an AI agent management platform. You have access to current workspace data. Answer questions precisely and helpfully in English. Be concrete, use the actual data. Max 3-4 sentences.`;
 
-  const orKey = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'openrouter_api_key')).get();
-  const anthropicKey = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'anthropic_api_key')).get();
-  const effectiveOR = orKey?.wert ? decryptSetting('openrouter_api_key', orKey.wert) : '';
-  const effectiveAnthropic = anthropicKey?.wert ? decryptSetting('anthropic_api_key', anthropicKey.wert) : '';
+  const orKey = db.select().from(settings).where(eq(settings.key, 'openrouter_api_key')).get();
+  const anthropicKey = db.select().from(settings).where(eq(settings.key, 'anthropic_api_key')).get();
+  const effectiveOR = orKey?.value ? decryptSetting('openrouter_api_key', orKey.value) : '';
+  const effectiveAnthropic = anthropicKey?.value ? decryptSetting('anthropic_api_key', anthropicKey.value) : '';
 
   if (effectiveOR || effectiveAnthropic) {
     try {
@@ -4166,7 +4990,7 @@ Monthly AI cost so far: ${(monthCost2 / 100).toFixed(2)} EUR`;
   let answer = '';
   if (q.includes('block') || q.includes('stuck')) {
     answer = blocked.length > 0
-      ? `${blocked.length} tasks are currently blocked: ${blocked.slice(0, 3).map(t => `"${t.titel}"`).join(', ')}. Please check and resolve these.`
+      ? `${blocked.length} tasks are currently blocked: ${blocked.slice(0, 3).map(t => `"${t.title}"`).join(', ')}. Please check and resolve these.`
       : 'No blocked tasks right now — everything is flowing smoothly!';
   } else if (q.includes('running') || q.includes('active') || q.includes('work')) {
     answer = running.length > 0
@@ -4176,7 +5000,7 @@ Monthly AI cost so far: ${(monthCost2 / 100).toFixed(2)} EUR`;
     answer = `Monthly AI costs so far: €${(monthCost2 / 100).toFixed(2)}. ${alleBuchungen2.length > 0 ? 'Cost tracking is active.' : 'No costs recorded yet.'}`;
   } else if (q.includes('goal') || q.includes('progress')) {
     answer = activeGoals2.length > 0
-      ? `Active goals: ${activeGoals2.slice(0, 3).map(z => `"${z.titel}" at ${z.fortschritt}%`).join(', ')}.`
+      ? `Active goals: ${activeGoals2.slice(0, 3).map(z => `"${z.title}" at ${z.progress}%`).join(', ')}.`
       : 'No active goals currently. Create goals to track your objectives.';
   } else {
     answer = `Current status: ${alleExperten.length} agents (${running.length} running), ${inProgress.length} tasks in progress, ${blocked.length} blocked. Monthly cost: €${(monthCost2 / 100).toFixed(2)}.`;
@@ -4188,49 +5012,49 @@ Monthly AI cost so far: ${(monthCost2 / 100).toFixed(2)} EUR`;
 // TEAM STANDUP — AI-generated daily standup
 // =============================================
 
-app.post('/api/unternehmen/:id/standup', authMiddleware, async (req, res) => {
-  const { id: unternehmenId } = req.params;
+app.post('/api/companies/:id/standup', authMiddleware, async (req, res) => {
+  const unternehmenId = req.params.id as string;
   const { language = 'de' } = req.body;
   const isDE = language === 'de';
 
-  const firma = db.select().from(unternehmen).where(eq(unternehmen.id, unternehmenId)).get();
+  const firma = db.select().from(companies).where(eq(companies.id, unternehmenId)).get();
   if (!firma) return res.status(404).json({ error: 'Company not found' });
 
-  const alleExperten = db.select().from(experten)
-    .where(and(eq(experten.unternehmenId, unternehmenId)))
+  const alleExperten = db.select().from(agents)
+    .where(and(eq(agents.companyId, unternehmenId)))
     .all()
     .filter(e => e.status !== 'terminated');
 
   if (alleExperten.length === 0) return res.json({ date: new Date().toISOString(), participants: [] });
 
-  const alleAufgaben = db.select().from(aufgaben).where(eq(aufgaben.unternehmenId, unternehmenId)).all();
+  const alleAufgaben = db.select().from(tasks).where(eq(tasks.companyId, unternehmenId)).all();
 
   const yesterday = new Date(Date.now() - 86400_000).toISOString();
   const today = new Date().toDateString();
   const yesterday2 = new Date(Date.now() - 2 * 86400_000).toISOString();
 
-  const orKey = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'openrouter_api_key')).get();
-  const anthropicKey = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'anthropic_api_key')).get();
-  const effectiveOR = orKey?.wert ? decryptSetting('openrouter_api_key', orKey.wert) : '';
-  const effectiveAnthropic = anthropicKey?.wert ? decryptSetting('anthropic_api_key', anthropicKey.wert) : '';
+  const orKey = db.select().from(settings).where(eq(settings.key, 'openrouter_api_key')).get();
+  const anthropicKey = db.select().from(settings).where(eq(settings.key, 'anthropic_api_key')).get();
+  const effectiveOR = orKey?.value ? decryptSetting('openrouter_api_key', orKey.value) : '';
+  const effectiveAnthropic = anthropicKey?.value ? decryptSetting('anthropic_api_key', anthropicKey.value) : '';
 
   const participants = await Promise.all(alleExperten.map(async (agent) => {
     // Tasks completed yesterday or in last 2 days
     const doneTasks = alleAufgaben.filter(a =>
-      a.zugewiesenAn === agent.id && a.status === 'done' &&
-      a.abgeschlossenAm && a.abgeschlossenAm >= yesterday2
+      a.assignedTo === agent.id && a.status === 'done' &&
+      a.completedAt && a.completedAt >= yesterday2
     );
     // Current in-progress tasks
     const inProgress = alleAufgaben.filter(a =>
-      a.zugewiesenAn === agent.id && a.status === 'in_progress'
+      a.assignedTo === agent.id && a.status === 'in_progress'
     );
     // Todo tasks (what's planned)
     const todo = alleAufgaben.filter(a =>
-      a.zugewiesenAn === agent.id && (a.status === 'todo' || a.status === 'backlog')
+      a.assignedTo === agent.id && (a.status === 'todo' || a.status === 'backlog')
     );
     // Blocked tasks
     const blocked = alleAufgaben.filter(a =>
-      a.zugewiesenAn === agent.id && a.status === 'blocked'
+      a.assignedTo === agent.id && a.status === 'blocked'
     );
 
     let yesterdayText: string;
@@ -4239,20 +5063,20 @@ app.post('/api/unternehmen/:id/standup', authMiddleware, async (req, res) => {
 
     if (effectiveOR || effectiveAnthropic) {
       const context = isDE
-        ? `Agent: ${agent.name} (${agent.rolle})
-Erledigte Aufgaben (letzte 2 Tage): ${doneTasks.map(t => t.titel).join(', ') || 'keine'}
-Aktuell in Bearbeitung: ${inProgress.map(t => t.titel).join(', ') || 'keine'}
-Nächste Aufgaben: ${todo.slice(0, 3).map(t => t.titel).join(', ') || 'keine geplant'}
-Blockierte Aufgaben: ${blocked.map(t => t.titel).join(', ') || 'keine'}`
-        : `Agent: ${agent.name} (${agent.rolle})
-Completed (last 2 days): ${doneTasks.map(t => t.titel).join(', ') || 'none'}
-Currently in progress: ${inProgress.map(t => t.titel).join(', ') || 'none'}
-Next up: ${todo.slice(0, 3).map(t => t.titel).join(', ') || 'nothing planned'}
-Blocked: ${blocked.map(t => t.titel).join(', ') || 'none'}`;
+        ? `Agent: ${agent.name} (${agent.role})
+Erledigte Aufgaben (letzte 2 Tage): ${doneTasks.map(t => t.title).join(', ') || 'keine'}
+Aktuell in Bearbeitung: ${inProgress.map(t => t.title).join(', ') || 'keine'}
+Nächste Aufgaben: ${todo.slice(0, 3).map(t => t.title).join(', ') || 'keine geplant'}
+Blockierte Aufgaben: ${blocked.map(t => t.title).join(', ') || 'keine'}`
+        : `Agent: ${agent.name} (${agent.role})
+Completed (last 2 days): ${doneTasks.map(t => t.title).join(', ') || 'none'}
+Currently in progress: ${inProgress.map(t => t.title).join(', ') || 'none'}
+Next up: ${todo.slice(0, 3).map(t => t.title).join(', ') || 'nothing planned'}
+Blocked: ${blocked.map(t => t.title).join(', ') || 'none'}`;
 
       const sysPrompt = isDE
-        ? `Du bist ${agent.name}, ein KI-Agent mit der Rolle "${agent.rolle}". Schreibe ein tägliches Standup in der Ich-Form. Antworte nur mit gültigem JSON: {"yesterday": "...", "today": "...", "blockers": "..."}. Sei prägnant (je max. 1 Satz), direkt und leicht persönlich im Ton. Wenn es nichts zu berichten gibt, sage das ehrlich.`
-        : `You are ${agent.name}, an AI agent with the role "${agent.rolle}". Write a daily standup update in first person. Respond only with valid JSON: {"yesterday": "...", "today": "...", "blockers": "..."}. Be concise (max 1 sentence each), direct, and slightly personal in tone. If there's nothing to report, say so honestly.`;
+        ? `Du bist ${agent.name}, ein KI-Agent mit der Rolle "${agent.role}". Schreibe ein tägliches Standup in der Ich-Form. Antworte nur mit gültigem JSON: {"yesterday": "...", "today": "...", "blockers": "..."}. Sei prägnant (je max. 1 Satz), direkt und leicht persönlich im Ton. Wenn es nichts zu berichten gibt, sage das ehrlich.`
+        : `You are ${agent.name}, an AI agent with the role "${agent.role}". Write a daily standup update in first person. Respond only with valid JSON: {"yesterday": "...", "today": "...", "blockers": "..."}. Be concise (max 1 sentence each), direct, and slightly personal in tone. If there's nothing to report, say so honestly.`;
 
       try {
         let endpoint: string, headers: Record<string, string>, body: object;
@@ -4283,24 +5107,24 @@ Blocked: ${blocked.map(t => t.titel).join(', ') || 'none'}`;
     // Template fallback
     if (!yesterdayText!) {
       yesterdayText = doneTasks.length > 0
-        ? (isDE ? `Habe ${doneTasks.map(t => `"${t.titel}"`).join(', ')} abgeschlossen.` : `Completed ${doneTasks.map(t => `"${t.titel}"`).join(', ')}.`)
+        ? (isDE ? `Habe ${doneTasks.map(t => `"${t.title}"`).join(', ')} abgeschlossen.` : `Completed ${doneTasks.map(t => `"${t.title}"`).join(', ')}.`)
         : (isDE ? 'Keine Aufgaben gestern abgeschlossen.' : 'No tasks completed yesterday.');
     }
     if (!todayText!) {
       todayText = inProgress.length > 0
-        ? (isDE ? `Arbeite weiter an: ${inProgress.map(t => `"${t.titel}"`).join(', ')}.` : `Continuing work on: ${inProgress.map(t => `"${t.titel}"`).join(', ')}.`)
+        ? (isDE ? `Arbeite weiter an: ${inProgress.map(t => `"${t.title}"`).join(', ')}.` : `Continuing work on: ${inProgress.map(t => `"${t.title}"`).join(', ')}.`)
         : todo.length > 0
-          ? (isDE ? `Plane ${todo[0].titel} zu beginnen.` : `Planning to start "${todo[0].titel}".`)
+          ? (isDE ? `Plane ${todo[0].title} zu beginnen.` : `Planning to start "${todo[0].title}".`)
           : (isDE ? 'Keine Aufgaben geplant.' : 'Nothing scheduled for today.');
     }
     if (!blockersText!) {
       blockersText = blocked.length > 0
-        ? (isDE ? `Blockiert bei: ${blocked.map(t => `"${t.titel}"`).join(', ')}.` : `Blocked on: ${blocked.map(t => `"${t.titel}"`).join(', ')}.`)
+        ? (isDE ? `Blockiert bei: ${blocked.map(t => `"${t.title}"`).join(', ')}.` : `Blocked on: ${blocked.map(t => `"${t.title}"`).join(', ')}.`)
         : (isDE ? 'Keine Blocker.' : 'No blockers.');
     }
 
     return {
-      agent: { id: agent.id, name: agent.name, avatar: agent.avatar, avatarFarbe: agent.avatarFarbe, rolle: agent.rolle, status: agent.status },
+      agent: { id: agent.id, name: agent.name, avatar: agent.avatar, avatarFarbe: agent.avatarColor, rolle: agent.role, status: agent.status },
       yesterday: yesterdayText,
       today: todayText,
       blockers: blockersText,
@@ -4315,35 +5139,35 @@ Blocked: ${blocked.map(t => t.titel).join(', ') || 'none'}`;
 // WHITEBOARD — shared project state
 // =============================================
 
-app.get('/api/projekte/:id/whiteboard', authMiddleware, (req, res) => {
+app.get('/api/projects/:id/whiteboard', authMiddleware, (req, res) => {
   const id = req.params.id as string;
-  const projekt = db.select().from(projekte).where(eq(projekte.id, id)).get();
-  if (!projekt) return res.status(404).json({ error: 'Projekt nicht gefunden' });
+  const projekt = db.select().from(projects).where(eq(projects.id, id)).get();
+  if (!projekt) return res.status(404).json({ error: 'Project not found' });
   const state = projekt.whiteboardState ? JSON.parse(projekt.whiteboardState) : { eintraege: [], aktualisiertAm: null };
   res.json(state);
 });
 
-app.put('/api/projekte/:id/whiteboard', authMiddleware, (req, res) => {
+app.put('/api/projects/:id/whiteboard', authMiddleware, (req, res) => {
   const { inhalt, expertId } = req.body;
   if (!inhalt?.trim()) return res.status(400).json({ error: 'inhalt required' });
 
   const id = req.params.id as string;
-  const projekt = db.select().from(projekte).where(eq(projekte.id, id)).get();
-  if (!projekt) return res.status(404).json({ error: 'Projekt nicht gefunden' });
+  const projekt = db.select().from(projects).where(eq(projects.id, id)).get();
+  if (!projekt) return res.status(404).json({ error: 'Project not found' });
 
   const existing = projekt.whiteboardState ? JSON.parse(projekt.whiteboardState) : { eintraege: [] };
   const neuerEintrag = { id: uuid(), von: expertId ?? 'board', inhalt, erstelltAm: now() };
   existing.eintraege = [...(existing.eintraege ?? []), neuerEintrag];
-  existing.aktualisiertAm = now();
+  existing.updatedAt = now();
 
-  db.update(projekte).set({ whiteboardState: JSON.stringify(existing), aktualisiertAm: now() }).where(eq(projekte.id, id)).run();
+  db.update(projects).set({ whiteboardState: JSON.stringify(existing), updatedAt: now() }).where(eq(projects.id, id)).run();
   broadcastUpdate('whiteboard_update', { projektId: id, eintrag: neuerEintrag });
   res.json(neuerEintrag);
 });
 
-app.delete('/api/projekte/:id/whiteboard', authMiddleware, (req, res) => {
+app.delete('/api/projects/:id/whiteboard', authMiddleware, (req, res) => {
   const id = req.params.id as string;
-  db.update(projekte).set({ whiteboardState: JSON.stringify({ eintraege: [], aktualisiertAm: now() }), aktualisiertAm: now() }).where(eq(projekte.id, id)).run();
+  db.update(projects).set({ whiteboardState: JSON.stringify({ entries: [], updatedAt: now() }), updatedAt: now() }).where(eq(projects.id, id)).run();
   broadcastUpdate('whiteboard_cleared', { projektId: req.params.id });
   res.json({ ok: true });
 });
@@ -4352,16 +5176,16 @@ app.delete('/api/projekte/:id/whiteboard', authMiddleware, (req, res) => {
 // AGENT MEETINGS — Multi-Agent Coordination
 // =============================================
 
-app.get('/api/unternehmen/:id/meetings', authMiddleware, (req, res) => {
+app.get('/api/companies/:id/meetings', authMiddleware, (req, res) => {
   try {
     const meetings = db.select().from(agentMeetings)
-      .where(eq(agentMeetings.unternehmenId, req.params.id))
+      .where(eq(agentMeetings.companyId, req.params.id as string))
       .all()
-      .sort((a: any, b: any) => b.erstelltAm.localeCompare(a.erstelltAm));
+      .sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt));
 
     // Enrich with participant names
-    const all_agents = db.select({ id: experten.id, name: experten.name, avatarFarbe: experten.avatarFarbe, verbindungsTyp: experten.verbindungsTyp, verbindungsConfig: experten.verbindungsConfig })
-      .from(experten).where(eq(experten.unternehmenId, req.params.id)).all();
+    const all_agents = db.select({ id: agents.id, name: agents.name, avatarFarbe: agents.avatarColor, verbindungsTyp: agents.connectionType, verbindungsConfig: agents.connectionConfig })
+      .from(agents).where(eq(agents.companyId, req.params.id as string)).all();
 
     function deriveModelLabel(verbindungsTyp: string, verbindungsConfig: string | null): string {
       try {
@@ -4378,17 +5202,17 @@ app.get('/api/unternehmen/:id/meetings', authMiddleware, (req, res) => {
 
     const agentMap = Object.fromEntries((all_agents as any[]).map(a => [a.id, {
       ...a,
-      modellLabel: deriveModelLabel(a.verbindungsTyp, a.verbindungsConfig),
+      modellLabel: deriveModelLabel(a.connectionType, a.connectionConfig),
     }]));
 
     const enriched = meetings.map((m: any) => {
       let teilnehmerIds: string[] = [];
       let antworten: Record<string, string> = {};
-      try { teilnehmerIds = JSON.parse(m.teilnehmerIds || '[]'); } catch {}
-      try { antworten = JSON.parse(m.antworten || '{}'); } catch {}
+      try { teilnehmerIds = JSON.parse(m.participantIds || '[]'); } catch {}
+      try { antworten = JSON.parse(m.responses || '{}'); } catch {}
       return {
         ...m,
-        veranstalter: agentMap[m.veranstalterExpertId] || null,
+        veranstalter: agentMap[m.organizerAgentId] || null,
         teilnehmer: teilnehmerIds.map(id => {
           if (id === '__board__') return {
             id: '__board__', name: 'Du (Board)', avatarFarbe: '#6366f1', isBoard: true,
@@ -4408,20 +5232,20 @@ app.get('/api/unternehmen/:id/meetings', authMiddleware, (req, res) => {
 
 app.get('/api/meetings/:id', authMiddleware, (req, res) => {
   try {
-    const meeting = db.select().from(agentMeetings).where(eq(agentMeetings.id, req.params.id)).get() as any;
-    if (!meeting) return res.status(404).json({ error: 'Meeting nicht gefunden' });
+    const meeting = db.select().from(agentMeetings).where(eq(agentMeetings.id, req.params.id as string)).get() as any;
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
 
-    const all_agents = db.select({ id: experten.id, name: experten.name, avatarFarbe: experten.avatarFarbe })
-      .from(experten).where(eq(experten.unternehmenId, meeting.unternehmenId)).all();
+    const all_agents = db.select({ id: agents.id, name: agents.name, avatarFarbe: agents.avatarColor })
+      .from(agents).where(eq(agents.companyId, meeting.companyId)).all();
     const agentMap = Object.fromEntries((all_agents as any[]).map(a => [a.id, a]));
     let teilnehmerIds: string[] = [];
     let antworten: Record<string, string> = {};
-    try { teilnehmerIds = JSON.parse(meeting.teilnehmerIds || '[]'); } catch {}
-    try { antworten = JSON.parse(meeting.antworten || '{}'); } catch {}
+    try { teilnehmerIds = JSON.parse(meeting.participantIds || '[]'); } catch {}
+    try { antworten = JSON.parse(meeting.responses || '{}'); } catch {}
 
     res.json({
       ...meeting,
-      veranstalter: agentMap[meeting.veranstalterExpertId] || null,
+      veranstalter: agentMap[meeting.organizerAgentId] || null,
       teilnehmer: teilnehmerIds.map(id => {
         if (id === '__board__') return {
           id: '__board__', name: 'Du (Board)', avatarFarbe: '#6366f1', isBoard: true,
@@ -4437,18 +5261,18 @@ app.get('/api/meetings/:id', authMiddleware, (req, res) => {
 
 app.post('/api/meetings/:id/message', authMiddleware, async (req, res) => {
   try {
-    const meeting = db.select().from(agentMeetings).where(eq(agentMeetings.id, req.params.id)).get() as any;
-    if (!meeting) return res.status(404).json({ error: 'Meeting nicht gefunden' });
-    if (meeting.status !== 'running') return res.status(400).json({ error: 'Meeting ist nicht aktiv' });
+    const meeting = db.select().from(agentMeetings).where(eq(agentMeetings.id, req.params.id as string)).get() as any;
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+    if (meeting.status !== 'running') return res.status(400).json({ error: 'Meeting is not active' });
 
     const { nachricht } = req.body;
-    if (!nachricht?.trim()) return res.status(400).json({ error: 'Nachricht fehlt' });
+    if (!nachricht?.trim()) return res.status(400).json({ error: 'Message missing' });
 
     const BOARD_KEY = '__board__';
     let teilnehmerIds: string[] = [];
     let antworten: Record<string, string> = {};
-    try { teilnehmerIds = JSON.parse(meeting.teilnehmerIds || '[]'); } catch {}
-    try { antworten = JSON.parse(meeting.antworten || '{}'); } catch {}
+    try { teilnehmerIds = JSON.parse(meeting.participantIds || '[]'); } catch {}
+    try { antworten = JSON.parse(meeting.responses || '{}'); } catch {}
 
     // Append board message (allow multiple messages via timestamp key)
     const boardMsgKey = `${BOARD_KEY}_${Date.now()}`;
@@ -4457,17 +5281,17 @@ app.post('/api/meetings/:id/message', authMiddleware, async (req, res) => {
     antworten[BOARD_KEY] = nachricht.trim(); // latest board message always at __board__
 
     db.update(agentMeetings).set({
-      teilnehmerIds: JSON.stringify(teilnehmerIds),
-      antworten: JSON.stringify(antworten),
-    }).where(eq(agentMeetings.id, req.params.id)).run();
+      participantIds: JSON.stringify(teilnehmerIds),
+      responses: JSON.stringify(antworten),
+    }).where(eq(agentMeetings.id, req.params.id as string)).run();
 
-    broadcastUpdate('meeting_updated', { unternehmenId: meeting.unternehmenId, meetingId: req.params.id });
+    broadcastUpdate('meeting_updated', { unternehmenId: meeting.companyId, meetingId: req.params.id });
     res.json({ success: true });
 
     // ── Trigger @mentioned agents, or all unanswered participants ─────────
     const agentParticipants = teilnehmerIds
       .filter(id => id !== BOARD_KEY && !id.startsWith('__board__'))
-      .map(id => db.select().from(experten).where(eq(experten.id, id)).get())
+      .map(id => db.select().from(agents).where(eq(agents.id, id)).get())
       .filter(Boolean) as any[];
 
     // Detect @mentions: "@Name" anywhere in message
@@ -4485,15 +5309,15 @@ app.post('/api/meetings/:id/message', authMiddleware, async (req, res) => {
           console.log(`[Meeting] Triggering ${agent.name} (${agent.id}) for meeting ${req.params.id}`);
           // Send board message into this agent's chat
           const boardMsg = {
-            id: uuid(), unternehmenId: meeting.unternehmenId,
-            expertId: agent.id, vonExpertId: null, threadId: req.params.id,
-            absenderTyp: 'board' as const,
-            nachricht: `[Meeting Board]: ${nachricht.trim()}`,
-            gelesen: false, erstelltAm: now(),
+            id: uuid(), companyId: meeting.companyId,
+            agentId: agent.id, vonExpertId: null, threadId: req.params.id,
+            senderType: 'board' as const,
+            message: `[Meeting Board]: ${nachricht.trim()}`,
+            read: false, createdAt: now(),
           };
-          db.insert(chatNachrichten).values(boardMsg).run();
+          db.insert(chatMessages).values(boardMsg).run();
           broadcastUpdate('chat_message', boardMsg);
-          await scheduler.triggerZyklus(agent.id, meeting.unternehmenId, 'manual', undefined, req.params.id as string);
+          await scheduler.triggerZyklus(agent.id, meeting.companyId, 'manual', undefined, req.params.id as string);
           console.log(`[Meeting] ${agent.name} cycle done`);
         } catch (e: any) {
           console.error(`[Meeting] triggerZyklus error for agent ${agent.id} (${agent.name}):`, e?.message);
@@ -4507,11 +5331,11 @@ app.post('/api/meetings/:id/message', authMiddleware, async (req, res) => {
 
 app.post('/api/meetings/:id/cancel', authMiddleware, (req, res) => {
   try {
-    const meeting = db.select().from(agentMeetings).where(eq(agentMeetings.id, req.params.id)).get() as any;
-    if (!meeting) return res.status(404).json({ error: 'Meeting nicht gefunden' });
-    if (meeting.status !== 'running') return res.status(400).json({ error: 'Meeting ist nicht aktiv' });
-    db.update(agentMeetings).set({ status: 'cancelled', abgeschlossenAm: now() }).where(eq(agentMeetings.id, req.params.id)).run();
-    broadcastUpdate('meeting_updated', { unternehmenId: meeting.unternehmenId, meetingId: req.params.id, status: 'cancelled' });
+    const meeting = db.select().from(agentMeetings).where(eq(agentMeetings.id, req.params.id as string)).get() as any;
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+    if (meeting.status !== 'running') return res.status(400).json({ error: 'Meeting is not active' });
+    db.update(agentMeetings).set({ status: 'cancelled', completedAt: now() }).where(eq(agentMeetings.id, req.params.id as string)).run();
+    broadcastUpdate('meeting_updated', { unternehmenId: meeting.companyId, meetingId: req.params.id, status: 'cancelled' });
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -4519,23 +5343,23 @@ app.post('/api/meetings/:id/cancel', authMiddleware, (req, res) => {
 });
 
 // ─── Create a new meeting ─────────────────────────────────────────────────────
-app.post('/api/unternehmen/:id/meetings', authMiddleware, (req, res) => {
+app.post('/api/companies/:id/meetings', authMiddleware, (req, res) => {
   try {
     const unternehmenId = req.params.id as string;
     const { titel, veranstalterExpertId, teilnehmerIds } = req.body as {
       titel: string; veranstalterExpertId: string; teilnehmerIds: string[];
     };
 
-    if (!titel?.trim()) return res.status(400).json({ error: 'Titel fehlt' });
-    if (!veranstalterExpertId) return res.status(400).json({ error: 'Veranstalter fehlt' });
+    if (!titel?.trim()) return res.status(400).json({ error: 'Title missing' });
+    if (!veranstalterExpertId) return res.status(400).json({ error: 'Organizer missing' });
     if (!Array.isArray(teilnehmerIds) || teilnehmerIds.length === 0) {
-      return res.status(400).json({ error: 'Mindestens ein Teilnehmer erforderlich' });
+      return res.status(400).json({ error: 'At least one participant required' });
     }
 
     // Validate veranstalter belongs to company
-    const veranstalter = db.select().from(experten)
-      .where(and(eq(experten.id, veranstalterExpertId), eq(experten.unternehmenId, unternehmenId))).get();
-    if (!veranstalter) return res.status(404).json({ error: 'Veranstalter-Agent nicht gefunden' });
+    const veranstalter = db.select().from(agents)
+      .where(and(eq(agents.id, veranstalterExpertId), eq(agents.companyId, unternehmenId))).get();
+    if (!veranstalter) return res.status(404).json({ error: 'Organizer agent not found' });
 
     const meetingId = uuid();
     // Always include __board__ as a participant so the board can reply
@@ -4543,13 +5367,13 @@ app.post('/api/unternehmen/:id/meetings', authMiddleware, (req, res) => {
 
     db.insert(agentMeetings).values({
       id: meetingId,
-      unternehmenId,
-      titel: titel.trim(),
-      veranstalterExpertId,
-      teilnehmerIds: JSON.stringify(alleTeilnehmer),
-      antworten: '{}',
+      companyId: unternehmenId,
+      title: titel.trim(),
+      organizerAgentId: veranstalterExpertId,
+      participantIds: JSON.stringify(alleTeilnehmer),
+      responses: '{}',
       status: 'running',
-      erstelltAm: now(),
+      createdAt: now(),
     }).run();
 
     logAktivitaet(unternehmenId, 'agent', veranstalterExpertId, (veranstalter as any).name, `hat ein Meeting gestartet: "${titel.trim()}"`, 'experte', meetingId);
@@ -4563,16 +5387,16 @@ app.post('/api/unternehmen/:id/meetings', authMiddleware, (req, res) => {
         try {
           // Send the meeting question as a chat message to this agent
           const frageMsg = {
-            id: uuid(), unternehmenId,
-            expertId: teilnehmerId,
+            id: uuid(), companyId: unternehmenId,
+            agentId: teilnehmerId,
             vonExpertId: veranstalterExpertId,
             threadId: meetingId,
-            absenderTyp: 'agent' as const,
+            senderType: 'agent' as const,
             absenderName: (veranstalter as any).name,
-            nachricht: `📋 **Meeting einberufen**\n\nThema: "${titel.trim()}"\n\nBitte antworte kurz und direkt.`,
-            gelesen: false, erstelltAm: now(),
+            message: `📋 **Meeting einberufen**\n\nThema: "${titel.trim()}"\n\nBitte antworte kurz und direkt.`,
+            read: false, createdAt: now(),
           };
-          db.insert(chatNachrichten).values(frageMsg).run();
+          db.insert(chatMessages).values(frageMsg).run();
           broadcastUpdate('chat_message', frageMsg);
           await scheduler.triggerZyklus(teilnehmerId, unternehmenId, 'manual', veranstalterExpertId, meetingId);
         } catch (e) {
@@ -4588,15 +5412,15 @@ app.post('/api/unternehmen/:id/meetings', authMiddleware, (req, res) => {
 // ─── Close a meeting with synthesis ──────────────────────────────────────────
 app.post('/api/meetings/:id/complete', authMiddleware, (req, res) => {
   try {
-    const meeting = db.select().from(agentMeetings).where(eq(agentMeetings.id, req.params.id)).get() as any;
-    if (!meeting) return res.status(404).json({ error: 'Meeting nicht gefunden' });
+    const meeting = db.select().from(agentMeetings).where(eq(agentMeetings.id, req.params.id as string)).get() as any;
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
     const { ergebnis } = req.body as { ergebnis: string };
     db.update(agentMeetings).set({
       status: 'completed',
-      ergebnis: ergebnis?.trim() || null,
-      abgeschlossenAm: now(),
-    }).where(eq(agentMeetings.id, req.params.id)).run();
-    broadcastUpdate('meeting_updated', { unternehmenId: meeting.unternehmenId, meetingId: req.params.id, status: 'completed' });
+      result: ergebnis?.trim() || null,
+      completedAt: now(),
+    }).where(eq(agentMeetings.id, req.params.id as string)).run();
+    broadcastUpdate('meeting_updated', { unternehmenId: meeting.companyId, meetingId: req.params.id, status: 'completed' });
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -4605,11 +5429,11 @@ app.post('/api/meetings/:id/complete', authMiddleware, (req, res) => {
 
 app.delete('/api/meetings/:id', authMiddleware, (req, res) => {
   try {
-    const meeting = db.select().from(agentMeetings).where(eq(agentMeetings.id, req.params.id)).get() as any;
-    if (!meeting) return res.status(404).json({ error: 'Meeting nicht gefunden' });
-    if (meeting.status === 'running') return res.status(400).json({ error: 'Laufende Meetings können nicht gelöscht werden' });
-    db.delete(agentMeetings).where(eq(agentMeetings.id, req.params.id)).run();
-    broadcastUpdate('meeting_deleted', { unternehmenId: meeting.unternehmenId, meetingId: req.params.id });
+    const meeting = db.select().from(agentMeetings).where(eq(agentMeetings.id, req.params.id as string)).get() as any;
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+    if (meeting.status === 'running') return res.status(400).json({ error: 'Running meetings cannot be deleted' });
+    db.delete(agentMeetings).where(eq(agentMeetings.id, req.params.id as string)).run();
+    broadcastUpdate('meeting_deleted', { unternehmenId: meeting.companyId, meetingId: req.params.id });
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -4620,24 +5444,43 @@ app.delete('/api/meetings/:id', authMiddleware, (req, res) => {
 // SKILL LIBRARY — markdown knowledge base
 // =============================================
 
-app.get('/api/unternehmen/:unternehmenId/skills-library', authMiddleware, (req, res) => {
+function mapSkillToDe(skill: any) {
+  return {
+    id: skill.id,
+    unternehmenId: skill.companyId,
+    name: skill.name,
+    beschreibung: skill.description,
+    inhalt: skill.content,
+    tags: skill.tags,
+    erstelltVon: skill.createdBy,
+    konfidenz: skill.confidence,
+    nutzungen: skill.uses,
+    erfolge: skill.successes,
+    quelle: skill.source,
+    remoteRef: skill.remoteRef,
+    erstelltAm: skill.createdAt,
+    aktualisiertAm: skill.updatedAt,
+  };
+}
+
+app.get('/api/companies/:unternehmenId/skills-library', authMiddleware, (req, res) => {
   const unternehmenId = req.params.unternehmenId as string;
   const skills = db.select().from(skillsLibrary)
-    .where(eq(skillsLibrary.unternehmenId, unternehmenId))
-    .orderBy(desc(skillsLibrary.erstelltAm)).all();
-  res.json(skills);
+    .where(eq(skillsLibrary.companyId, unternehmenId))
+    .orderBy(desc(skillsLibrary.createdAt)).all();
+  res.json(skills.map(mapSkillToDe));
 });
 
-app.post('/api/unternehmen/:unternehmenId/skills-library', authMiddleware, (req, res) => {
+app.post('/api/companies/:unternehmenId/skills-library', authMiddleware, (req, res) => {
   const { name, beschreibung, inhalt, tags } = req.body;
   if (!name?.trim() || !inhalt?.trim()) return res.status(400).json({ error: 'name and inhalt required' });
   const id = uuid();
   const n = now();
-  const unternehmenId = req.params.unternehmenId as string;
+  const companyId = req.params.unternehmenId as string;
   db.insert(skillsLibrary).values({
-    id, unternehmenId, name, beschreibung: beschreibung ?? null,
-    inhalt, tags: tags ? JSON.stringify(tags) : null,
-    erstelltVon: (req as any).benutzer?.userId ?? null, erstelltAm: n, aktualisiertAm: n,
+    id, companyId, name, description: beschreibung ?? null,
+    content: inhalt, tags: tags ? JSON.stringify(tags) : null,
+    createdBy: (req as any).user?.userId ?? null, createdAt: n, updatedAt: n,
   }).run();
   res.status(201).json({ id, name });
 });
@@ -4645,16 +5488,16 @@ app.post('/api/unternehmen/:unternehmenId/skills-library', authMiddleware, (req,
 app.get('/api/skills-library/:id', authMiddleware, (req, res) => {
   const id = req.params.id as string;
   const skill = db.select().from(skillsLibrary).where(eq(skillsLibrary.id, id)).get();
-  if (!skill) return res.status(404).json({ error: 'Skill nicht gefunden' });
-  res.json(skill);
+  if (!skill) return res.status(404).json({ error: 'Skill not found' });
+  res.json(mapSkillToDe(skill));
 });
 
 app.patch('/api/skills-library/:id', authMiddleware, (req, res) => {
   const { name, beschreibung, inhalt, tags } = req.body;
-  const updates: any = { aktualisiertAm: now() };
+  const updates: any = { updatedAt: now() };
   if (name !== undefined) updates.name = name;
-  if (beschreibung !== undefined) updates.beschreibung = beschreibung;
-  if (inhalt !== undefined) updates.inhalt = inhalt;
+  if (beschreibung !== undefined) updates.description = beschreibung;
+  if (inhalt !== undefined) updates.content = inhalt;
   if (tags !== undefined) updates.tags = JSON.stringify(tags);
   const id = req.params.id as string;
   db.update(skillsLibrary).set(updates).where(eq(skillsLibrary.id, id)).run();
@@ -4663,13 +5506,13 @@ app.patch('/api/skills-library/:id', authMiddleware, (req, res) => {
 
 app.delete('/api/skills-library/:id', authMiddleware, (req, res) => {
   const id = req.params.id as string;
-  db.delete(expertenSkills).where(eq(expertenSkills.skillId, id)).run();
+  db.delete(agentSkills).where(eq(agentSkills.skillId, id)).run();
   db.delete(skillsLibrary).where(eq(skillsLibrary.id, id)).run();
   res.json({ ok: true });
 });
 
 // ── Seed Standard Skill Library ──────────────────────────────────────────────
-app.post('/api/unternehmen/:unternehmenId/skills-library/seed', authMiddleware, (req, res) => {
+app.post('/api/companies/:unternehmenId/skills-library/seed', authMiddleware, (req, res) => {
   const unternehmenId = req.params.unternehmenId as string;
   const n = now();
 
@@ -4738,7 +5581,7 @@ app.post('/api/unternehmen/:unternehmenId/skills-library/seed', authMiddleware, 
 
   const existing = db.select({ name: skillsLibrary.name })
     .from(skillsLibrary)
-    .where(eq(skillsLibrary.unternehmenId, unternehmenId))
+    .where(eq(skillsLibrary.companyId, unternehmenId))
     .all()
     .map((r: any) => r.name.toLowerCase());
 
@@ -4747,18 +5590,18 @@ app.post('/api/unternehmen/:unternehmenId/skills-library/seed', authMiddleware, 
     if (existing.includes(skill.name.toLowerCase())) continue;
     db.insert(skillsLibrary).values({
       id: uuid(),
-      unternehmenId,
+      companyId: unternehmenId,
       name: skill.name,
-      beschreibung: skill.beschreibung,
-      inhalt: skill.inhalt,
+      description: skill.description,
+      content: skill.content,
       tags: JSON.stringify(skill.tags),
-      quelle: 'manuell' as const,
-      konfidenz: 80,
-      nutzungen: 0,
-      erfolge: 0,
-      erstelltVon: null,
-      erstelltAm: n,
-      aktualisiertAm: n,
+      source: 'manuell' as const,
+      confidence: 80,
+      uses: 0,
+      successes: 0,
+      createdBy: null,
+      createdAt: n,
+      updatedAt: n,
     }).run();
     added++;
   }
@@ -4767,47 +5610,47 @@ app.post('/api/unternehmen/:unternehmenId/skills-library/seed', authMiddleware, 
 });
 
 // Expert <-> Skill assignment
-app.get('/api/experten/:id/skills-library', authMiddleware, (req, res) => {
+app.get('/api/agents/:id/skills-library', authMiddleware, (req, res) => {
   const expertId = req.params.id as string;
-  const assigned = db.select({ skill: skillsLibrary }).from(expertenSkills)
-    .innerJoin(skillsLibrary, eq(expertenSkills.skillId, skillsLibrary.id))
-    .where(eq(expertenSkills.expertId, expertId)).all();
-  res.json(assigned.map((r: any) => r.skill));
+  const assigned = db.select({ skill: skillsLibrary }).from(agentSkills)
+    .innerJoin(skillsLibrary, eq(agentSkills.skillId, skillsLibrary.id))
+    .where(eq(agentSkills.agentId, expertId)).all();
+  res.json(assigned.map((r: any) => mapSkillToDe(r.skill)));
 });
 
-app.post('/api/experten/:id/skills-library', authMiddleware, (req, res) => {
+app.post('/api/agents/:id/skills-library', authMiddleware, (req, res) => {
   const { skillId } = req.body;
   if (!skillId) return res.status(400).json({ error: 'skillId required' });
   const expertId = req.params.id as string;
-  const exists = db.select().from(expertenSkills).where(and(eq(expertenSkills.expertId, expertId), eq(expertenSkills.skillId, skillId))).get();
+  const exists = db.select().from(agentSkills).where(and(eq(agentSkills.agentId, expertId), eq(agentSkills.skillId, skillId))).get();
   if (exists) return res.json({ ok: true, already: true });
-  db.insert(expertenSkills).values({ id: uuid(), expertId, skillId, erstelltAm: now() }).run();
+  db.insert(agentSkills).values({ id: uuid(), agentId: expertId, skillId, createdAt: now() }).run();
   res.status(201).json({ ok: true });
 });
 
-app.delete('/api/experten/:id/skills-library/:skillId', authMiddleware, (req, res) => {
+app.delete('/api/agents/:id/skills-library/:skillId', authMiddleware, (req, res) => {
   const expertId = req.params.id as string;
   const skillId = req.params.skillId as string;
-  db.delete(expertenSkills).where(and(eq(expertenSkills.expertId, expertId), eq(expertenSkills.skillId, skillId))).run();
+  db.delete(agentSkills).where(and(eq(agentSkills.agentId, expertId), eq(agentSkills.skillId, skillId))).run();
   res.json({ ok: true });
 });
 
 // RAG query: get relevant skill chunks for a prompt (keyword-based, no vector DB needed)
-app.post('/api/experten/:id/skills-library/query', authMiddleware, (req, res) => {
+app.post('/api/agents/:id/skills-library/query', authMiddleware, (req, res) => {
   const expertId = req.params.id as string;
   const { prompt } = req.body;
   if (!prompt) return res.status(400).json({ error: 'prompt required' });
 
-  const assignedSkills = db.select({ skill: skillsLibrary }).from(expertenSkills)
-    .innerJoin(skillsLibrary, eq(expertenSkills.skillId, skillsLibrary.id))
-    .where(eq(expertenSkills.expertId, expertId)).all().map((r: any) => r.skill);
+  const assignedSkills = db.select({ skill: skillsLibrary }).from(agentSkills)
+    .innerJoin(skillsLibrary, eq(agentSkills.skillId, skillsLibrary.id))
+    .where(eq(agentSkills.agentId, expertId)).all().map((r: any) => r.skill);
 
   if (assignedSkills.length === 0) return res.json({ chunks: [] });
 
   // Keyword scoring: count how many prompt words appear in each skill
   const promptWords = prompt.toLowerCase().split(/\W+/).filter((w: string) => w.length > 3);
   const scored = assignedSkills.map((skill: any) => {
-    const text = `${skill.name} ${skill.beschreibung ?? ''} ${skill.inhalt}`.toLowerCase();
+    const text = `${skill.name} ${skill.description ?? ''} ${skill.content}`.toLowerCase();
     const score = promptWords.reduce((s: number, w: string) => s + (text.includes(w) ? 1 : 0), 0);
     return { skill, score };
   }).filter((s: any) => s.score > 0).sort((a: any, b: any) => b.score - a.score).slice(0, 3);
@@ -4816,7 +5659,7 @@ app.post('/api/experten/:id/skills-library/query', authMiddleware, (req, res) =>
     id: s.skill.id,
     name: s.skill.name,
     relevanzScore: s.score,
-    inhalt: s.skill.inhalt.slice(0, 2000), // max 2000 chars per skill
+    inhalt: s.skill.content.slice(0, 2000), // max 2000 chars per skill
   }));
 
   res.json({ chunks });
@@ -4829,18 +5672,18 @@ app.post('/api/experten/:id/skills-library/query', authMiddleware, (req, res) =>
 import { exportCompany, previewImport, importCompany } from './services/company-portability.js';
 import { exportTrainingData } from './services/exportImport.js';
 
-app.get('/api/unternehmen/:id/export', authMiddleware, (req, res) => {
+app.get('/api/companies/:id/export', authMiddleware, (req, res) => {
   const manifest = exportCompany(req.params.id as string);
-  if (!manifest) return res.status(404).json({ error: 'Unternehmen nicht gefunden' });
+  if (!manifest) return res.status(404).json({ error: 'Company not found' });
   res.json(manifest);
 });
 
-app.post('/api/unternehmen/:id/import/preview', authMiddleware, (req, res) => {
+app.post('/api/companies/:id/import/preview', authMiddleware, (req, res) => {
   const preview = previewImport(req.params.id as string, req.body);
   res.json(preview);
 });
 
-app.post('/api/unternehmen/:id/import', authMiddleware, (req, res) => {
+app.post('/api/companies/:id/import', authMiddleware, (req, res) => {
   const { manifest, options } = req.body;
   if (!manifest) return res.status(400).json({ error: 'manifest ist erforderlich' });
   const result = importCompany(req.params.id as string, manifest, options || { collisionStrategy: 'skip' });
@@ -4848,8 +5691,8 @@ app.post('/api/unternehmen/:id/import', authMiddleware, (req, res) => {
   res.json(result);
 });
 
-// GET /api/unternehmen/:id/export/training — fine-tuning JSONL/JSON export
-app.get('/api/unternehmen/:id/export/training', authMiddleware, async (req, res) => {
+// GET /api/companies/:id/export/training — fine-tuning JSONL/JSON export
+app.get('/api/companies/:id/export/training', authMiddleware, async (req, res) => {
   const format = (req.query.format as string) === 'json' ? 'json' : 'jsonl';
   const minQuality = (req.query.minQuality as string) === 'all' ? 'all' : 'approved';
   const agentId = req.query.agentId as string | undefined;
@@ -4857,7 +5700,7 @@ app.get('/api/unternehmen/:id/export/training', authMiddleware, async (req, res)
   const limit = req.query.limit ? Number(req.query.limit) : undefined;
 
   try {
-    const records = await exportTrainingData(req.params.id, { format, minQuality, agentId, since, limit });
+    const records = await exportTrainingData(req.params.id as string, { format, minQuality, agentId, since, limit });
 
     if (format === 'jsonl') {
       res.setHeader('Content-Type', 'application/x-ndjson');
@@ -4878,14 +5721,14 @@ app.get('/api/unternehmen/:id/export/training', authMiddleware, async (req, res)
 
 import { erstellePolicy, pruefeBudgets, berechneBudgetStatus } from './services/budget-policies.js';
 
-app.get('/api/unternehmen/:id/budget-policies', authMiddleware, (req, res) => {
+app.get('/api/companies/:id/budget-policies', authMiddleware, (req, res) => {
   const policies = db.select().from(budgetPolicies)
-    .where(eq(budgetPolicies.unternehmenId, req.params.id as string)).all();
+    .where(eq(budgetPolicies.companyId, req.params.id as string)).all();
   const mitStatus = policies.map(p => ({ ...p, status: berechneBudgetStatus(p.id) }));
   res.json(mitStatus);
 });
 
-app.post('/api/unternehmen/:id/budget-policies', authMiddleware, (req, res) => {
+app.post('/api/companies/:id/budget-policies', authMiddleware, (req, res) => {
   const { scope, scopeId, limitCent, fenster, warnProzent, hardStop } = req.body;
   const id = erstellePolicy({
     unternehmenId: req.params.id as string,
@@ -4894,9 +5737,9 @@ app.post('/api/unternehmen/:id/budget-policies', authMiddleware, (req, res) => {
   res.json({ id });
 });
 
-app.get('/api/unternehmen/:id/budget-incidents', authMiddleware, (req, res) => {
+app.get('/api/companies/:id/budget-incidents', authMiddleware, (req, res) => {
   const incidents = db.select().from(budgetIncidents)
-    .where(eq(budgetIncidents.unternehmenId, req.params.id as string)).all();
+    .where(eq(budgetIncidents.companyId, req.params.id as string)).all();
   res.json(incidents);
 });
 
@@ -4906,21 +5749,21 @@ app.get('/api/unternehmen/:id/budget-incidents', authMiddleware, (req, res) => {
 
 import { erstelleAbhaengigkeit, entferneAbhaengigkeit, getBlocker, getBlockiert } from './services/issue-dependencies.js';
 
-app.get('/api/aufgaben/:id/blocker', authMiddleware, (req, res) => {
+app.get('/api/tasks/:id/blocker', authMiddleware, (req, res) => {
   res.json(getBlocker(req.params.id as string));
 });
 
-app.get('/api/aufgaben/:id/blockiert', authMiddleware, (req, res) => {
+app.get('/api/tasks/:id/blockiert', authMiddleware, (req, res) => {
   res.json(getBlockiert(req.params.id as string));
 });
 
-app.post('/api/aufgaben/:id/blocker', authMiddleware, (req, res) => {
+app.post('/api/tasks/:id/blocker', authMiddleware, (req, res) => {
   const { blockerId } = req.body;
   const result = erstelleAbhaengigkeit(blockerId, req.params.id as string, 'board');
   res.json(result);
 });
 
-app.delete('/api/aufgaben/:id/blocker/:blockerId', authMiddleware, (req, res) => {
+app.delete('/api/tasks/:id/blocker/:blockerId', authMiddleware, (req, res) => {
   entferneAbhaengigkeit(req.params.blockerId as string, req.params.id as string);
   res.json({ ok: true });
 });
@@ -4937,12 +5780,12 @@ app.get('/api/clipmart/templates', authMiddleware, (_req, res) => {
 });
 
 // Template in ein Unternehmen importieren
-app.post('/api/unternehmen/:unternehmenId/clipmart/import', authMiddleware, (req, res) => {
+app.post('/api/companies/:unternehmenId/clipmart/import', authMiddleware, (req, res) => {
   const { unternehmenId } = req.params;
   const { templateName, templateId, config } = req.body;
 
-  const company = db.select().from(unternehmen).where(eq(unternehmen.id, unternehmenId as string)).get();
-  if (!company) return res.status(404).json({ error: 'Unternehmen nicht gefunden' });
+  const company = db.select().from(companies).where(eq(companies.id, unternehmenId as string)).get();
+  if (!company) return res.status(404).json({ error: 'Company not found' });
 
   const template = templateId ? getTemplateById(templateId) : getTemplateByName(templateName);
   if (!template) return res.status(404).json({ error: `Template nicht gefunden` });
@@ -4957,27 +5800,27 @@ app.post('/api/unternehmen/:unternehmenId/clipmart/import', authMiddleware, (req
 // =============================================
 
 // Memory Status für einen Agenten abrufen
-app.get('/api/unternehmen/:unternehmenId/intelligence/memory', authMiddleware, async (req, res) => {
+app.get('/api/companies/:unternehmenId/intelligence/memory', authMiddleware, async (req, res) => {
   try {
     const { mcpClient } = await import('./services/mcpClient.js');
-    const agents = db.select().from(experten)
-      .where(eq(experten.unternehmenId, req.params.unternehmenId as string)).all();
+    const agentRows = db.select().from(agents)
+      .where(eq(agents.companyId, req.params.unternehmenId as string)).all();
 
     const memories: any[] = [];
-    for (const agent of agents) {
+    for (const agent of agentRows) {
       const wing = agent.name.toLowerCase().replace(/\s+/g, '_');
       try {
         const searchRes = await mcpClient.callTool('memory_search', { query: '*', wing });
         memories.push({
           id: agent.id,
           expertId: agent.id,
-          unternehmenId: agent.unternehmenId,
+          unternehmenId: agent.companyId,
           wing,
           content: searchRes?.content?.[0]?.text || '',
           letzteAktualisierung: now(),
         });
       } catch {
-        memories.push({ id: agent.id, expertId: agent.id, unternehmenId: agent.unternehmenId, wing, content: '', letzteAktualisierung: null });
+        memories.push({ id: agent.id, expertId: agent.id, unternehmenId: agent.companyId, wing, content: '', letzteAktualisierung: null });
       }
     }
     res.json(memories);
@@ -4988,7 +5831,7 @@ app.get('/api/unternehmen/:unternehmenId/intelligence/memory', authMiddleware, a
 
 // Memory Wing eines Agenten löschen
 app.delete('/api/intelligence/memory/:expertId', authMiddleware, async (req, res) => {
-  const expert = db.select().from(experten).where(eq(experten.id, req.params.expertId as string)).get();
+  const expert = db.select().from(agents).where(eq(agents.id, req.params.agentId as string)).get();
   if (expert) {
     try {
       const { mcpClient } = await import('./services/mcpClient.js');
@@ -4996,17 +5839,17 @@ app.delete('/api/intelligence/memory/:expertId', authMiddleware, async (req, res
       await mcpClient.callTool('memory_add_drawer', { wing, room: '_reset', content: '[CLEARED]' });
     } catch { /* Memory nicht verfügbar */ }
   }
-  broadcastUpdate('memory_cleared', { expertId: req.params.expertId as string });
+  broadcastUpdate('memory_cleared', { expertId: req.params.agentId as string });
   res.json({ ok: true });
 });
 
 // Memory: Eintrag in den Wing eines Agenten schreiben
 app.put('/api/intelligence/memory/:expertId', authMiddleware, async (req, res) => {
-  const expertId = req.params.expertId as string;
+  const expertId = req.params.agentId as string;
   const { content, room } = req.body;
 
-  const expert = db.select().from(experten).where(eq(experten.id, expertId)).get();
-  if (!expert) return res.status(404).json({ error: 'Agent nicht gefunden' });
+  const expert = db.select().from(agents).where(eq(agents.id, expertId as string)).get();
+  if (!expert) return res.status(404).json({ error: 'Agent not found' });
 
   try {
     const { mcpClient } = await import('./services/mcpClient.js');
@@ -5021,9 +5864,9 @@ app.put('/api/intelligence/memory/:expertId', authMiddleware, async (req, res) =
 
 // ─── Palace: Rooms eines Agenten (strukturiert nach Rooms) ───────────────
 app.get('/api/palace/:expertId/rooms', authMiddleware, (req, res) => {
-  const expertId = req.params.expertId as string;
-  const expert = db.select().from(experten).where(eq(experten.id, expertId)).get();
-  if (!expert) return res.status(404).json({ error: 'Agent nicht gefunden' });
+  const expertId = req.params.agentId as string;
+  const expert = db.select().from(agents).where(eq(agents.id, expertId as string)).get();
+  if (!expert) return res.status(404).json({ error: 'Agent not found' });
 
   const wingName = expert.name.toLowerCase().replace(/\s+/g, '_');
   const wing = db.select().from(palaceWings).where(eq(palaceWings.name, wingName)).get();
@@ -5035,19 +5878,19 @@ app.get('/api/palace/:expertId/rooms', authMiddleware, (req, res) => {
   const rooms = roomNames.map(room => {
     const entries = drawers
       .filter(d => d.room === room)
-      .sort((a, b) => b.erstelltAm.localeCompare(a.erstelltAm))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, 20);
     return { room, count: entries.length, entries };
   });
 
-  res.json({ wing: wingName, aktualisiertAm: wing.aktualisiertAm, rooms });
+  res.json({ wing: wingName, aktualisiertAm: wing.updatedAt, rooms });
 });
 
 // ─── Palace: Diary-Einträge eines Agenten ────────────────────────────────
 app.get('/api/palace/:expertId/diary', authMiddleware, (req, res) => {
-  const expertId = req.params.expertId as string;
-  const expert = db.select().from(experten).where(eq(experten.id, expertId)).get();
-  if (!expert) return res.status(404).json({ error: 'Agent nicht gefunden' });
+  const expertId = req.params.agentId as string;
+  const expert = db.select().from(agents).where(eq(agents.id, expertId as string)).get();
+  if (!expert) return res.status(404).json({ error: 'Agent not found' });
 
   const wingName = expert.name.toLowerCase().replace(/\s+/g, '_');
   const wing = db.select().from(palaceWings).where(eq(palaceWings.name, wingName)).get();
@@ -5055,7 +5898,7 @@ app.get('/api/palace/:expertId/diary', authMiddleware, (req, res) => {
 
   const entries = db.select().from(palaceDiary)
     .where(eq(palaceDiary.wingId, wing.id))
-    .orderBy(desc(palaceDiary.erstelltAm))
+    .orderBy(desc(palaceDiary.createdAt))
     .limit(50)
     .all();
 
@@ -5066,8 +5909,8 @@ app.get('/api/palace/:expertId/diary', authMiddleware, (req, res) => {
 app.get('/api/palace/kg/:unternehmenId', authMiddleware, (req, res) => {
   const uid = req.params.unternehmenId as string;
   const fakten = db.select().from(palaceKg)
-    .where(and(eq(palaceKg.unternehmenId, uid), isNull(palaceKg.validUntil)))
-    .orderBy(desc(palaceKg.erstelltAm))
+    .where(and(eq(palaceKg.companyId, uid), isNull(palaceKg.validUntil)))
+    .orderBy(desc(palaceKg.createdAt))
     .limit(100)
     .all();
 
@@ -5085,19 +5928,19 @@ app.post('/api/palace/kg/:unternehmenId', authMiddleware, (req, res) => {
   const today = now.slice(0, 10);
   // Invalidate existing fact with same subject+predicate
   const existing = db.select().from(palaceKg)
-    .where(and(eq(palaceKg.unternehmenId, uid), eq(palaceKg.subject, subject.trim()), eq(palaceKg.predicate, predicate.trim()), isNull(palaceKg.validUntil)))
+    .where(and(eq(palaceKg.companyId, uid), eq(palaceKg.subject, subject.trim()), eq(palaceKg.predicate, predicate.trim()), isNull(palaceKg.validUntil)))
     .all();
   for (const f of existing as any[]) {
     db.update(palaceKg).set({ validUntil: today }).where(eq(palaceKg.id, f.id)).run();
   }
   const id = crypto.randomUUID();
   db.insert(palaceKg).values({
-    id, unternehmenId: uid,
+    id, companyId: uid,
     subject: subject.trim().slice(0, 200),
     predicate: predicate.trim().slice(0, 100),
     object: object.trim().slice(0, 500),
     validFrom: today, validUntil: null,
-    erstelltVon: 'board', erstelltAm: now,
+    createdBy: 'board', createdAt: now,
   }).run();
   res.json({ id, subject, predicate, object });
 });
@@ -5105,16 +5948,16 @@ app.post('/api/palace/kg/:unternehmenId', authMiddleware, (req, res) => {
 // ─── Palace: KG — Fakt löschen ───────────────────────────────────────────
 app.delete('/api/palace/kg/:factId', authMiddleware, (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
-  db.update(palaceKg).set({ validUntil: today }).where(eq(palaceKg.id, req.params.factId)).run();
+  db.update(palaceKg).set({ validUntil: today }).where(eq(palaceKg.id, req.params.factId as string)).run();
   res.json({ ok: true });
 });
 
 // ─── Palace: Summary (Konsolidierungsstatus) ─────────────────────────────
 app.get('/api/palace/:expertId/summary', authMiddleware, (req, res) => {
   const { expertId } = req.params as { expertId: string };
-  const s = db.select().from(palaceSummaries).where(eq(palaceSummaries.expertId, expertId)).get();
+  const s = db.select().from(palaceSummaries).where(eq(palaceSummaries.agentId, expertId)).get();
   if (!s) return res.json(null);
-  res.json({ version: s.version, komprimierteTurns: s.komprimierteTurns, aktualisiertAm: s.aktualisiertAm, inhalt: s.inhalt });
+  res.json({ version: s.version, komprimierteTurns: s.komprimierteTurns, aktualisiertAm: s.updatedAt, inhalt: s.content });
 });
 
 // ─── Palace: Konsolidierung manuell auslösen ─────────────────────────────
@@ -5123,8 +5966,8 @@ app.post('/api/palace/:expertId/consolidate', authMiddleware, async (req, res) =
   try {
     const { consolidateWing } = await import('./services/memory-consolidation.js');
     const ok = await consolidateWing(expertId);
-    if (!ok) return res.status(400).json({ error: 'Keine Daten zum Konsolidieren vorhanden' });
-    const s = db.select().from(palaceSummaries).where(eq(palaceSummaries.expertId, expertId)).get();
+    if (!ok) return res.status(400).json({ error: 'No data to consolidate' });
+    const s = db.select().from(palaceSummaries).where(eq(palaceSummaries.agentId, expertId)).get();
     res.json({ ok: true, version: s?.version ?? 1 });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -5137,20 +5980,20 @@ app.post('/api/palace/:expertId/rooms', authMiddleware, (req, res) => {
   const { room, content } = req.body as { room: string; content: string };
   if (!room || !content) return res.status(400).json({ error: 'room und content erforderlich' });
 
-  const expert = db.select().from(experten).where(eq(experten.id, expertId)).get();
-  if (!expert) return res.status(404).json({ error: 'Agent nicht gefunden' });
+  const expert = db.select().from(agents).where(eq(agents.id, expertId as string)).get();
+  if (!expert) return res.status(404).json({ error: 'Agent not found' });
 
   const wingName = expert.name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
-  let wing = db.select().from(palaceWings).where(eq(palaceWings.expertId, expertId)).get();
+  let wing = db.select().from(palaceWings).where(eq(palaceWings.agentId, expertId)).get();
   if (!wing) {
     const wingId = uuid();
-    db.insert(palaceWings).values({ id: wingId, unternehmenId: expert.unternehmenId, expertId, name: wingName || `agent_${wingId.slice(0, 8)}`, erstelltAm: new Date().toISOString(), aktualisiertAm: new Date().toISOString() }).run();
+    db.insert(palaceWings).values({ id: wingId, companyId: expert.companyId, agentId: expertId, name: wingName || `agent_${wingId.slice(0, 8)}`, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }).run();
     wing = db.select().from(palaceWings).where(eq(palaceWings.id, wingId)).get()!;
   }
 
   const entryId = uuid();
-  db.insert(palaceDrawers).values({ id: entryId, wingId: wing.id, room: room.slice(0, 50), inhalt: content.slice(0, 2000), erstelltAm: new Date().toISOString() }).run();
-  db.update(palaceWings).set({ aktualisiertAm: new Date().toISOString() }).where(eq(palaceWings.id, wing.id)).run();
+  db.insert(palaceDrawers).values({ id: entryId, wingId: wing.id, room: room.slice(0, 50), content: content.slice(0, 2000), createdAt: new Date().toISOString() }).run();
+  db.update(palaceWings).set({ updatedAt: new Date().toISOString() }).where(eq(palaceWings.id, wing.id)).run();
 
   res.json({ ok: true, id: entryId });
 });
@@ -5190,45 +6033,45 @@ app.get('/api/nodes/status', authMiddleware, (_req, res) => {
   })));
 });
 
-app.get('/api/experten/:id/stats', authMiddleware, (req, res) => {
+app.get('/api/agents/:id/stats', authMiddleware, (req, res) => {
   const expertId = req.params.id as string;
 
   // 30 days window for stats
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
   const zyklen = db.select({
-    status: arbeitszyklen.status,
-    erstelltAm: arbeitszyklen.erstelltAm
-  }).from(arbeitszyklen)
-    .where(and(eq(arbeitszyklen.expertId, expertId), sql`${arbeitszyklen.erstelltAm} > ${thirtyDaysAgo}`))
-    .orderBy(desc(arbeitszyklen.erstelltAm))
+    status: workCycles.status,
+    erstelltAm: workCycles.createdAt
+  }).from(workCycles)
+    .where(and(eq(workCycles.agentId, expertId), sql`${workCycles.createdAt} > ${thirtyDaysAgo}`))
+    .orderBy(desc(workCycles.createdAt))
     .all();
 
-  const tasks = db.select({
-    status: aufgaben.status,
-    prioritaet: aufgaben.prioritaet,
-    erstelltAm: aufgaben.erstelltAm
-  }).from(aufgaben)
-    .where(eq(aufgaben.zugewiesenAn, expertId))
-    .orderBy(desc(aufgaben.erstelltAm))
+  const agentTasks = db.select({
+    status: tasks.status,
+    prioritaet: tasks.priority,
+    erstelltAm: tasks.createdAt
+  }).from(tasks)
+    .where(eq(tasks.assignedTo, expertId))
+    .orderBy(desc(tasks.createdAt))
     .limit(100)
     .all();
 
-  const latestRunResult = db.select().from(arbeitszyklen)
-    .where(and(eq(arbeitszyklen.expertId, expertId), isNotNull(arbeitszyklen.beendetAm)))
-    .orderBy(desc(arbeitszyklen.erstelltAm))
+  const latestRunResult = db.select().from(workCycles)
+    .where(and(eq(workCycles.agentId, expertId), isNotNull(workCycles.endedAt)))
+    .orderBy(desc(workCycles.createdAt))
     .limit(1)
     .get();
 
-  const recentTasks = db.select().from(aufgaben)
-    .where(eq(aufgaben.zugewiesenAn, expertId))
-    .orderBy(desc(aufgaben.erstelltAm))
+  const recentTasks = db.select().from(tasks)
+    .where(eq(tasks.assignedTo, expertId))
+    .orderBy(desc(tasks.createdAt))
     .limit(5)
     .all();
 
   res.json({
-    arbeitszyklen: zyklen,
-    aufgaben: tasks,
+    workCycles: zyklen,
+    tasks: agentTasks,
     latestRun: latestRunResult,
     recentTasks
   });
@@ -5237,37 +6080,37 @@ app.get('/api/experten/:id/stats', authMiddleware, (req, res) => {
 // =============================================
 // HALLUCINATION / QUALITY TRACKING
 // =============================================
-app.get('/api/unternehmen/:unternehmenId/agent-qualitaet', authMiddleware, (req, res) => {
+app.get('/api/companies/:unternehmenId/agent-quality', authMiddleware, (req, res) => {
   const { unternehmenId } = req.params;
   const daysBack = Number(req.query.days || 30);
   const since = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString();
 
-  const agents = db.select({ id: experten.id, name: experten.name, rolle: experten.rolle })
-    .from(experten)
-    .where(eq(experten.unternehmenId, unternehmenId))
+  const agentRows = db.select({ id: agents.id, name: agents.name, rolle: agents.role })
+    .from(agents)
+    .where(eq(agents.companyId, unternehmenId as string))
     .all();
 
   const HEDGE_WORDS = /\b(ich denke|ich glaube|vielleicht|möglicherweise|könnte sein|wahrscheinlich|vermutlich|i think|maybe|possibly|might be|could be|i believe|not sure|unclear)\b/i;
   const BASH_FAILURE = /command not found|No such file|permission denied|STDERR:.*Error|exit code [^0]|npm ERR|SyntaxError|ModuleNotFoundError/i;
 
-  const result = agents.map(agent => {
+  const result = agentRows.map(agent => {
     // All runs in window
-    const runs = db.select({ id: arbeitszyklen.id, status: arbeitszyklen.status, ausgabe: arbeitszyklen.ausgabe })
-      .from(arbeitszyklen)
+    const runs = db.select({ id: workCycles.id, status: workCycles.status, ausgabe: workCycles.output })
+      .from(workCycles)
       .where(and(
-        eq(arbeitszyklen.expertId, agent.id),
-        sql`${arbeitszyklen.erstelltAm} > ${since}`,
-        sql`${arbeitszyklen.status} != 'queued' AND ${arbeitszyklen.status} != 'running'`,
+        eq(workCycles.agentId, agent.id),
+        sql`${workCycles.createdAt} > ${since}`,
+        sql`${workCycles.status} != 'queued' AND ${workCycles.status} != 'running'`,
       ))
       .all();
 
     const totalRuns = runs.length;
     const failedRuns = runs.filter(r => r.status === 'failed').length;
 
-    // Critic signals from kommentare
-    const taskIds = db.select({ id: aufgaben.id })
-      .from(aufgaben)
-      .where(and(eq(aufgaben.zugewiesenAn, agent.id), sql`${aufgaben.erstelltAm} > ${since}`))
+    // Critic signals from comments
+    const taskIds = db.select({ id: tasks.id })
+      .from(tasks)
+      .where(and(eq(tasks.assignedTo, agent.id), sql`${tasks.createdAt} > ${since}`))
       .all()
       .map(t => t.id);
 
@@ -5278,16 +6121,16 @@ app.get('/api/unternehmen/:unternehmenId/agent-qualitaet', authMiddleware, (req,
     let hedgingCount = 0;
 
     if (taskIds.length > 0) {
-      const allComments = db.select({ inhalt: kommentare.inhalt })
-        .from(kommentare)
+      const allComments = db.select({ inhalt: comments.content })
+        .from(comments)
         .where(and(
-          eq(kommentare.autorTyp, 'agent'),
-          inArray(kommentare.aufgabeId, taskIds.slice(0, 200)),
+          eq(comments.authorType, 'agent'),
+          inArray(comments.taskId, taskIds.slice(0, 200)),
         ))
         .all();
 
       for (const c of allComments) {
-        const text = c.inhalt || '';
+        const text = c.content || '';
         if (text.includes('Critic Review — Überarbeitung')) criticRejections++;
         if (text.includes('Manuelle Prüfung')) escalations++;
       }
@@ -5295,7 +6138,7 @@ app.get('/api/unternehmen/:unternehmenId/agent-qualitaet', authMiddleware, (req,
 
     // Analyse run ausgaben
     for (const run of runs) {
-      const out = run.ausgabe || '';
+      const out = run.output || '';
       if (!out) continue;
       const hasBashBlock = out.includes('```') || out.includes('$ ');
       if (!hasBashBlock && run.status === 'succeeded') emptyActions++;
@@ -5303,29 +6146,39 @@ app.get('/api/unternehmen/:unternehmenId/agent-qualitaet', authMiddleware, (req,
       if (HEDGE_WORDS.test(out)) hedgingCount++;
     }
 
-    // Hallucination score: 0 = perfect, 100 = completely unreliable
+    // Quality score: 0 = perfect, 100 = completely unreliable
     const rawScore = totalRuns === 0 ? 0 :
       Math.min(100, Math.round(
         (criticRejections * 15 + escalations * 30 + emptyActions * 10 + bashFailures * 8 + failedRuns * 5 + hedgingCount * 3) /
         Math.max(totalRuns, 1)
       ));
 
+    // Reliability score: 100 = perfect, 0 = unreliable (inverse of rawScore)
+    const reliabilityScore = totalRuns === 0 ? 0 : Math.max(0, 100 - rawScore);
+
     const approvedRuns = totalRuns - failedRuns - criticRejections;
+    const meaningfulRuns = totalRuns - emptyActions;
 
     return {
       expertId: agent.id,
       name: agent.name,
-      rolle: agent.rolle,
+      rolle: agent.role,
       totalRuns,
       approvedRuns: Math.max(0, approvedRuns),
+      meaningfulRuns: Math.max(0, meaningfulRuns),
       failedRuns,
       criticRejections,
       escalations,
       emptyActions,
       bashFailures,
       hedgingCount,
-      halluzinationsScore: rawScore,  // 0 = perfect, 100 = bad
-      qualityLabel: rawScore === 0 ? 'Exzellent' : rawScore < 20 ? 'Gut' : rawScore < 40 ? 'Mittel' : 'Kritisch',
+      // Percentages for relative comparison
+      emptyActionPct: totalRuns > 0 ? Math.round((emptyActions / totalRuns) * 100) : 0,
+      failurePct: totalRuns > 0 ? Math.round((failedRuns / totalRuns) * 100) : 0,
+      criticRejectionPct: totalRuns > 0 ? Math.round((criticRejections / totalRuns) * 100) : 0,
+      escalationPct: totalRuns > 0 ? Math.round((escalations / totalRuns) * 100) : 0,
+      reliabilityScore,  // 100 = perfect, 0 = bad (intuitive!)
+      qualityLabel: totalRuns === 0 ? 'Keine_Daten' : rawScore === 0 ? 'Exzellent' : rawScore < 20 ? 'Gut' : rawScore < 40 ? 'Mittel' : 'Kritisch',
     };
   });
 
@@ -5342,7 +6195,7 @@ app.get('/api/ollama/models', authMiddleware, async (req, res) => {
     const timeout = setTimeout(() => controller.abort(), 5000);
     const r = await fetch(`${baseUrl}/api/tags`, { signal: controller.signal });
     clearTimeout(timeout);
-    if (!r.ok) return res.status(502).json({ error: 'Ollama nicht erreichbar' });
+    if (!r.ok) return res.status(502).json({ error: 'Ollama unreachable' });
     const data = await r.json() as any;
     const models = (data.models ?? []).map((m: any) => ({
       id: m.name,
@@ -5353,7 +6206,7 @@ app.get('/api/ollama/models', authMiddleware, async (req, res) => {
     res.json({ models });
   } catch (err: any) {
     if (err.name === 'AbortError') {
-      return res.status(504).json({ error: 'Timeout — Ollama nicht erreichbar unter ' + baseUrl });
+      return res.status(504).json({ error: 'Timeout — Ollama unreachable at ' + baseUrl });
     }
     return res.status(502).json({ error: 'Ollama Fehler: ' + err.message });
   }
@@ -5374,49 +6227,49 @@ app.get('/api/metrics', authMiddleware, async (req, res) => {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
     const baseFilter = unternehmenId
-      ? and(eq(kostenbuchungen.unternehmenId, unternehmenId), sql`${kostenbuchungen.erstelltAm} >= ${since}`)
-      : sql`${kostenbuchungen.erstelltAm} >= ${since}`;
+      ? and(eq(costEntries.companyId, unternehmenId), sql`${costEntries.createdAt} >= ${since}`)
+      : sql`${costEntries.createdAt} >= ${since}`;
 
     // Total token/cost summary
-    const totals = db.all<{ inputTokens: number; outputTokens: number; kostenCent: number }>(
+    const totals = db.all(
       sql`SELECT SUM(input_tokens) as inputTokens, SUM(output_tokens) as outputTokens, SUM(kosten_cent) as kostenCent
           FROM kostenbuchungen WHERE ${unternehmenId ? sql`unternehmen_id = ${unternehmenId} AND` : sql``} erstellt_am >= ${since}`
-    );
+    ) as { inputTokens: number; outputTokens: number; kostenCent: number }[];
 
     // Cost per agent (top 10)
-    const costPerAgent = db.all<{ expertId: string; expertName: string; kostenCent: number; inputTokens: number; outputTokens: number; runs: number }>(
+    const costPerAgent = db.all(
       sql`SELECT k.expert_id as expertId, e.name as expertName,
              SUM(k.kosten_cent) as kostenCent, SUM(k.input_tokens) as inputTokens,
              SUM(k.output_tokens) as outputTokens, COUNT(*) as runs
           FROM kostenbuchungen k LEFT JOIN experten e ON k.expert_id = e.id
           WHERE ${unternehmenId ? sql`k.unternehmen_id = ${unternehmenId} AND` : sql``} k.erstellt_am >= ${since}
           GROUP BY k.expert_id ORDER BY kostenCent DESC LIMIT 10`
-    );
+    ) as { expertId: string; expertName: string; kostenCent: number; inputTokens: number; outputTokens: number; runs: number }[];
 
     // Daily cost trend (last N days)
-    const dailyCosts = db.all<{ day: string; kostenCent: number; runs: number }>(
+    const dailyCosts = db.all(
       sql`SELECT substr(erstellt_am, 1, 10) as day, SUM(kosten_cent) as kostenCent, COUNT(*) as runs
           FROM kostenbuchungen
           WHERE ${unternehmenId ? sql`unternehmen_id = ${unternehmenId} AND` : sql``} erstellt_am >= ${since}
           GROUP BY day ORDER BY day ASC`
-    );
+    ) as { day: string; kostenCent: number; runs: number }[];
 
     // Task completion stats
-    const taskStats = db.all<{ status: string; cnt: number }>(
+    const taskStats = db.all(
       sql`SELECT status, COUNT(*) as cnt FROM aufgaben
           WHERE ${unternehmenId ? sql`unternehmen_id = ${unternehmenId} AND` : sql``} erstellt_am >= ${since}
           GROUP BY status`
-    );
+    ) as { status: string; cnt: number }[];
 
     // Run status distribution
-    const runStats = db.all<{ status: string; cnt: number }>(
+    const runStats = db.all(
       sql`SELECT status, COUNT(*) as cnt FROM arbeitszyklen
           WHERE ${unternehmenId ? sql`unternehmen_id = ${unternehmenId} AND` : sql``} erstellt_am >= ${since}
           GROUP BY status`
-    );
+    ) as { status: string; cnt: number }[];
 
     // Agent activity summary
-    const agentActivity = db.all<{ expertId: string; expertName: string; totalRuns: number; succeededRuns: number; lastActive: string }>(
+    const agentActivity = db.all(
       sql`SELECT a.expert_id as expertId, e.name as expertName,
              COUNT(*) as totalRuns,
              SUM(CASE WHEN a.status = 'succeeded' THEN 1 ELSE 0 END) as succeededRuns,
@@ -5424,7 +6277,7 @@ app.get('/api/metrics', authMiddleware, async (req, res) => {
           FROM arbeitszyklen a LEFT JOIN experten e ON a.expert_id = e.id
           WHERE ${unternehmenId ? sql`a.unternehmen_id = ${unternehmenId} AND` : sql``} a.erstellt_am >= ${since}
           GROUP BY a.expert_id ORDER BY totalRuns DESC LIMIT 10`
-    );
+    ) as { expertId: string; expertName: string; totalRuns: number; succeededRuns: number; lastActive: string }[];
 
     res.json({
       period: { days, since },
@@ -5447,14 +6300,14 @@ app.get('/api/health/agents', authMiddleware, async (req, res) => {
 
     // Agents currently stuck in 'running' for >5 minutes
     const stuckCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    const stuckAgents = db.all<{ id: string; name: string; status: string; letzterZyklus: string }>(
+    const stuckAgents = db.all(
       sql`SELECT id, name, status, letzter_zyklus as letzterZyklus FROM experten
           WHERE status = 'running' AND letzter_zyklus < ${stuckCutoff}
           ${unternehmenId ? sql`AND unternehmen_id = ${unternehmenId}` : sql``}`
     );
 
     // Agents with high wakeup coalescedCount (potential loop detection)
-    const loopyWakeups = db.all<{ expertId: string; expertName: string; coalescedCount: number; reason: string; requestedAt: string }>(
+    const loopyWakeups = db.all(
       sql`SELECT w.expert_id as expertId, e.name as expertName,
              w.coalesced_count as coalescedCount, w.reason, w.requested_at as requestedAt
           FROM agent_wakeup_requests w LEFT JOIN experten e ON w.expert_id = e.id
@@ -5464,7 +6317,7 @@ app.get('/api/health/agents', authMiddleware, async (req, res) => {
     );
 
     // Agents in error state
-    const errorAgents = db.all<{ id: string; name: string; letzterZyklus: string }>(
+    const errorAgents = db.all(
       sql`SELECT id, name, letzter_zyklus as letzterZyklus FROM experten
           WHERE status = 'error'
           ${unternehmenId ? sql`AND unternehmen_id = ${unternehmenId}` : sql``}`
@@ -5472,7 +6325,7 @@ app.get('/api/health/agents', authMiddleware, async (req, res) => {
 
     // Recent failed runs (last 24h)
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const recentFailures = db.all<{ expertId: string; expertName: string; failCount: number }>(
+    const recentFailures = db.all(
       sql`SELECT a.expert_id as expertId, e.name as expertName, COUNT(*) as failCount
           FROM arbeitszyklen a LEFT JOIN experten e ON a.expert_id = e.id
           WHERE a.status IN ('failed', 'timed_out') AND a.erstellt_am >= ${since24h}
@@ -5483,7 +6336,7 @@ app.get('/api/health/agents', authMiddleware, async (req, res) => {
 
     // Stale queued wakeups (>2h old, still queued)
     const staleCutoff = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-    const staleWakeups = db.all<{ expertId: string; expertName: string; count: number }>(
+    const staleWakeups = db.all(
       sql`SELECT w.expert_id as expertId, e.name as expertName, COUNT(*) as count
           FROM agent_wakeup_requests w LEFT JOIN experten e ON w.expert_id = e.id
           WHERE w.status = 'queued' AND w.requested_at < ${staleCutoff}
@@ -5537,16 +6390,16 @@ app.post('/api/system/cleanup', authMiddleware, async (_req, res) => {
 });
 
 app.get('/api/system/status', (_req, res) => {
-  const unternehmenCount = db.select({ value: count(unternehmen.id) }).from(unternehmen).get()?.value ?? 0;
-  const benutzerCount = db.select({ value: count(benutzer.id) }).from(benutzer).get()?.value ?? 0;
+  const unternehmenCount = db.select({ value: count(companies.id) }).from(companies).get()?.value ?? 0;
+  const benutzerCount = db.select({ value: count(users.id) }).from(users).get()?.value ?? 0;
   res.json({ needsSetup: unternehmenCount === 0, brauchtRegistrierung: benutzerCount === 0 });
 });
 
 // GET /api/setup/status — First-run detection based on agent count
 // Returns isFirstRun: true if no agents exist for any company
 app.get('/api/setup/status', authMiddleware, (_req, res) => {
-  const expertenCount = db.select({ value: count(experten.id) }).from(experten).get()?.value ?? 0;
-  const unternehmenCount = db.select({ value: count(unternehmen.id) }).from(unternehmen).get()?.value ?? 0;
+  const expertenCount = db.select({ value: count(agents.id) }).from(agents).get()?.value ?? 0;
+  const unternehmenCount = db.select({ value: count(companies.id) }).from(companies).get()?.value ?? 0;
   res.json({ isFirstRun: expertenCount === 0 || unternehmenCount === 0 });
 });
 
@@ -5566,16 +6419,16 @@ app.post('/api/bootstrap/plan', authMiddleware, async (req, res) => {
 
   // Resolve API key (prefer configured, then env)
   const orKeyRow = unternehmenId
-    ? db.select().from(einstellungen).where(and(eq(einstellungen.schluessel, 'openrouter_api_key'), eq(einstellungen.unternehmenId, unternehmenId))).get()
+    ? db.select().from(settings).where(and(eq(settings.key, 'openrouter_api_key'), eq(settings.companyId, unternehmenId))).get()
     : null;
-  const orKeyGlobal = db.select().from(einstellungen).where(and(eq(einstellungen.schluessel, 'openrouter_api_key'), eq(einstellungen.unternehmenId, ''))).get();
+  const orKeyGlobal = db.select().from(settings).where(and(eq(settings.key, 'openrouter_api_key'), eq(settings.companyId, ''))).get();
   const anthropicRow = unternehmenId
-    ? db.select().from(einstellungen).where(and(eq(einstellungen.schluessel, 'anthropic_api_key'), eq(einstellungen.unternehmenId, unternehmenId))).get()
+    ? db.select().from(settings).where(and(eq(settings.key, 'anthropic_api_key'), eq(settings.companyId, unternehmenId))).get()
     : null;
-  const anthropicGlobal = db.select().from(einstellungen).where(and(eq(einstellungen.schluessel, 'anthropic_api_key'), eq(einstellungen.unternehmenId, ''))).get();
+  const anthropicGlobal = db.select().from(settings).where(and(eq(settings.key, 'anthropic_api_key'), eq(settings.companyId, ''))).get();
 
-  const orKey = orKeyRow?.wert ? decryptSetting('openrouter_api_key', orKeyRow.wert) : (orKeyGlobal?.wert ? decryptSetting('openrouter_api_key', orKeyGlobal.wert) : '');
-  const anthropicKey = anthropicRow?.wert ? decryptSetting('anthropic_api_key', anthropicRow.wert) : (anthropicGlobal?.wert ? decryptSetting('anthropic_api_key', anthropicGlobal.wert) : '');
+  const orKey = orKeyRow?.value ? decryptSetting('openrouter_api_key', orKeyRow.value) : (orKeyGlobal?.value ? decryptSetting('openrouter_api_key', orKeyGlobal.value) : '');
+  const anthropicKey = anthropicRow?.value ? decryptSetting('anthropic_api_key', anthropicRow.value) : (anthropicGlobal?.value ? decryptSetting('anthropic_api_key', anthropicGlobal.value) : '');
 
   const isDE = language === 'de';
   const allSkills = await skillsService.getAllSkills();
@@ -5597,7 +6450,7 @@ VERFÜGBARE SKILLS: ${skillIds}
 Erstelle folgendes JSON-Objekt:
 {
   "companyGoal": "Übergeordnetes Ziel (1 Satz)",
-  "projekte": [
+  "projects": [
     {
       "name": "Projektname",
       "beschreibung": "Was dieses Projekt ist und welche Regeln für Agenten gelten — wird direkt als Projekt-Kontext an Agenten gegeben",
@@ -5629,7 +6482,7 @@ Erstelle folgendes JSON-Objekt:
       "agentName": "Agent der das übernimmt"
     }
   ],
-  "routinen": [
+  "routines": [
     {
       "name": "Routinenname",
       "beschreibung": "Was diese Routine tut",
@@ -5656,7 +6509,7 @@ AVAILABLE SKILLS: ${skillIds}
 Create this JSON object:
 {
   "companyGoal": "Overarching goal (1 sentence)",
-  "projekte": [
+  "projects": [
     {
       "name": "Project name",
       "beschreibung": "What this project is and what rules agents should follow — passed directly as project context to agents",
@@ -5688,7 +6541,7 @@ Create this JSON object:
       "agentName": "Agent who handles this"
     }
   ],
-  "routinen": [
+  "routines": [
     {
       "name": "Routine name",
       "beschreibung": "What this routine does",
@@ -5758,7 +6611,7 @@ function buildFallbackPlan(description: string, workDir: string, isDE: boolean, 
   const firstSkill = allSkills[0]?.id || 'javascript';
   return {
     companyGoal: isDE ? `${description.slice(0, 80)} erfolgreich umsetzen` : `Successfully implement: ${description.slice(0, 80)}`,
-    projekte: [
+    projects: [
       { name: isDE ? 'Hauptprojekt' : 'Main Project', beschreibung: description, prioritaet: 'high', farbe: '#23CDCB', subDir: 'main', startFirst: true },
     ],
     agenten: [
@@ -5767,7 +6620,7 @@ function buildFallbackPlan(description: string, workDir: string, isDE: boolean, 
     tasks: [
       { titel: isDE ? 'Projektplan erstellen' : 'Create project plan', beschreibung: isDE ? 'Erstelle einen detaillierten Projektplan mit Meilensteinen.' : 'Create a detailed project plan with milestones.', prioritaet: 'high', projektName: isDE ? 'Hauptprojekt' : 'Main Project', agentName: 'Max' },
     ],
-    routinen: [
+    routines: [
       { name: isDE ? 'Täglicher Status' : 'Daily Status', beschreibung: isDE ? 'Täglicher Statusbericht' : 'Daily status report', cron: '0 9 * * 1-5', agentName: 'Max' },
     ],
   };
@@ -5783,71 +6636,71 @@ app.post('/api/bootstrap/execute', authMiddleware, async (req, res) => {
   if (dir.startsWith(opencognitRoot)) return res.status(400).json({ error: 'workDir darf nicht im OpenCognit-Verzeichnis liegen' });
 
   const nowStr = now();
-  const created: any = { projekte: [], agenten: [], tasks: [], routinen: [], soulFiles: [] };
-  const skipped: any = { projekte: [], agenten: [], tasks: [], routinen: [] };
+  const created: any = { projects: [], agenten: [], tasks: [], routines: [], soulFiles: [] };
+  const skipped: any = { projects: [], agenten: [], tasks: [], routines: [] };
   const projektMap: Record<string, string> = {}; // name → id
   const agentMap: Record<string, string> = {};   // name → id
 
   // Pre-load existing records for this company (for dedup)
-  const existingProjekte = await db.select({ id: projekte.id, name: projekte.name, workDir: projekte.workDir })
-    .from(projekte).where(eq(projekte.unternehmenId, unternehmenId));
-  const existingAgenten = await db.select({ id: experten.id, name: experten.name })
-    .from(experten).where(eq(experten.unternehmenId, unternehmenId));
+  const existingProjekte = await db.select({ id: projects.id, name: projects.name, workDir: projects.workDir })
+    .from(projects).where(eq(projects.companyId, unternehmenId));
+  const existingAgenten = await db.select({ id: agents.id, name: agents.name })
+    .from(agents).where(eq(agents.companyId, unternehmenId));
   for (const p of existingProjekte) projektMap[p.name] = p.id;
   for (const a of existingAgenten) agentMap[a.name] = a.id;
 
   // 1. Update company goal + root workDir
   if (plan.companyGoal) {
-    db.update(unternehmen).set({ ziel: plan.companyGoal, workDir: dir, aktualisiertAm: nowStr }).where(eq(unternehmen.id, unternehmenId)).run();
+    db.update(companies).set({ ziel: plan.companyGoal, workDir: dir, updatedAt: nowStr }).where(eq(companies.id, unternehmenId)).run();
 
     // Auto-create a top-level company goal so the Orchestrator has something to plan against
-    const existingTopGoal = db.select({ id: ziele.id }).from(ziele)
-      .where(and(eq(ziele.unternehmenId, unternehmenId), eq(ziele.ebene, 'company'), inArray(ziele.status, ['active', 'planned'])))
+    const existingTopGoal = db.select({ id: goals.id }).from(goals)
+      .where(and(eq(goals.companyId, unternehmenId), eq(goals.level, 'company'), inArray(goals.status, ['active', 'planned'])))
       .get();
     if (!existingTopGoal) {
-      db.insert(ziele).values({
+      db.insert(goals).values({
         id: uuid(),
-        unternehmenId,
-        titel: plan.companyGoal,
-        beschreibung: `Automatisch erstellt durch CEO Setup. Arbeitsverzeichnis: ${dir}`,
-        ebene: 'company',
+        companyId: unternehmenId,
+        title: plan.companyGoal,
+        description: `Automatisch erstellt durch CEO Setup. Arbeitsverzeichnis: ${dir}`,
+        level: 'company',
         status: 'active',
-        fortschritt: 0,
+        progress: 0,
         parentId: null,
-        erstelltAm: nowStr,
-        aktualisiertAm: nowStr,
+        createdAt: nowStr,
+        updatedAt: nowStr,
       }).run();
     }
   }
 
   // 2. Create projects + subfolders — skip if name already exists for this company
-  for (const p of (plan.projekte || [])) {
+  for (const p of (plan.projects || [])) {
     const subDir = p.subDir ? path.join(dir, p.subDir) : path.join(dir, p.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''));
     try { fs.mkdirSync(subDir, { recursive: true }); } catch { /* ignore */ }
 
     if (projektMap[p.name]) {
-      skipped.projekte.push({ name: p.name, reason: 'bereits vorhanden' });
+      skipped.projects.push({ name: p.name, reason: 'bereits vorhanden' });
       continue;
     }
 
     const projektId = uuid();
-    db.insert(projekte).values({
-      id: projektId, unternehmenId,
+    db.insert(projects).values({
+      id: projektId, companyId: unternehmenId,
       name: p.name,
-      beschreibung: p.beschreibung || null,
-      prioritaet: (['critical','high','medium','low'].includes(p.prioritaet) ? p.prioritaet : 'medium') as any,
-      farbe: p.farbe || '#23CDCB',
+      description: p.description || null,
+      priority: (['critical','high','medium','low'].includes(p.priority) ? p.priority : 'medium') as any,
+      color: p.farbe || '#23CDCB',
       workDir: subDir,
-      fortschritt: 0,
-      erstelltAm: nowStr, aktualisiertAm: nowStr,
+      progress: 0,
+      createdAt: nowStr, updatedAt: nowStr,
     }).run();
     projektMap[p.name] = projektId;
-    created.projekte.push({ id: projektId, name: p.name, workDir: subDir });
+    created.projects.push({ id: projektId, name: p.name, workDir: subDir });
   }
 
   // Build workDir lookup across all projects (existing + new)
-  const allProjekteNow = await db.select({ id: projekte.id, workDir: projekte.workDir })
-    .from(projekte).where(eq(projekte.unternehmenId, unternehmenId));
+  const allProjekteNow = await db.select({ id: projects.id, workDir: projects.workDir })
+    .from(projects).where(eq(projects.companyId, unternehmenId));
   const projektWorkDirById: Record<string, string> = {};
   for (const p of allProjekteNow) projektWorkDirById[p.id] = p.workDir || dir;
 
@@ -5874,119 +6727,119 @@ app.post('/api/bootstrap/execute', authMiddleware, async (req, res) => {
       if (soulPath) created.soulFiles.push(soulPath);
     }
 
-    db.insert(experten).values({
+    db.insert(agents).values({
       id: agentId,
-      unternehmenId,
+      companyId: unternehmenId,
       name: a.name,
-      rolle: a.rolle || 'Agent',
-      faehigkeiten: a.faehigkeiten || '',
+      role: a.role || 'Agent',
+      skills: a.skills || '',
       systemPrompt: a.systemPrompt || null,
       soulPath,
-      verbindungsTyp: 'openrouter' as any,
-      verbindungsConfig: JSON.stringify({ model: 'openrouter/auto' }),
-      budgetMonatCent: 5000,
-      zyklusAktiv: true,
-      zyklusIntervallSek: a.zyklusIntervallSek || 300,
-      avatarFarbe: '#23CDCA',
+      connectionType: 'openrouter' as any,
+      connectionConfig: JSON.stringify({ model: 'openrouter/auto' }),
+      monthlyBudgetCent: 5000,
+      autoCycleActive: true,
+      autoCycleIntervalSec: a.autoCycleIntervalSec || 300,
+      avatarColor: '#23CDCA',
       isOrchestrator: a.istOrchestrator === true,
       status: 'idle' as any,
-      erstelltAm: nowStr, aktualisiertAm: nowStr,
+      createdAt: nowStr, updatedAt: nowStr,
     }).run();
 
     // Default permissions
     db.insert(agentPermissions).values({
-      id: uuid(), expertId: agentId,
+      id: uuid(), agentId: agentId,
       darfAufgabenErstellen: true, darfAufgabenZuweisen: false,
       darfGenehmigungAnfordern: true, darfGenehmigungEntscheiden: false,
       darfExpertenAnwerben: false,
-      erstelltAm: nowStr, aktualisiertAm: nowStr,
+      createdAt: nowStr, updatedAt: nowStr,
     }).run();
 
     // Assign skills
     for (const skillId of (a.skills || [])) {
       if (skillIdSet.has(skillId)) {
         try {
-          db.insert(expertenSkills).values({ id: uuid(), expertId: agentId, skillId, proficiency: 80, erstelltAm: nowStr }).run();
+          db.insert(agentSkills).values({ id: uuid(), agentId: agentId, skillId, proficiency: 80, createdAt: nowStr }).run();
         } catch { /* duplicate */ }
       }
     }
 
     agentMap[a.name] = agentId;
-    created.agenten.push({ id: agentId, name: a.name, rolle: a.rolle, soulPath });
+    created.agenten.push({ id: agentId, name: a.name, rolle: a.role, soulPath });
   }
 
   // 4. Create tasks — skip if same title already exists in same project
-  const existingTaskRows = await db.select({ titel: aufgaben.titel, projektId: aufgaben.projektId })
-    .from(aufgaben).where(eq(aufgaben.unternehmenId, unternehmenId));
-  const existingTaskKeys = new Set(existingTaskRows.map(t => `${t.projektId ?? ''}::${t.titel}`));
+  const existingTaskRows = await db.select({ titel: tasks.title, projektId: tasks.projectId })
+    .from(tasks).where(eq(tasks.companyId, unternehmenId));
+  const existingTaskKeys = new Set(existingTaskRows.map(t => `${t.projectId ?? ''}::${t.title}`));
 
   for (const t of (plan.tasks || [])) {
     const projektId = t.projektName ? projektMap[t.projektName] : null;
-    const dedupKey = `${projektId ?? ''}::${t.titel}`;
+    const dedupKey = `${projektId ?? ''}::${t.title}`;
     if (existingTaskKeys.has(dedupKey)) {
-      skipped.tasks.push({ titel: t.titel, reason: 'bereits vorhanden' });
+      skipped.tasks.push({ titel: t.title, reason: 'bereits vorhanden' });
       continue;
     }
     const agentId = t.agentName ? agentMap[t.agentName] : null;
     const taskId = uuid();
-    db.insert(aufgaben).values({
-      id: taskId, unternehmenId,
-      titel: t.titel,
-      beschreibung: t.beschreibung || null,
+    db.insert(tasks).values({
+      id: taskId, companyId: unternehmenId,
+      title: t.title,
+      description: t.description || null,
       status: 'backlog' as any,
-      prioritaet: (['critical','high','medium','low'].includes(t.prioritaet) ? t.prioritaet : 'medium') as any,
-      projektId: projektId || null,
-      zugewiesenAn: agentId || null,
-      erstelltVon: agentId || null,
-      erstelltAm: nowStr, aktualisiertAm: nowStr,
+      priority: (['critical','high','medium','low'].includes(t.priority) ? t.priority : 'medium') as any,
+      projectId: projektId || null,
+      assignedTo: agentId || null,
+      createdBy: agentId || null,
+      createdAt: nowStr, updatedAt: nowStr,
     }).run();
     existingTaskKeys.add(dedupKey);
-    created.tasks.push({ id: taskId, titel: t.titel, projektName: t.projektName });
+    created.tasks.push({ id: taskId, titel: t.title, projektName: t.projektName });
   }
 
   // 5. Create routines — skip if same name already exists for the same agent
-  const existingRoutineRows = await db.select({ name: routinen.name, expertId: routinen.expertId })
-    .from(routinen).where(eq(routinen.unternehmenId, unternehmenId));
-  const existingRoutineKeys = new Set(existingRoutineRows.map(r => `${r.expertId}::${r.name}`));
+  const existingRoutineRows = await db.select({ name: routines.title, agentId: routines.assignedTo })
+    .from(routines).where(eq(routines.companyId, unternehmenId as string));
+  const existingRoutineKeys = new Set(existingRoutineRows.map(r => `${r.agentId}::${r.name}`));
 
-  for (const r of (plan.routinen || [])) {
+  for (const r of (plan.routines || [])) {
     const agentId = r.agentName ? agentMap[r.agentName] : null;
     if (!agentId) continue;
     const dedupKey = `${agentId}::${r.name}`;
     if (existingRoutineKeys.has(dedupKey)) {
-      skipped.routinen.push({ name: r.name, reason: 'bereits vorhanden' });
+      skipped.routines.push({ name: r.name, reason: 'bereits vorhanden' });
       continue;
     }
     const routineId = uuid();
-    db.insert(routinen).values({
-      id: routineId, unternehmenId,
+    db.insert(routines).values({
+      id: routineId, companyId: unternehmenId,
       name: r.name,
-      beschreibung: r.beschreibung || null,
-      expertId: agentId,
-      aktiv: true,
-      erstelltAm: nowStr, aktualisiertAm: nowStr,
+      description: r.description || null,
+      assignedTo: agentId,
+      active: true,
+      createdAt: nowStr, updatedAt: nowStr,
     }).run();
     if (r.cron) {
       db.insert(routineTrigger).values({
         id: uuid(), routineId,
-        typ: 'cron' as any,
-        wert: r.cron,
-        erstelltAm: nowStr,
+        type: 'cron' as any,
+        value: r.cron,
+        createdAt: nowStr,
       }).run();
     }
     existingRoutineKeys.add(dedupKey);
-    created.routinen.push({ id: routineId, name: r.name, agentName: r.agentName });
+    created.routines.push({ id: routineId, name: r.name, agentName: r.agentName });
   }
 
   // 6. Set start project to critical priority
   if (startProjektName && projektMap[startProjektName]) {
-    db.update(projekte).set({ prioritaet: 'critical', aktualisiertAm: nowStr }).where(eq(projekte.id, projektMap[startProjektName])).run();
+    db.update(projects).set({ priority: 'critical', updatedAt: nowStr }).where(eq(projects.id, projektMap[startProjektName])).run();
   }
 
-  const totalSkipped = skipped.projekte.length + skipped.agenten.length + skipped.tasks.length + skipped.routinen.length;
+  const totalSkipped = skipped.projects.length + skipped.agenten.length + skipped.tasks.length + skipped.routines.length;
   logAktivitaet(unternehmenId, 'system', 'system', 'CEO Bootstrap',
-    `hat ${created.agenten.length} Agenten, ${created.projekte.length} Projekte und ${created.tasks.length} Tasks erstellt (${totalSkipped} übersprungen)`,
-    'unternehmen', unternehmenId);
+    `hat ${created.agenten.length} Agenten, ${created.projects.length} Projekte und ${created.tasks.length} Tasks erstellt (${totalSkipped} übersprungen)`,
+    'companies', unternehmenId);
   res.json({ success: true, created, skipped });
 });
 
@@ -6049,7 +6902,7 @@ app.get('/api/system/claude-status', authMiddleware, async (_req, res) => {
   }
 });
 
-// GET /api/system/cli-status — Gemini CLI + Codex CLI Installations-Check
+// GET /api/system/cli-status — Gemini CLI + Codex CLI Installations-Check (legacy, still works)
 app.get('/api/system/cli-status', authMiddleware, async (_req, res) => {
   const checkCli = async (cmd: string): Promise<{ installed: boolean; version: string }> => {
     try {
@@ -6076,6 +6929,157 @@ app.get('/api/system/cli-status', authMiddleware, async (_req, res) => {
   res.json({ gemini, codex });
 });
 
+// GET /api/system/cli-detect — Generic auto-detection for ALL supported CLI tools
+// Scans PATH for: claude, gemini, codex, kimi, and any future CLI adapters
+interface CLIDetectResult {
+  name: string;
+  cmd: string;
+  installed: boolean;
+  version: string;
+  authenticated?: boolean;
+  subscriptionType?: string;
+  authHint?: string;
+}
+
+const CLI_TOOLS: { name: string; cmd: string; authHint: string }[] = [
+  { name: 'claude-code', cmd: 'claude', authHint: 'claude login' },
+  { name: 'gemini-cli', cmd: 'gemini', authHint: 'gemini login' },
+  { name: 'codex-cli', cmd: 'codex', authHint: 'codex login' },
+  { name: 'kimi-cli', cmd: 'kimi', authHint: 'kimi login' },
+];
+
+app.get('/api/system/cli-detect', authMiddleware, async (_req, res) => {
+  try {
+  const checkOne = async (tool: typeof CLI_TOOLS[0]): Promise<CLIDetectResult> => {
+    // Prefer configured path, then default command
+    const configuredPath = getCliPath(tool.name.replace('-cli', '').replace('-code', ''));
+    const candidates = configuredPath ? [configuredPath, tool.cmd] : [tool.cmd];
+
+    for (const cmd of candidates) {
+      try {
+        const { stdout } = await new Promise<{ stdout: string }>((resolve, reject) => {
+          const proc = spawn(cmd, ['--version'], { stdio: ['ignore', 'pipe', 'pipe'] });
+          let out = '';
+          proc.stdout?.on('data', (d: Buffer) => { out += d.toString(); });
+          proc.stderr?.on('data', (d: Buffer) => { out += d.toString(); });
+          proc.on('error', () => reject(new Error('not found')));
+          proc.on('close', (code) => code === 0 ? resolve({ stdout: out }) : reject(new Error('exit ' + code)));
+          setTimeout(() => { try { proc.kill(); } catch {} reject(new Error('timeout')); }, 4000);
+        });
+        return {
+          name: tool.name,
+          cmd,
+          installed: true,
+          version: stdout.trim().split('\n')[0] || 'installed',
+          authHint: tool.authHint,
+        };
+      } catch { /* try next candidate */ }
+    }
+
+    return {
+      name: tool.name,
+      cmd: tool.cmd,
+      installed: false,
+      version: '',
+      authHint: tool.authHint,
+    };
+  };
+
+  const results = await Promise.all(CLI_TOOLS.map(checkOne));
+
+  // Enrich claude with auth status (same logic as /api/system/claude-status)
+  const claudeResult = results.find(r => r.name === 'claude-code');
+  if (claudeResult?.installed) {
+    const home = process.env.HOME || process.env.USERPROFILE || '';
+    const credPath = path.join(home, '.claude', '.credentials.json');
+    if (fs.existsSync(credPath)) {
+      try {
+        const raw = JSON.parse(fs.readFileSync(credPath, 'utf-8'));
+        const oauth = raw?.claudeAiOauth;
+        if (oauth?.accessToken) {
+          const tokenExpired = oauth.expiresAt ? Date.now() > oauth.expiresAt : false;
+          claudeResult.authenticated = !tokenExpired;
+          claudeResult.subscriptionType = oauth.subscriptionType || 'unknown';
+        }
+      } catch { /* ignore */ }
+    }
+  }
+
+  // Enrich kimi-cli with auth status
+  const kimiResult = results.find(r => r.name === 'kimi-cli');
+  if (kimiResult?.installed) {
+    const home = process.env.HOME || process.env.USERPROFILE || '';
+    const credPath = path.join(home, '.kimi', 'credentials', 'kimi-code.json');
+    if (fs.existsSync(credPath)) {
+      try {
+        const raw = JSON.parse(fs.readFileSync(credPath, 'utf-8'));
+        // Prefer refresh token expiry (30-day session) over access token expiry (15 min)
+        // The access token auto-refreshes on each kimi invocation; the refresh token
+        // represents the real session lifetime.
+        if (raw?.refresh_token) {
+          try {
+            const payload = JSON.parse(Buffer.from(raw.refresh_token.split('.')[1], 'base64').toString());
+            const refreshExpired = payload.exp ? Date.now() > payload.exp * 1000 : false;
+            kimiResult.authenticated = !refreshExpired;
+          } catch {
+            // Fallback: access token check
+            const tokenExpired = raw.expires_at ? Date.now() > (raw.expires_at * 1000) : false;
+            kimiResult.authenticated = !tokenExpired;
+          }
+        } else if (raw?.access_token) {
+          const tokenExpired = raw.expires_at ? Date.now() > (raw.expires_at * 1000) : false;
+          kimiResult.authenticated = !tokenExpired;
+        }
+      } catch { /* ignore */ }
+    }
+  }
+
+  res.json({
+    tools: results,
+    anyInstalled: results.some(r => r.installed),
+    installedCount: results.filter(r => r.installed).length,
+  });
+  } catch (err: any) {
+    console.error('❌ [cli-detect] Internal error:', err);
+    res.status(500).json({ error: 'cli-detect failed', message: err.message });
+  }
+});
+
+// GET /api/system/cli-paths — return currently configured CLI path overrides
+app.get('/api/system/cli-paths', authMiddleware, (_req, res) => {
+  res.json(getAllCliPaths());
+});
+
+// PUT /api/system/cli-paths — update a CLI path override (global, not per-company)
+app.put('/api/system/cli-paths/:tool', authMiddleware, async (req, res) => {
+  const tool = req.params.tool;
+  const pathValue = (req.body.path ?? '') as string;
+
+  const key = `cli_path_${tool}`;
+  const wertToStore = encryptSetting(key, pathValue);
+
+  const existing = db.select().from(settings)
+    .where(and(eq(settings.key, key), eq(settings.companyId, '')))
+    .get();
+
+  if (existing) {
+    db.update(settings)
+      .set({ value: wertToStore, updatedAt: now() })
+      .where(and(eq(settings.key, key), eq(settings.companyId, '')))
+      .run();
+  } else {
+    db.insert(settings)
+      .values({ key, value: wertToStore, companyId: '', updatedAt: now() })
+      .run();
+  }
+
+  // Update in-memory map immediately
+  setCliPath(tool, pathValue);
+
+  console.log(`🔧 CLI path override updated: ${tool} = ${pathValue || '(cleared)'}`);
+  res.json({ ok: true, tool, path: pathValue });
+});
+
 // =============================================
 // PLUGIN-SYSTEM (Phase 4)
 // =============================================
@@ -6099,7 +7103,7 @@ app.get('/api/plugins/:id', async (req, res) => {
     const plugin = pluginManager.getPlugin(id);
 
     if (!plugin) {
-      return res.status(404).json({ error: 'Plugin nicht gefunden' });
+      return res.status(404).json({ error: 'Plugin not found' });
     }
 
     // Plugin-Konfigurationsschema abrufen
@@ -6192,36 +7196,36 @@ async function checkPeriodicWakeups() {
   try {
     const now = Date.now();
     // Hole alle Agenten mit zyklusAktiv=true die nicht paused/terminated sind
-    const agents = db.select({
-      id: experten.id,
-      unternehmenId: experten.unternehmenId,
-      name: experten.name,
-      letzterZyklus: experten.letzterZyklus,
-      zyklusIntervallSek: experten.zyklusIntervallSek,
-      isOrchestrator: experten.isOrchestrator,
+    const agentRows = db.select({
+      id: agents.id,
+      unternehmenId: agents.companyId,
+      name: agents.name,
+      letzterZyklus: agents.lastCycle,
+      zyklusIntervallSek: agents.autoCycleIntervalSec,
+      isOrchestrator: agents.isOrchestrator,
     })
-      .from(experten)
+      .from(agents)
       .where(
         and(
-          sql`${experten.zyklusAktiv} = 1`,
-          sql`${experten.status} != 'terminated'`,
-          sql`${experten.status} != 'paused'`
+          sql`${agents.autoCycleActive} = 1`,
+          sql`${agents.status} != 'terminated'`,
+          sql`${agents.status} != 'paused'`
         )
       )
       .all();
 
     let wakeupsCreated = 0;
-    for (const agent of agents) {
-      if (!agent.zyklusIntervallSek) continue;
+    for (const agent of agentRows) {
+      if (!agent.autoCycleIntervalSec) continue;
 
-      const needsWakeup = !agent.letzterZyklus ||
-        (now - new Date(agent.letzterZyklus).getTime()) > (agent.zyklusIntervallSek * 1000);
+      const needsWakeup = !agent.lastCycle ||
+        (now - new Date(agent.lastCycle).getTime()) > (agent.autoCycleIntervalSec * 1000);
 
       if (needsWakeup) {
-        await wakeupService.wakeup(agent.id, agent.unternehmenId, {
+        await wakeupService.wakeup(agent.id, agent.companyId, {
           source: 'timer',
           triggerDetail: 'cron',
-          reason: `Periodischer Zyklus (alle ${agent.zyklusIntervallSek}s)`,
+          reason: `Periodischer Zyklus (alle ${agent.autoCycleIntervalSec}s)`,
           contextSnapshot: { source: 'periodic_cycle' },
         });
         wakeupsCreated++;
@@ -6233,30 +7237,30 @@ async function checkPeriodicWakeups() {
     try {
       // Finde alle Companies mit unzugewiesenen Tasks
       const unassignedTasks = db.select({
-        unternehmenId: aufgaben.unternehmenId,
+        unternehmenId: tasks.companyId,
       })
-        .from(aufgaben)
+        .from(tasks)
         .where(
           and(
-            isNull(aufgaben.zugewiesenAn),
-            inArray(aufgaben.status, ['todo', 'backlog']),
+            isNull(tasks.assignedTo),
+            inArray(tasks.status, ['todo', 'backlog']),
           )
         )
         .all();
 
-      const companiesWithWork = [...new Set(unassignedTasks.map(t => t.unternehmenId as string))];
+      const companiesWithWork = [...new Set(unassignedTasks.map(t => t.companyId as string))];
 
       for (const unternehmenId of companiesWithWork) {
         // Finde CEO/Orchestrator dieser Company
-        const ceo = db.select({ id: experten.id, name: experten.name, letzterZyklus: experten.letzterZyklus })
-          .from(experten)
+        const ceo = db.select({ id: agents.id, name: agents.name, letzterZyklus: agents.lastCycle })
+          .from(agents)
           .where(
             and(
-              eq(experten.unternehmenId, unternehmenId as string),
-              eq(experten.isOrchestrator, true),
-              sql`${experten.status} != 'terminated'`,
-              sql`${experten.status} != 'paused'`,
-              sql`${experten.status} != 'running'`,
+              eq(agents.companyId, unternehmenId as string),
+              eq(agents.isOrchestrator, true),
+              sql`${agents.status} != 'terminated'`,
+              sql`${agents.status} != 'paused'`,
+              sql`${agents.status} != 'running'`,
             )
           )
           .get() as any;
@@ -6264,8 +7268,8 @@ async function checkPeriodicWakeups() {
         if (!ceo) continue;
 
         // Nur wecken wenn CEO nicht gerade erst aktiv war (min. 60s Abstand)
-        const ceoIdleSince = ceo.letzterZyklus
-          ? now - new Date(ceo.letzterZyklus).getTime()
+        const ceoIdleSince = ceo.lastCycle
+          ? now - new Date(ceo.lastCycle).getTime()
           : Infinity;
 
         if (ceoIdleSince > 60_000) {
@@ -6298,15 +7302,15 @@ async function processAllPendingWakeups() {
     // zyklusAktiv steuert nur ob der Cron-Scheduler automatisch feuert —
     // manuelle Zuweisungen und on-demand Wakeups werden immer verarbeitet
     const activeAgents = db.select({
-      id: experten.id,
-      unternehmenId: experten.unternehmenId,
-      name: experten.name,
+      id: agents.id,
+      unternehmenId: agents.companyId,
+      name: agents.name,
     })
-      .from(experten)
+      .from(agents)
       .where(
         and(
-          sql`${experten.status} != 'terminated'`,
-          sql`${experten.status} != 'paused'`
+          sql`${agents.status} != 'terminated'`,
+          sql`${agents.status} != 'paused'`
         )
       )
       .all();
@@ -6343,22 +7347,22 @@ app.get('/api/openclaw/token', (req: any, res: any) => {
   if (!unternehmenId) return res.status(400).json({ error: 'unternehmenId required' });
 
   let row = db.select().from(openclawTokens)
-    .where(eq(openclawTokens.unternehmenId, unternehmenId))
+    .where(eq(openclawTokens.companyId, unternehmenId))
     .get();
 
   if (!row) {
     const newToken = uuid();
     db.insert(openclawTokens).values({
       id: uuid(),
-      unternehmenId,
+      companyId: unternehmenId,
       token: newToken,
-      beschreibung: 'Auto-generiert',
-      erstelltAm: now(),
+      description: 'Auto-generiert',
+      createdAt: now(),
     }).run();
-    row = db.select().from(openclawTokens).where(eq(openclawTokens.unternehmenId, unternehmenId)).get();
+    row = db.select().from(openclawTokens).where(eq(openclawTokens.companyId, unternehmenId)).get();
   }
 
-  res.json({ token: row!.token, erstelltAm: row!.erstelltAm, letzterJoin: row!.letzterJoin });
+  res.json({ token: row!.token, erstelltAm: row!.createdAt, letzterJoin: row!.letzterJoin });
 });
 
 /**
@@ -6371,12 +7375,12 @@ app.post('/api/openclaw/token/regenerate', (req: any, res: any) => {
 
   const newToken = uuid();
   const existing = db.select({ id: openclawTokens.id }).from(openclawTokens)
-    .where(eq(openclawTokens.unternehmenId, unternehmenId)).get();
+    .where(eq(openclawTokens.companyId, unternehmenId)).get();
 
   if (existing) {
-    db.update(openclawTokens).set({ token: newToken }).where(eq(openclawTokens.unternehmenId, unternehmenId)).run();
+    db.update(openclawTokens).set({ token: newToken }).where(eq(openclawTokens.companyId, unternehmenId)).run();
   } else {
-    db.insert(openclawTokens).values({ id: uuid(), unternehmenId, token: newToken, beschreibung: 'Auto-generiert', erstelltAm: now() }).run();
+    db.insert(openclawTokens).values({ id: uuid(), companyId: unternehmenId, token: newToken, description: 'Auto-generiert', createdAt: now() }).run();
   }
 
   res.json({ token: newToken });
@@ -6399,19 +7403,19 @@ app.post('/api/openclaw/join', (req: any, res: any) => {
   const tokenRow = db.select().from(openclawTokens).where(eq(openclawTokens.token, token)).get();
   if (!tokenRow) return res.status(403).json({ error: 'Ungültiger Token' });
 
-  const unternehmenId = tokenRow.unternehmenId;
+  const unternehmenId = tokenRow.companyId;
 
   // Check if this OpenClaw agent is already registered (by openclawAgentId or gatewayUrl match)
   const verbindungsConfigPattern = openclawAgentId ?? gatewayUrl;
-  const existing = db.select().from(experten)
+  const existing = db.select().from(agents)
     .where(and(
-      eq(experten.unternehmenId, unternehmenId),
-      eq(experten.verbindungsTyp, 'openclaw' as any),
+      eq(agents.companyId, unternehmenId),
+      eq(agents.connectionType, 'openclaw' as any),
     ))
     .all()
     .find((e: any) => {
       try {
-        const cfg = JSON.parse(e.verbindungsConfig || '{}');
+        const cfg = JSON.parse(e.connectionConfig || '{}');
         return cfg.openclawAgentId === openclawAgentId || cfg.gatewayUrl === gatewayUrl;
       } catch { return false; }
     });
@@ -6426,29 +7430,29 @@ app.post('/api/openclaw/join', (req: any, res: any) => {
   let expertId: string;
   if (existing) {
     // Update existing registration (new gateway URL or token)
-    db.update(experten).set({
+    db.update(agents).set({
       name: agentName,
-      rolle: agentRolle || existing.rolle,
-      faehigkeiten: faehigkeiten || existing.faehigkeiten,
-      verbindungsConfig,
-      aktualisiertAm: now(),
-    }).where(eq(experten.id, existing.id)).run();
+      role: agentRolle || existing.role,
+      skills: faehigkeiten || existing.skills,
+      connectionConfig: verbindungsConfig,
+      updatedAt: now(),
+    }).where(eq(agents.id, existing.id)).run();
     expertId = existing.id;
     console.log(`🔗 OpenClaw agent updated: ${agentName} (${expertId})`);
   } else {
     // Create new expert entry
     expertId = uuid();
-    db.insert(experten).values({
+    db.insert(agents).values({
       id: expertId,
-      unternehmenId,
+      companyId: unternehmenId,
       name: agentName,
-      rolle: agentRolle || 'Externer Agent',
-      verbindungsTyp: 'openclaw' as any,
-      verbindungsConfig,
-      faehigkeiten: faehigkeiten || null,
+      role: agentRolle || 'Externer Agent',
+      connectionType: 'openclaw' as any,
+      connectionConfig: verbindungsConfig,
+      skills: faehigkeiten || null,
       status: 'idle',
-      erstelltAm: now(),
-      aktualisiertAm: now(),
+      createdAt: now(),
+      updatedAt: now(),
     }).run();
     console.log(`🔗 OpenClaw agent registered: ${agentName} (${expertId})`);
   }
@@ -6456,7 +7460,7 @@ app.post('/api/openclaw/join', (req: any, res: any) => {
   // Update letzterJoin timestamp
   db.update(openclawTokens).set({ letzterJoin: now() }).where(eq(openclawTokens.token, token)).run();
 
-  const agent = db.select().from(experten).where(eq(experten.id, expertId)).get();
+  const agent = db.select().from(agents).where(eq(agents.id, expertId as string)).get();
 
   // Notify all open browser sessions about the new/updated connection
   broadcastUpdate('openclaw_agent_joined', {
@@ -6478,19 +7482,19 @@ app.get('/api/openclaw/agents', (req: any, res: any) => {
   const unternehmenId = req.query.unternehmenId as string;
   if (!unternehmenId) return res.status(400).json({ error: 'unternehmenId required' });
 
-  const agents = db.select().from(experten)
+  const agentRows = db.select().from(agents)
     .where(and(
-      eq(experten.unternehmenId, unternehmenId),
-      eq(experten.verbindungsTyp, 'openclaw' as any),
+      eq(agents.companyId, unternehmenId),
+      eq(agents.connectionType, 'openclaw' as any),
     ))
     .all()
     .map((a: any) => {
       let cfg: any = {};
-      try { cfg = JSON.parse(a.verbindungsConfig || '{}'); } catch {}
+      try { cfg = JSON.parse(a.connectionConfig || '{}'); } catch {}
       return { ...a, gatewayUrl: cfg.gatewayUrl, openclawAgentId: cfg.openclawAgentId };
     });
 
-  res.json(agents);
+  res.json(agentRows);
 });
 
 // ── Global error middleware ───────────────────────────────────────────────────
@@ -6551,37 +7555,61 @@ if (process.env.NODE_ENV === 'production') {
 async function start() {
   await initializeDatabase();
 
+  // ── Load CLI path overrides from settings ───────────────────────────────────
+  try {
+    const cliPathSettings = db.select().from(settings)
+      .where(and(
+        eq(settings.companyId, ''),
+        inArray(settings.key, ['cli_path_kimi', 'cli_path_claude', 'cli_path_codex', 'cli_path_gemini'])
+      )).all();
+    for (const s of cliPathSettings) {
+      const tool = s.key.replace('cli_path_', '');
+      try {
+        const decrypted = decryptSetting(s.key, s.value);
+        if (decrypted) setCliPath(tool, decrypted);
+      } catch {
+        if (s.value) setCliPath(tool, s.value);
+      }
+    }
+    const loaded = getAllCliPaths();
+    if (Object.keys(loaded).length > 0) {
+      console.log(`🔧 CLI path overrides loaded: ${Object.entries(loaded).map(([k, v]) => `${k}=${v}`).join(', ')}`);
+    }
+  } catch (e: any) {
+    console.warn('⚠️ Could not load CLI path overrides:', e.message);
+  }
+
   // ── Startup cleanup: release all stale locks from previous server crash ──────
   try {
     // 1. Reset agents stuck in 'running' → 'idle'
-    const stuckAgents = db.select({ id: experten.id, name: experten.name })
-      .from(experten).where(eq(experten.status, 'running' as any)).all();
+    const stuckAgents = db.select({ id: agents.id, name: agents.name })
+      .from(agents).where(eq(agents.status, 'running' as any)).all();
     if (stuckAgents.length > 0) {
-      db.update(experten).set({ status: 'idle', aktualisiertAm: now() })
-        .where(eq(experten.status, 'running' as any)).run();
+      db.update(agents).set({ status: 'idle', updatedAt: now() })
+        .where(eq(agents.status, 'running' as any)).run();
       console.log(`🔧 ${stuckAgents.length} Agent(en) von 'running' → 'idle' zurückgesetzt: ${(stuckAgents as any[]).map((a: any) => a.name).join(', ')}`);
     }
 
     // 2. Release all task execution locks (executionLockedAt → null)
-    const lockedTasks = db.select({ id: aufgaben.id })
-      .from(aufgaben).where(isNotNull(aufgaben.executionLockedAt as any)).all();
+    const lockedTasks = db.select({ id: tasks.id })
+      .from(tasks).where(isNotNull(tasks.executionLockedAt as any)).all();
     if (lockedTasks.length > 0) {
-      db.update(aufgaben).set({
+      db.update(tasks).set({
         executionLockedAt: null as any,
         executionRunId: null as any,
-      }).where(isNotNull(aufgaben.executionLockedAt as any)).run();
+      }).where(isNotNull(tasks.executionLockedAt as any)).run();
       console.log(`🔧 ${lockedTasks.length} Task-Lock(s) beim Start freigegeben`);
     }
 
-    // 3. Mark all open arbeitszyklen as timed_out (they'll never finish now)
-    const openRuns = db.select({ id: arbeitszyklen.id })
-      .from(arbeitszyklen).where(eq(arbeitszyklen.status, 'running')).all();
+    // 3. Mark all open workCycles as timed_out (they'll never finish now)
+    const openRuns = db.select({ id: workCycles.id })
+      .from(workCycles).where(eq(workCycles.status, 'running')).all();
     if (openRuns.length > 0) {
-      db.update(arbeitszyklen).set({
+      db.update(workCycles).set({
         status: 'timed_out',
-        beendetAm: now(),
-        fehler: 'Server neugestartet — Ausführung unterbrochen',
-      }).where(eq(arbeitszyklen.status, 'running')).run();
+        endedAt: now(),
+        error: 'Server restarted — execution interrupted',
+      }).where(eq(workCycles.status, 'running')).run();
       console.log(`🔧 ${openRuns.length} offene Arbeitszyklen auf 'timed_out' gesetzt`);
     }
   } catch (e) {
@@ -6627,6 +7655,13 @@ async function start() {
 
   // Start Telegram Polling (Gateway Mode)
   messagingService.startPolling().catch(console.error);
+
+  // Initialize Discord Bot (if configured)
+  try {
+    await discordBotService.initialize();
+  } catch (e: any) {
+    console.warn('⚠️ Discord Bot konnte nicht gestartet werden:', e.message);
+  }
 
   // Wire channelRegistry inbound handler → messagingService
   // Without this, webhook-based Telegram messages are silently dropped
@@ -6684,6 +7719,11 @@ async function shutdown() {
   if (zyklusCheckerInterval) {
     clearInterval(zyklusCheckerInterval);
     zyklusCheckerInterval = null;
+  }
+  try {
+    await discordBotService.shutdown();
+  } catch (e: any) {
+    console.warn('⚠️ Discord Bot Shutdown-Fehler:', e.message);
   }
   try {
     await shutdownPluginSystem();

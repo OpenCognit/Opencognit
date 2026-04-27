@@ -8,7 +8,7 @@ const MAX_ITERATIONS = 15;
 
 export class OpenRouterAdapter implements ExpertAdapter {
   name = 'openrouter';
-  beschreibung = 'OpenRouter API (Llama 3, Mistral, OpenAI, etc.)';
+  description = 'OpenRouter API (Llama 3, Mistral, OpenAI, etc.)';
 
   async isAvailable(): Promise<boolean> {
     return true;
@@ -20,8 +20,8 @@ export class OpenRouterAdapter implements ExpertAdapter {
 
     let model = 'openrouter/auto';
     try {
-      if (options.verbindungsConfig) {
-        const config = JSON.parse(options.verbindungsConfig);
+      if (options.connectionConfig) {
+        const config = JSON.parse(options.connectionConfig);
         if (config.model && config.model !== 'openrouter/auto') {
           model = config.model;
         } else {
@@ -40,9 +40,9 @@ export class OpenRouterAdapter implements ExpertAdapter {
     if (!options.apiKey) {
       return {
         success: false,
-        ausgabe: '',
-        fehler: 'Kein OpenRouter API Key in den Systemeinstellungen hinterlegt.',
-        dauer: Date.now() - startTime,
+        output: '',
+        error: 'Kein OpenRouter API Key in den Systemeinstellungen hinterlegt.',
+        duration: Date.now() - startTime,
       };
     }
 
@@ -139,14 +139,14 @@ export class OpenRouterAdapter implements ExpertAdapter {
         );
       } catch (e: any) {
         const is402 = (e as any).status === 402 || e.message?.includes('402');
-        const fehler = is402
+        const error = is402
           ? `OpenRouter Credits aufgebraucht. Bitte unter openrouter.ai/settings/credits aufladen. (${e.message})`
           : `Verbindungsfehler zu OpenRouter: ${e.message}`;
         return {
           success: false,
-          ausgabe: finalOutput,
-          fehler,
-          dauer: Date.now() - startTime,
+          output: finalOutput,
+          error,
+          duration: Date.now() - startTime,
         };
       }
 
@@ -226,15 +226,15 @@ export class OpenRouterAdapter implements ExpertAdapter {
       break; // No tools, no bash blocks → done
     }
 
-    const kostenCent = data?.usage?.cost
+    const costCent = data?.usage?.cost
       ? Math.round(data.usage.cost * 100)
       : 0;
 
     return {
       success: true,
-      ausgabe: finalOutput,
-      dauer: Date.now() - startTime,
-      tokenVerbrauch: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, kostenCent },
+      output: finalOutput,
+      duration: Date.now() - startTime,
+      tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, costCent },
     };
   }
 }

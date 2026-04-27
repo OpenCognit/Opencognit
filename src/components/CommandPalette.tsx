@@ -21,10 +21,10 @@ interface SearchEntity {
 }
 
 const PRIORITY_COLORS: Record<string, string> = {
-  critical: '#ef4444', high: '#eab308', medium: '#23CDCB', low: '#71717a',
+  critical: '#ef4444', high: '#eab308', medium: '#c5a059', low: '#71717a',
 };
 const STATUS_COLORS: Record<string, string> = {
-  backlog: '#71717a', todo: '#3b82f6', in_progress: '#23CDCB',
+  backlog: '#71717a', todo: '#3b82f6', in_progress: '#c5a059',
   in_review: '#eab308', done: '#22c55e', blocked: '#ef4444',
 };
 
@@ -55,7 +55,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     { label: t.nav.dashboard, href: '/', icon: LayoutDashboard, group: 'Navigation' },
     { label: t.nav.unternehmen, href: '/companies', icon: Building2, group: 'Navigation' },
     { label: t.nav.experten, href: '/experts', icon: Users, group: 'Navigation' },
-    { label: t.nav.intelligence, href: '/intelligence', icon: Brain, group: 'Navigation' },
+    { label: language === 'de' ? 'Wissensbasis' : 'Knowledge', href: '/company-knowledge', icon: Brain, group: 'Navigation' },
     { label: t.nav.ziele, href: '/goals', icon: Target, group: 'Navigation' },
     { label: t.nav.projekte, href: '/projects', icon: FolderOpen, group: 'Navigation' },
     { label: t.nav.aufgaben, href: '/tasks', icon: CheckSquare, group: 'Navigation' },
@@ -67,7 +67,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     { label: t.nav.genehmigungen, href: '/approvals', icon: FileCheck, group: 'Navigation' },
     { label: t.nav.aktivitaet, href: '/activity', icon: Activity, group: 'Navigation' },
     { label: language === 'de' ? 'Performance' : 'Performance', href: '/performance', icon: Trophy, group: 'Navigation' },
-    { label: language === 'de' ? 'War Room' : 'War Room', href: '/war-room', icon: MonitorPlay, group: 'Navigation' },
+    { label: language === 'de' ? 'Live Room' : 'Live Room', href: '/war-room', icon: MonitorPlay, group: 'Navigation' },
     { label: t.nav.einstellungen, href: '/settings', icon: Settings, group: 'Navigation' },
   ];
 
@@ -108,7 +108,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           sublabel: `${a.status} · ${a.prioritaet}`,
           group: language === 'de' ? 'Aufgaben' : 'Tasks',
           icon: ListTodo,
-          color: PRIORITY_COLORS[a.prioritaet] ?? '#23CDCB',
+          color: PRIORITY_COLORS[a.prioritaet] ?? '#c5a059',
           onSelect: () => { navigate('/tasks', { state: { openTaskId: a.id } }); onOpenChange(false); },
         });
       });
@@ -124,7 +124,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           sublabel: e.rolle,
           group: language === 'de' ? 'Agenten' : 'Agents',
           icon: User,
-          color: e.avatarFarbe || '#23CDCB',
+          color: e.avatarFarbe || '#c5a059',
           onSelect: () => { navigate('/experts'); onOpenChange(false); },
         });
       });
@@ -140,7 +140,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           sublabel: `${z.ebene} · ${z.fortschritt ?? 0}%`,
           group: language === 'de' ? 'Ziele' : 'Goals',
           icon: Target,
-          color: '#a855f7',
+          color: '#9b87c8',
           onSelect: () => { navigate('/goals'); onOpenChange(false); },
         });
       });
@@ -295,7 +295,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           backdropFilter: 'blur(40px)',
           WebkitBackdropFilter: 'blur(40px)',
           border: '1px solid rgba(255, 255, 255, 0.12)',
-          borderRadius: '20px',
+          borderRadius: 0,
           overflow: 'hidden',
           boxShadow: '0 40px 100px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.08)',
           animation: 'slideDown 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
@@ -310,7 +310,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           padding: '0.875rem 1rem',
           borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
         }}>
-          <Search size={18} style={{ color: '#23CDCB', flexShrink: 0 }} />
+          <Search size={18} style={{ color: '#c5a059', flexShrink: 0 }} />
           <input
             ref={inputRef}
             type="text"
@@ -332,7 +332,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             style={{
               background: 'rgba(255,255,255,0.06)',
               border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '6px',
+              borderRadius: 0,
               color: '#71717a',
               cursor: 'pointer',
               padding: '2px 6px',
@@ -352,14 +352,14 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         {isQuickTask && (
           <div style={{
             padding: '1.25rem 1rem',
-            background: 'rgba(35,205,202,0.04)',
-            borderBottom: '1px solid rgba(35,205,202,0.12)',
+            background: 'rgba(197,160,89,0.04)',
+            borderBottom: '1px solid rgba(197,160,89,0.12)',
           }}>
             {taskState === 'idle' && (
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                  <Zap size={14} style={{ color: '#23CDCB' }} />
-                  <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#23CDCB' }}>
+                  <Zap size={14} style={{ color: '#c5a059' }} />
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#c5a059' }}>
                     {language === 'de' ? 'Sofort-Aufgabe' : 'Quick Task'}
                   </span>
                   <span style={{ fontSize: '0.75rem', color: '#475569' }}>
@@ -368,8 +368,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                 </div>
                 {taskTitle.trim() ? (
                   <div style={{
-                    padding: '0.625rem 0.875rem', borderRadius: '10px',
-                    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(35,205,202,0.2)',
+                    padding: '0.625rem 0.875rem', borderRadius: 0,
+                    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(197,160,89,0.2)',
                     fontSize: '0.9375rem', color: '#f1f5f9', fontWeight: 500,
                   }}>
                     {taskTitle}
@@ -382,7 +382,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               </div>
             )}
             {taskState === 'loading' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#23CDCB' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#c5a059' }}>
                 <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
                 <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>
                   {language === 'de' ? 'Erstelle Aufgabe & suche besten Agenten…' : 'Creating task & matching best agent…'}
@@ -439,11 +439,11 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                         background: 'transparent', border: 'none',
                         cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s',
                       }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(35,205,202,0.07)'}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(197,160,89,0.07)'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
                       <div style={{
-                        width: 28, height: 28, borderRadius: '8px', flexShrink: 0,
+                        width: 28, height: 28, borderRadius: 0, flexShrink: 0,
                         background: item.color + '18',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>
@@ -508,13 +508,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                         alignItems: 'center',
                         gap: '0.75rem',
                         padding: '0.625rem 1rem',
-                        background: isSelected ? 'rgba(35, 205, 202, 0.1)' : 'transparent',
+                        background: isSelected ? 'rgba(197, 160, 89, 0.1)' : 'transparent',
                         borderTop: 'none',
                         borderRight: 'none',
                         borderBottom: 'none',
-                        borderLeft: isSelected ? '2px solid #23CDCB' : '2px solid transparent',
+                        borderLeft: isSelected ? '2px solid #c5a059' : '2px solid transparent',
                         cursor: 'pointer',
-                        color: isSelected ? '#23CDCB' : (item.isActive ? '#22c55e' : '#d4d4d8'),
+                        color: isSelected ? '#c5a059' : (item.isActive ? '#22c55e' : '#d4d4d8'),
                         fontSize: '0.875rem',
                         textAlign: 'left',
                         transition: 'background 0.1s',
@@ -526,7 +526,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                         <span style={{
                           fontSize: '0.6875rem',
                           padding: '2px 6px',
-                          borderRadius: '4px',
+                          borderRadius: 0,
                           background: 'rgba(34, 197, 94, 0.15)',
                           color: '#22c55e',
                           border: '1px solid rgba(34, 197, 94, 0.3)',
@@ -556,7 +556,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           <span><kbd style={{ fontFamily: 'monospace' }}>↵</kbd> {language === 'de' ? 'öffnen' : 'open'}</span>
           <span><kbd style={{ fontFamily: 'monospace' }}>Esc</kbd> {language === 'de' ? 'schließen' : 'close'}</span>
           <span style={{ marginLeft: 'auto', color: '#334155' }}>
-            <kbd style={{ fontFamily: 'monospace', color: '#23CDCB' }}>&gt;</kbd>
+            <kbd style={{ fontFamily: 'monospace', color: '#c5a059' }}>&gt;</kbd>
             {' '}{language === 'de' ? 'Sofort-Aufgabe' : 'Quick Task'}
           </span>
         </div>

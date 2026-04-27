@@ -20,8 +20,8 @@ export interface HeartbeatOptions {
 
 export interface HeartbeatRun {
   id: string;
-  unternehmenId: string;
-  expertId: string;
+  companyId: string;
+  agentId: string;
   status: string;
   invocationSource: string;
   triggerDetail: string;
@@ -32,12 +32,12 @@ export interface HeartbeatService {
   /**
    * Create a new heartbeat run and execute it
    */
-  executeHeartbeat(expertId: string, unternehmenId: string, options: HeartbeatOptions): Promise<string>;
+  executeHeartbeat(agentId: string, companyId: string, options: HeartbeatOptions): Promise<string>;
 
   /**
    * Process all pending wakeups for an agent
    */
-  processPendingWakeups(expertId: string): Promise<number>;
+  processPendingWakeups(agentId: string): Promise<number>;
 
   /**
    * Get heartbeat run by ID
@@ -52,7 +52,7 @@ export interface HeartbeatService {
   /**
    * Run Critic/Evaluator review for a completed task output
    */
-  runCriticReview(taskId: string, taskTitel: string, taskBeschreibung: string, output: string, expertId: string, unternehmenId: string): Promise<{ approved: boolean; feedback: string; escalate?: boolean }>;
+  runCriticReview(taskId: string, taskTitel: string, taskBeschreibung: string, output: string, agentId: string, companyId: string): Promise<{ approved: boolean; feedback: string; escalate?: boolean }>;
 
   /**
    * Record usage/costs for a run

@@ -2,49 +2,49 @@
 // Tasks können andere Tasks blockieren. Blockierte Tasks werden nicht ausgeführt.
 
 import { db } from '../db/client.js';
-import { issueRelations, aufgaben } from '../db/schema.js';
+import { issueRelations, tasks } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { v4 as uuid } from 'uuid';
 
 /**
- * Erstellt eine Blocking-Beziehung: quellId blockiert zielId.
- * zielId kann erst bearbeitet werden wenn quellId 'done' ist.
+ * Erstellt eine Blocking-Beziehung: sourceId blockiert zielId.
+ * zielId kann erst bearbeitet werden wenn sourceId 'done' ist.
  */
 export function erstelleAbhaengigkeit(
-  quellId: string,
+  sourceId: string,
   zielId: string,
   erstelltVon?: string
 ): { success: boolean; error?: string } {
   // Prüfe ob beide Aufgaben existieren
-  const quell = db.select().from(aufgaben).where(eq(aufgaben.id, quellId)).get();
-  const ziel = db.select().from(aufgaben).where(eq(aufgaben.id, zielId)).get();
-  if (!quell) return { success: false, error: `Aufgabe ${quellId} nicht gefunden` };
+  const quell = db.select().from(tasks).where(eq(tasks.id, sourceId)).get();
+  const ziel = db.select().from(tasks).where(eq(tasks.id, zielId)).get();
+  if (!quell) return { success: false, error: `Aufgabe ${sourceId} nicht gefunden` };
   if (!ziel) return { success: false, error: `Aufgabe ${zielId} nicht gefunden` };
 
   // Zirkuläre Abhängigkeit prüfen
-  if (hatAbhaengigkeitAuf(zielId, quellId)) {
+  if (hatAbhaengigkeitAuf(zielId, sourceId)) {
     return { success: false, error: 'Zirkuläre Abhängigkeit erkannt' };
   }
 
   // Bereits vorhanden?
   const existierend = db.select().from(issueRelations)
-    .where(and(eq(issueRelations.quellId, quellId), eq(issueRelations.zielId, zielId)))
+    .where(and(eq(issueRelations.sourceId, sourceId), eq(issueRelations.targetId, zielId)))
     .get();
   if (existierend) return { success: true }; // Idempotent
 
   db.insert(issueRelations).values({
     id: uuid(),
-    quellId,
-    zielId,
-    typ: 'blocks',
-    erstelltVon: erstelltVon || null,
-    erstelltAm: new Date().toISOString(),
+    sourceId,
+    targetId: zielId,
+    type: 'blocks',
+    createdBy: erstelltVon || null,
+    createdAt: new Date().toISOString(),
   }).run();
 
   // Ziel-Aufgabe als 'blocked' markieren wenn der Blocker nicht done ist
   if (quell.status !== 'done') {
-    db.update(aufgaben).set({ status: 'blocked', aktualisiertAm: new Date().toISOString() })
-      .where(eq(aufgaben.id, zielId)).run();
+    db.update(tasks).set({ status: 'blocked', updatedAt: new Date().toISOString() })
+      .where(eq(tasks.id, zielId)).run();
   }
 
   return { success: true };
@@ -53,9 +53,9 @@ export function erstelleAbhaengigkeit(
 /**
  * Entfernt eine Blocking-Beziehung.
  */
-export function entferneAbhaengigkeit(quellId: string, zielId: string): void {
+export function entferneAbhaengigkeit(sourceId: string, zielId: string): void {
   db.delete(issueRelations)
-    .where(and(eq(issueRelations.quellId, quellId), eq(issueRelations.zielId, zielId)))
+    .where(and(eq(issueRelations.sourceId, sourceId), eq(issueRelations.targetId, zielId)))
     .run();
 
   // Prüfe ob das Ziel noch andere Blocker hat
@@ -67,12 +67,12 @@ export function entferneAbhaengigkeit(quellId: string, zielId: string): void {
  */
 export function getBlocker(aufgabeId: string): Array<{ id: string; titel: string; status: string }> {
   const relations = db.select().from(issueRelations)
-    .where(eq(issueRelations.zielId, aufgabeId))
+    .where(eq(issueRelations.targetId, aufgabeId))
     .all();
 
   return relations.map(r => {
-    const task = db.select().from(aufgaben).where(eq(aufgaben.id, r.quellId)).get();
-    return { id: r.quellId, titel: task?.titel || '?', status: task?.status || '?' };
+    const task = db.select().from(tasks).where(eq(tasks.id, r.sourceId)).get();
+    return { id: r.sourceId, titel: task?.title || '?', status: task?.status || '?' };
   });
 }
 
@@ -81,12 +81,12 @@ export function getBlocker(aufgabeId: string): Array<{ id: string; titel: string
  */
 export function getBlockiert(aufgabeId: string): Array<{ id: string; titel: string; status: string }> {
   const relations = db.select().from(issueRelations)
-    .where(eq(issueRelations.quellId, aufgabeId))
+    .where(eq(issueRelations.sourceId, aufgabeId))
     .all();
 
   return relations.map(r => {
-    const task = db.select().from(aufgaben).where(eq(aufgaben.id, r.zielId)).get();
-    return { id: r.zielId, titel: task?.titel || '?', status: task?.status || '?' };
+    const task = db.select().from(tasks).where(eq(tasks.id, r.goalId)).get();
+    return { id: r.goalId, titel: task?.title || '?', status: task?.status || '?' };
   });
 }
 
@@ -100,11 +100,11 @@ function hatAbhaengigkeitAuf(vonId: string, aufId: string, besucht = new Set<str
   besucht.add(vonId);
 
   const blocker = db.select().from(issueRelations)
-    .where(eq(issueRelations.zielId, vonId))
+    .where(eq(issueRelations.targetId, vonId))
     .all();
 
   for (const rel of blocker) {
-    if (hatAbhaengigkeitAuf(rel.quellId, aufId, besucht)) return true;
+    if (hatAbhaengigkeitAuf(rel.sourceId, aufId, besucht)) return true;
   }
   return false;
 }
@@ -118,27 +118,27 @@ export function pruefeUndEntblocke(aufgabeId: string): string[] {
 
   // Finde alle Tasks die von dieser Aufgabe blockiert werden
   const blockiert = db.select().from(issueRelations)
-    .where(eq(issueRelations.quellId, aufgabeId))
+    .where(eq(issueRelations.sourceId, aufgabeId))
     .all();
 
   for (const rel of blockiert) {
     // Prüfe ob ALLE Blocker des Ziels done sind
     const alleBlocker = db.select().from(issueRelations)
-      .where(eq(issueRelations.zielId, rel.zielId))
+      .where(eq(issueRelations.targetId, rel.goalId))
       .all();
 
     const alleErledigt = alleBlocker.every(b => {
-      const task = db.select().from(aufgaben).where(eq(aufgaben.id, b.quellId)).get();
+      const task = db.select().from(tasks).where(eq(tasks.id, b.sourceId)).get();
       return task?.status === 'done';
     });
 
     if (alleErledigt) {
-      const ziel = db.select().from(aufgaben).where(eq(aufgaben.id, rel.zielId)).get();
+      const ziel = db.select().from(tasks).where(eq(tasks.id, rel.goalId)).get();
       if (ziel?.status === 'blocked') {
-        db.update(aufgaben).set({ status: 'todo', aktualisiertAm: new Date().toISOString() })
-          .where(eq(aufgaben.id, rel.zielId)).run();
-        entblockt.push(rel.zielId);
-        console.log(`🔓 Task "${ziel.titel}" entblockt (alle Dependencies erledigt)`);
+        db.update(tasks).set({ status: 'todo', updatedAt: new Date().toISOString() })
+          .where(eq(tasks.id, rel.goalId)).run();
+        entblockt.push(rel.goalId);
+        console.log(`🔓 Task "${ziel.title}" entblockt (alle Dependencies erledigt)`);
       }
     }
   }

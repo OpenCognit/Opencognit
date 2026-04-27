@@ -21,7 +21,7 @@ function NewCompanyModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
       await apiUnternehmen.erstellen({ name: name.trim(), ziel: ziel.trim() || undefined });
       onSaved();
     } catch (e: any) {
-      setError(e.message || 'Fehler beim Erstellen');
+      setError(e.message || (i18n.language === 'de' ? 'Fehler beim Erstellen' : 'Error creating company'));
     } finally {
       setSaving(false);
     }
@@ -31,7 +31,7 @@ function NewCompanyModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
     width: '100%', padding: '0.625rem 0.875rem',
     background: 'rgba(255,255,255,0.05)',
     border: '1px solid rgba(255,255,255,0.12)',
-    borderRadius: '10px', color: '#ffffff',
+    borderRadius: 0, color: '#ffffff',
     fontSize: '0.875rem', outline: 'none', boxSizing: 'border-box',
   };
 
@@ -50,7 +50,7 @@ function NewCompanyModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
           backdropFilter: 'blur(32px)',
           WebkitBackdropFilter: 'blur(32px)',
           border: '1px solid rgba(255,255,255,0.1)',
-          borderRadius: '24px',
+          borderRadius: 0,
           padding: '1.75rem', width: '100%', maxWidth: '460px',
           boxShadow: '0 30px 80px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)',
         }}
@@ -63,7 +63,7 @@ function NewCompanyModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
         {error && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: '0.5rem',
-            padding: '0.75rem', borderRadius: '10px', marginBottom: '1rem',
+            padding: '0.75rem', borderRadius: 0, marginBottom: '1rem',
             background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)',
             color: '#ef4444', fontSize: '0.8125rem',
           }}>
@@ -103,7 +103,7 @@ function NewCompanyModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
           <button
             onClick={onClose}
             style={{
-              padding: '0.625rem 1.25rem', borderRadius: '10px',
+              padding: '0.625rem 1.25rem', borderRadius: 0,
               background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
               color: '#a1a1aa', cursor: 'pointer', fontSize: '0.875rem',
             }}
@@ -114,9 +114,9 @@ function NewCompanyModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
             onClick={handleSave}
             disabled={!name.trim() || saving}
             style={{
-              padding: '0.625rem 1.25rem', borderRadius: '10px',
-              background: !name.trim() || saving ? 'rgba(35,205,202,0.3)' : 'rgba(35,205,202,0.9)',
-              border: '1px solid rgba(35,205,202,0.3)',
+              padding: '0.625rem 1.25rem', borderRadius: 0,
+              background: !name.trim() || saving ? 'rgba(197,160,89,0.3)' : 'rgba(197,160,89,0.9)',
+              border: '1px solid rgba(197,160,89,0.3)',
               color: '#ffffff', cursor: !name.trim() || saving ? 'not-allowed' : 'pointer',
               fontSize: '0.875rem', fontWeight: 600,
               display: 'flex', alignItems: 'center', gap: '0.5rem',
@@ -173,7 +173,7 @@ export function Companies() {
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' }}>
-        <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#23CDCB' }} />
+        <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#c5a059' }} />
       </div>
     );
   }
@@ -187,14 +187,14 @@ export function Companies() {
         }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-              <Sparkles size={20} style={{ color: '#23CDCB' }} />
-              <span style={{ fontSize: '12px', fontWeight: 600, color: '#23CDCB', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              <Sparkles size={20} style={{ color: '#c5a059' }} />
+              <span style={{ fontSize: '12px', fontWeight: 600, color: '#c5a059', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                 {i18n.t.nav.unternehmen}
               </span>
             </div>
             <h1 style={{
               fontSize: '2rem', fontWeight: 700,
-              background: 'linear-gradient(to bottom right, #23CDCB 0%, #ffffff 100%)',
+              background: 'linear-gradient(to bottom right, #c5a059 0%, #ffffff 100%)',
               WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
             }}>{i18n.t.unternehmen.title}</h1>
             <p style={{ fontSize: '0.875rem', color: '#71717a', marginTop: '0.25rem' }}>{i18n.t.unternehmen.subtitle}</p>
@@ -204,12 +204,12 @@ export function Companies() {
             style={{
               display: 'flex', alignItems: 'center', gap: '0.5rem',
               padding: '0.75rem 1.25rem',
-              backgroundColor: 'rgba(35, 205, 202, 0.1)', border: '1px solid rgba(35, 205, 202, 0.2)',
-              borderRadius: '12px', color: '#23CDCB', fontWeight: 600,
+              backgroundColor: 'rgba(197, 160, 89, 0.1)', border: '1px solid rgba(197, 160, 89, 0.2)',
+              borderRadius: 0, color: '#c5a059', fontWeight: 600,
               fontSize: '0.875rem', cursor: 'pointer', transition: 'all 0.2s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(35,205,202,0.2)'; }}
-            onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(35,205,202,0.1)'; }}
+            onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(197,160,89,0.2)'; }}
+            onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(197,160,89,0.1)'; }}
           >
             <Plus size={16} /> {i18n.t.unternehmen.neuesUnternehmen}
           </button>
@@ -224,14 +224,14 @@ export function Companies() {
               style={{
                 padding: '1.5rem',
                 backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                backdropFilter: 'blur(20px)', borderRadius: '20px',
+                backdropFilter: 'blur(20px)', borderRadius: 0,
                 border: '1px solid rgba(255, 255, 255, 0.08)',
                 cursor: 'pointer', transition: 'all 0.2s',
                 animation: `fadeInUp 0.5s ease-out ${Math.min(i, 4) * 0.1}s both`,
               }}
               onMouseEnter={e => {
                 e.currentTarget.style.transform = 'translateY(-4px)';
-                e.currentTarget.style.borderColor = 'rgba(35, 205, 202, 0.3)';
+                e.currentTarget.style.borderColor = 'rgba(197, 160, 89, 0.3)';
                 e.currentTarget.style.boxShadow = '0 20px 40px rgba(0, 0, 0, 0.3)';
               }}
               onMouseLeave={e => {
@@ -242,10 +242,10 @@ export function Companies() {
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
                 <div style={{
-                  width: '48px', height: '48px', borderRadius: '12px',
+                  width: '48px', height: '48px', borderRadius: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: f.status === 'active' ? 'rgba(35, 205, 202, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-                  color: f.status === 'active' ? '#23CDCB' : '#71717a',
+                  background: f.status === 'active' ? 'rgba(197, 160, 89, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                  color: f.status === 'active' ? '#c5a059' : '#71717a',
                 }}>
                   <Building2 size={20} />
                 </div>
@@ -262,7 +262,7 @@ export function Companies() {
 
               {f.ziel && (
                 <div style={{
-                  background: 'rgba(255, 255, 255, 0.03)', borderRadius: '12px',
+                  background: 'rgba(255, 255, 255, 0.03)', borderRadius: 0,
                   padding: '0.75rem', marginBottom: '1rem',
                   border: '1px solid rgba(255, 255, 255, 0.06)',
                 }}>
@@ -285,7 +285,7 @@ export function Companies() {
                     title={lang === 'de' ? 'Unternehmen löschen' : 'Delete company'}
                     style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      width: 30, height: 30, borderRadius: '8px',
+                      width: 30, height: 30, borderRadius: 0,
                       background: 'transparent',
                       border: '1px solid rgba(239,68,68,0.2)',
                       color: '#64748b', cursor: 'pointer', transition: 'all 0.15s',
@@ -302,8 +302,8 @@ export function Companies() {
                     style={{
                       display: 'flex', alignItems: 'center', gap: '0.25rem',
                       padding: '0.5rem 0.75rem', backgroundColor: 'transparent',
-                      border: 'none', borderRadius: '8px',
-                      color: '#23CDCB', fontWeight: 500, fontSize: '0.8125rem', cursor: 'pointer',
+                      border: 'none', borderRadius: 0,
+                      color: '#c5a059', fontWeight: 500, fontSize: '0.8125rem', cursor: 'pointer',
                     }}
                   >
                     {i18n.t.unternehmen.oeffnen} <ArrowRight size={14} />
@@ -318,31 +318,31 @@ export function Companies() {
             onClick={() => setShowModal(true)}
             style={{
               padding: '1.5rem', backgroundColor: 'rgba(255, 255, 255, 0.02)',
-              backdropFilter: 'blur(20px)', borderRadius: '20px',
-              border: '2px dashed rgba(35, 205, 202, 0.3)',
+              backdropFilter: 'blur(20px)', borderRadius: 0,
+              border: '2px dashed rgba(197, 160, 89, 0.3)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', minHeight: 200, transition: 'all 0.2s',
               animation: `fadeInUp 0.5s ease-out 0.4s both`,
             }}
             onMouseEnter={e => {
-              e.currentTarget.style.borderColor = '#23CDCB';
-              e.currentTarget.style.backgroundColor = 'rgba(35, 205, 202, 0.05)';
+              e.currentTarget.style.borderColor = '#c5a059';
+              e.currentTarget.style.backgroundColor = 'rgba(197, 160, 89, 0.05)';
             }}
             onMouseLeave={e => {
-              e.currentTarget.style.borderColor = 'rgba(35, 205, 202, 0.3)';
+              e.currentTarget.style.borderColor = 'rgba(197, 160, 89, 0.3)';
               e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.02)';
             }}
           >
             <div style={{ textAlign: 'center' }}>
               <div style={{
-                width: '48px', height: '48px', borderRadius: '12px',
+                width: '48px', height: '48px', borderRadius: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 margin: '0 auto 0.75rem',
-                background: 'rgba(35, 205, 202, 0.1)', color: '#23CDCB',
+                background: 'rgba(197, 160, 89, 0.1)', color: '#c5a059',
               }}>
                 <Plus size={24} />
               </div>
-              <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#23CDCB', marginBottom: '0.25rem' }}>
+              <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#c5a059', marginBottom: '0.25rem' }}>
                 {i18n.t.unternehmen.neuesUnternehmen}
               </div>
               <div style={{ fontSize: '0.75rem', color: '#71717a' }}>

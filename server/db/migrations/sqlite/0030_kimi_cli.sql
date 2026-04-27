@@ -1,0 +1,3 @@
+-- Add kimi-cli connection type
+-- SQLite doesn't enforce enum constraints, so this is just documentation
+-- The application code handles the new value

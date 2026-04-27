@@ -15,7 +15,7 @@
 
 import { db } from '../db/client.js';
 import {
-  palaceWings, palaceDrawers, palaceDiary, palaceKg, palaceSummaries, experten,
+  palaceWings, palaceDrawers, palaceDiary, palaceKg, palaceSummaries, agents,
 } from '../db/schema.js';
 import { eq, and, isNull, desc, lt, asc } from 'drizzle-orm';
 import { v4 as uuid } from 'uuid';
@@ -38,24 +38,24 @@ const KEEP_PER_ROOM = 3;
  */
 export async function consolidateWing(expertId: string): Promise<boolean> {
   try {
-    const wing = db.select().from(palaceWings).where(eq(palaceWings.expertId, expertId)).get();
+    const wing = db.select().from(palaceWings).where(eq(palaceWings.agentId, expertId)).get();
     if (!wing) return false;
 
-    const expert = db.select({ name: experten.name, unternehmenId: experten.unternehmenId })
-      .from(experten).where(eq(experten.id, expertId)).get() as any;
+    const expert = db.select({ name: agents.name, unternehmenId: agents.companyId })
+      .from(agents).where(eq(agents.id, expertId)).get() as any;
     if (!expert) return false;
 
     // --- Collect raw material ---
 
     const allDiary = db.select().from(palaceDiary)
       .where(eq(palaceDiary.wingId, wing.id))
-      .orderBy(desc(palaceDiary.erstelltAm))
+      .orderBy(desc(palaceDiary.createdAt))
       .limit(50)
       .all();
 
     const allDrawers = db.select().from(palaceDrawers)
       .where(eq(palaceDrawers.wingId, wing.id))
-      .orderBy(desc(palaceDrawers.erstelltAm))
+      .orderBy(desc(palaceDrawers.createdAt))
       .limit(80)
       .all();
 
@@ -116,7 +116,7 @@ export async function consolidateWing(expertId: string): Promise<boolean> {
       summaryParts.push('\n## Wissensdrawer (je Raum)');
       for (const [room, entries] of rooms) {
         const best = entries[0]; // most recent
-        const snippet = best.inhalt.replace(/\n+/g, ' ').trim().slice(0, 250);
+        const snippet = best.content.replace(/\n+/g, ' ').trim().slice(0, 250);
         summaryParts.push(`### ${room} (${entries.length} Einträge)\n${snippet}${entries.length > 1 ? ` …(+${entries.length - 1} weitere)` : ''}`);
       }
     }
@@ -126,26 +126,26 @@ export async function consolidateWing(expertId: string): Promise<boolean> {
     // --- Write / update palaceSummaries ---
 
     const existing = db.select().from(palaceSummaries)
-      .where(eq(palaceSummaries.expertId, expertId))
+      .where(eq(palaceSummaries.agentId, expertId))
       .get();
 
     if (existing) {
       db.update(palaceSummaries).set({
-        inhalt: summaryText,
+        content: summaryText,
         version: (existing.version || 1) + 1,
         komprimierteTurns: allDiary.length,
-        aktualisiertAm: now(),
-      }).where(eq(palaceSummaries.expertId, expertId)).run();
+        updatedAt: now(),
+      }).where(eq(palaceSummaries.agentId, expertId)).run();
     } else {
       db.insert(palaceSummaries).values({
         id: uuid(),
         expertId,
-        unternehmenId: expert.unternehmenId,
-        inhalt: summaryText,
+        companyId: expert.companyId,
+        content: summaryText,
         version: 1,
         komprimierteTurns: allDiary.length,
-        erstelltAm: now(),
-        aktualisiertAm: now(),
+        createdAt: now(),
+        updatedAt: now(),
       }).run();
     }
 
@@ -180,7 +180,7 @@ export async function consolidateWing(expertId: string): Promise<boolean> {
  */
 export function needsConsolidation(expertId: string): boolean {
   try {
-    const wing = db.select().from(palaceWings).where(eq(palaceWings.expertId, expertId)).get();
+    const wing = db.select().from(palaceWings).where(eq(palaceWings.agentId, expertId)).get();
     if (!wing) return false;
     const count = db.select().from(palaceDiary)
       .where(eq(palaceDiary.wingId, wing.id))
@@ -198,15 +198,15 @@ export function needsConsolidation(expertId: string): boolean {
 export function loadSummary(expertId: string): string | null {
   try {
     const s = db.select().from(palaceSummaries)
-      .where(eq(palaceSummaries.expertId, expertId))
+      .where(eq(palaceSummaries.agentId, expertId))
       .get();
     if (!s) return null;
 
     // Consider stale if older than 7 days
-    const ageMs = Date.now() - new Date(s.aktualisiertAm).getTime();
+    const ageMs = Date.now() - new Date(s.updatedAt).getTime();
     if (ageMs > 7 * 24 * 60 * 60 * 1000) return null;
 
-    return s.inhalt;
+    return s.content;
   } catch {
     return null;
   }
@@ -218,8 +218,8 @@ export function loadSummary(expertId: string): string | null {
  */
 export async function consolidateAll(unternehmenId: string): Promise<void> {
   try {
-    const allExperts = db.select({ id: experten.id }).from(experten)
-      .where(eq(experten.unternehmenId, unternehmenId)).all() as any[];
+    const allExperts = db.select({ id: agents.id }).from(agents)
+      .where(eq(agents.companyId, unternehmenId)).all() as any[];
 
     for (const e of allExperts) {
       if (needsConsolidation(e.id)) {

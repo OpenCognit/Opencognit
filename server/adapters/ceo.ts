@@ -1,5 +1,5 @@
 import { db } from '../db/client.js';
-import { experten, aufgaben, unternehmen, projekte, genehmigungen, chatNachrichten, einstellungen, traceEreignisse, agentMeetings } from '../db/schema.js';
+import { agents, tasks, companies, projects, approvals, chatMessages, settings, traceEvents, agentMeetings } from '../db/schema.js';
 import { eq, and, isNull, desc, or } from 'drizzle-orm';
 import { v4 as uuid } from 'uuid';
 import path from 'path';
@@ -46,7 +46,7 @@ const now = () => new Date().toISOString();
  */
 export class CEOAdapter implements ExpertAdapter {
   name = 'ceo';
-  beschreibung = 'CEO - Chief Executive Officer (LLM-powered Orchestration)';
+  description = 'CEO - Chief Executive Officer (LLM-powered Orchestration)';
 
   async isAvailable(): Promise<boolean> {
     return true;
@@ -57,33 +57,33 @@ export class CEOAdapter implements ExpertAdapter {
 
     try {
       // Get company info
-      const company = db.select().from(unternehmen).where(eq(unternehmen.id, options.unternehmenId)).get();
+      const company = db.select().from(companies).where(eq(companies.id, options.companyId)).get();
       if (!company) throw new Error('Unternehmen nicht gefunden');
 
       // Get all active agents (excl. CEO itself)
-      const agents = db.select().from(experten)
+      const allAgents = db.select().from(agents)
         .where(and(
-          eq(experten.unternehmenId, options.unternehmenId),
-          eq(experten.status, 'active'),
+          eq(agents.companyId, options.companyId),
+          eq(agents.status, 'active'),
         ))
         .all()
-        .filter(a => a.id !== options.expertId);
+        .filter(a => a.id !== options.agentId);
 
       // Get unassigned tasks or tasks assigned to CEO for orchestration
-      const unassignedTasks = db.select().from(aufgaben)
+      const unassignedTasks = db.select().from(tasks)
         .where(and(
-          eq(aufgaben.unternehmenId, options.unternehmenId),
+          eq(tasks.companyId, options.companyId),
           or(
-            isNull(aufgaben.zugewiesenAn),
-            eq(aufgaben.zugewiesenAn, options.expertId)
+            isNull(tasks.assignedTo),
+            eq(tasks.assignedTo, options.agentId)
           )
         ))
         .all()
         .filter(t => t.status !== 'done' && t.status !== 'cancelled');
 
       // Get all open tasks (for context)
-      const allOpenTasks = db.select().from(aufgaben)
-        .where(eq(aufgaben.unternehmenId, options.unternehmenId))
+      const allOpenTasks = db.select().from(tasks)
+        .where(eq(tasks.companyId, options.companyId))
         .all()
         .filter(t => t.status !== 'done' && t.status !== 'cancelled');
 
@@ -93,34 +93,34 @@ export class CEOAdapter implements ExpertAdapter {
 
       const activeRunningMeetings = db.select().from(agentMeetings)
         .where(and(
-          eq(agentMeetings.unternehmenId, options.unternehmenId),
+          eq(agentMeetings.companyId, options.companyId),
           eq(agentMeetings.status, 'running'),
         ))
         .all();
 
       const recentMeetings = db.select().from(agentMeetings)
-        .where(eq(agentMeetings.unternehmenId, options.unternehmenId))
-        .orderBy(desc(agentMeetings.erstelltAm))
+        .where(eq(agentMeetings.companyId, options.companyId))
+        .orderBy(desc(agentMeetings.createdAt))
         .limit(5)
         .all();
 
       const blockedTasks = allOpenTasks.filter(t => t.status === 'blocked');
       const staleTasks = allOpenTasks.filter(t =>
-        t.status === 'in_progress' && t.gestartetAm && t.gestartetAm < threeDaysAgo
+        t.status === 'in_progress' && t.startedAt && t.startedAt < threeDaysAgo
       );
-      const meetingRecentlyStarted = recentMeetings.some(m => m.erstelltAm > twoHoursAgo);
-      const canCallMeeting = agents.length >= 1
+      const meetingRecentlyStarted = recentMeetings.some(m => m.createdAt > twoHoursAgo);
+      const canCallMeeting = allAgents.length >= 1
         && !meetingRecentlyStarted
         && activeRunningMeetings.length === 0;
 
-      const lastMeetingDate = recentMeetings[0]?.erstelltAm?.slice(0, 10) || 'noch keins';
+      const lastMeetingDate = recentMeetings[0]?.createdAt?.slice(0, 10) || 'noch keins';
 
       const meetingSignals = `
 🚦 Meeting-Signale:
-- Verfügbare Team-Mitglieder: ${agents.length}
+- Verfügbare Team-Mitglieder: ${allAgents.length}
 - Aktive Meetings gerade: ${activeRunningMeetings.length}
-- Blockierte Tasks: ${blockedTasks.length}${blockedTasks.length > 0 ? ` (${blockedTasks.map(t => `"${t.titel}"`).join(', ')})` : ''}
-- Stale Tasks (>3 Tage ohne Fortschritt): ${staleTasks.length}${staleTasks.length > 0 ? ` (${staleTasks.map(t => `"${t.titel}"`).join(', ')})` : ''}
+- Blockierte Tasks: ${blockedTasks.length}${blockedTasks.length > 0 ? ` (${blockedTasks.map(t => `"${t.title}"`).join(', ')})` : ''}
+- Stale Tasks (>3 Tage ohne Fortschritt): ${staleTasks.length}${staleTasks.length > 0 ? ` (${staleTasks.map(t => `"${t.title}"`).join(', ')})` : ''}
 - Letztes Meeting: ${lastMeetingDate}
 - Meeting jetzt einberufbar: ${canCallMeeting ? 'JA' : 'NEIN' + (activeRunningMeetings.length > 0 ? ' — eines läuft bereits' : ' — Cooldown (< 2h)')}
 
@@ -132,41 +132,41 @@ Wann ein Meeting sinnvoll ist:
 ❌ NICHT wenn canCallMeeting=NEIN, Team < 2 Personen, oder die Antwort offensichtlich ist`;
 
       // Get recent chat history with the board
-      const recentChat = db.select().from(chatNachrichten)
-        .where(and(eq(chatNachrichten.unternehmenId, options.unternehmenId), eq(chatNachrichten.expertId, options.expertId)))
-        .orderBy(desc(chatNachrichten.erstelltAm))
+      const recentChat = db.select().from(chatMessages)
+        .where(and(eq(chatMessages.companyId, options.companyId), eq(chatMessages.agentId, options.agentId)))
+        .orderBy(desc(chatMessages.createdAt))
         .limit(10)
         .all();
 
       const chatHistoryDesc = recentChat.reverse().map(m => 
-        `[${m.absenderTyp === 'board' ? 'USER' : 'SYSTEM/AGENT'}]: ${m.nachricht}`
+        `[${m.senderType === 'board' ? 'USER' : 'SYSTEM/AGENT'}]: ${m.message}`
       ).join('\n');
 
       // Build CEO context for LLM
-      const agentsDesc = agents.map(a =>
-        `- ${a.name} (${a.rolle}): ${a.faehigkeiten || 'keine Angabe'}`
+      const agentsDesc = allAgents.map(a =>
+        `- ${a.name} (${a.role}): ${a.skills || 'keine Angabe'}`
       ).join('\n');
 
       const unassignedDesc = unassignedTasks.map(t =>
-        `- [${t.id.slice(0, 8)}] "${t.titel}" (${t.prioritaet}) — ${t.beschreibung?.slice(0, 100) || 'keine Beschreibung'}`
+        `- [${t.id.slice(0, 8)}] "${t.title}" (${t.priority}) — ${t.description?.slice(0, 100) || 'keine Beschreibung'}`
       ).join('\n');
 
       const allTasksDesc = allOpenTasks.map(t => {
-        const assignee = t.zugewiesenAn
-          ? agents.find(a => a.id === t.zugewiesenAn)?.name || 'unbekannt'
+        const assignee = t.assignedTo
+          ? allAgents.find(a => a.id === t.assignedTo)?.name || 'unbekannt'
           : 'nicht zugewiesen';
-        return `- "${t.titel}" → ${assignee} (${t.status})`;
+        return `- "${t.title}" → ${assignee} (${t.status})`;
       }).join('\n');
 
       // Detect if we're in conversational/manual mode (triggered by a board message)
-      const hasNewBoardMessage = recentChat.some(m => m.absenderTyp === 'board');
+      const hasNewBoardMessage = recentChat.some(m => m.senderType === 'board');
       const isConversational = hasNewBoardMessage || (options.prompt?.includes('direkte Nachricht') ?? false);
 
       // Determine mode: chat reply, assign tasks, OR idle/proactive
       const mode = isConversational ? 'chat' : unassignedTasks.length > 0 ? 'assign' : 'proactive';
 
       const systemPrompt = `Du bist der CEO von "${company.name}" — direkt, menschlich, auf Augenhöhe.
-Unternehmensziel: ${company.ziel || company.beschreibung || 'Nicht definiert'}
+Unternehmensziel: ${company.goal || company.description || 'Nicht definiert'}
 
 Dein Team:
 ${agentsDesc || 'Noch kein Team außer dir selbst.'}
@@ -196,7 +196,7 @@ Wenn das Board einen konkreten Auftrag gibt (z.B. "baue X ein", "erstell Y", "k�
 - Antworte MIT einem JSON-Block UND einem "reply"-Feld.
 
 Verfügbare Agenten für agentId:
-${agents.filter(a => a.status !== 'terminated').map(a => `- ${a.id}: ${a.name} (${a.rolle || 'kein Titel'})`).join('\n')}
+${allAgents.filter(a => a.status !== 'terminated').map(a => `- ${a.id}: ${a.name} (${a.role || 'kein Titel'})`).join('\n')}
 
 Beispiel für Task-Erstellung + Delegation:
 \`\`\`json
@@ -269,31 +269,31 @@ Regeln:
 
       if (!llmResult.success) {
         // Fallback to rule-based if LLM fails
-        return this.runRuleBased(options, unassignedTasks, agents, startTime);
+        return this.runRuleBased(options, unassignedTasks, allAgents, startTime);
       }
 
       // Parse and execute CEO decisions
-      const ausgabe = await this.executeCEODecisions(
+      const output = await this.executeCEODecisions(
         llmResult.text,
         options,
         unassignedTasks,
-        agents,
+        allAgents,
         company.workDir,
       );
 
       return {
         success: true,
-        ausgabe,
-        dauer: Date.now() - startTime,
-        tokenVerbrauch: llmResult.tokenVerbrauch,
+        output,
+        duration: Date.now() - startTime,
+        tokenUsage: llmResult.tokenUsage,
       };
 
     } catch (error: any) {
       return {
         success: false,
-        ausgabe: '',
-        fehler: `CEO-Orchestrierung fehlgeschlagen: ${error.message}`,
-        dauer: Date.now() - startTime
+        output: '',
+        error: `CEO-Orchestrierung fehlgeschlagen: ${error.message}`,
+        duration: Date.now() - startTime
       };
     }
   }
@@ -376,9 +376,9 @@ Regeln:
   private async callLLMWithTools(systemPrompt: string, userPrompt: string, options: AdapterRunOptions): Promise<{
     success: boolean;
     text: string;
-    tokenVerbrauch: { inputTokens: number; outputTokens: number; kostenCent: number };
+    tokenUsage: { inputTokens: number; outputTokens: number; costCent: number };
   }> {
-    const config = JSON.parse(options.verbindungsConfig || '{}');
+    const config = JSON.parse(options.connectionConfig || '{}');
 
     // Helper: convert tool_use blocks → JSON string that executeCEODecisions understands
     const toolBlocksToText = (toolBlocks: any[], textContent: string): string => {
@@ -412,15 +412,15 @@ Regeln:
     };
 
     // ── 1. Anthropic native tool_use ─────────────────────────────────────────
-    const anthropicKeyRaw = options.verbindungsTyp === 'anthropic' && options.apiKey
+    const anthropicKeyRaw = options.connectionType === 'anthropic' && options.apiKey
       ? options.apiKey
-      : db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'anthropic_api_key')).get()?.wert;
+      : db.select().from(settings).where(eq(settings.key, 'anthropic_api_key')).get()?.value;
     const anthropicKey = anthropicKeyRaw ? decryptSetting('anthropic_api_key', anthropicKeyRaw) : null;
 
     if (anthropicKey) {
       try {
         // CEO should use a capable model — Sonnet is the minimum for orchestration quality
-        const model = (options.verbindungsTyp === 'anthropic' && config.model)
+        const model = (options.connectionType === 'anthropic' && config.model)
           ? config.model
           : 'claude-sonnet-4-6';
 
@@ -473,7 +473,7 @@ Regeln:
           return {
             success: true,
             text: toolBlocks.length > 0 ? toolBlocksToText(toolBlocks, textContent) : textContent,
-            tokenVerbrauch: { inputTokens: data.usage?.input_tokens || 0, outputTokens: data.usage?.output_tokens || 0, kostenCent: 0 },
+            tokenUsage: { inputTokens: data.usage?.input_tokens || 0, outputTokens: data.usage?.output_tokens || 0, costCent: 0 },
           };
         }
       } catch (e: any) {
@@ -482,14 +482,14 @@ Regeln:
     }
 
     // ── 2. OpenRouter function calling ────────────────────────────────────────
-    const orKeyRaw = options.verbindungsTyp === 'openrouter' && options.apiKey
+    const orKeyRaw = options.connectionType === 'openrouter' && options.apiKey
       ? options.apiKey
-      : db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'openrouter_api_key')).get()?.wert;
+      : db.select().from(settings).where(eq(settings.key, 'openrouter_api_key')).get()?.value;
     const orKey = orKeyRaw ? decryptSetting('openrouter_api_key', orKeyRaw) : null;
 
     if (orKey) {
       try {
-        const model = (options.verbindungsTyp === 'openrouter' && config.model) ? config.model : 'openrouter/auto';
+        const model = (options.connectionType === 'openrouter' && config.model) ? config.model : 'openrouter/auto';
         const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${orKey}`, 'HTTP-Referer': 'https://opencognit.mytherrablockchain.org', 'X-Title': 'OpenCognit CEO' },
@@ -508,7 +508,7 @@ Regeln:
           return {
             success: true,
             text: toolCalls.length > 0 ? toolCallsToText(toolCalls, message?.content || '') : (message?.content || ''),
-            tokenVerbrauch: { inputTokens: data.usage?.prompt_tokens || 0, outputTokens: data.usage?.completion_tokens || 0, kostenCent: 0 },
+            tokenUsage: { inputTokens: data.usage?.prompt_tokens || 0, outputTokens: data.usage?.completion_tokens || 0, costCent: 0 },
           };
         }
       } catch (e: any) {
@@ -517,14 +517,14 @@ Regeln:
     }
 
     // ── 3. OpenAI function calling ────────────────────────────────────────────
-    const openaiKeyRaw = options.verbindungsTyp === 'openai' && options.apiKey
+    const openaiKeyRaw = options.connectionType === 'openai' && options.apiKey
       ? options.apiKey
-      : db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'openai_api_key')).get()?.wert;
+      : db.select().from(settings).where(eq(settings.key, 'openai_api_key')).get()?.value;
     const openaiKey = openaiKeyRaw ? decryptSetting('openai_api_key', openaiKeyRaw) : null;
 
     if (openaiKey) {
       try {
-        const model = (options.verbindungsTyp === 'openai' && config.model) ? config.model : 'gpt-4o-mini';
+        const model = (options.connectionType === 'openai' && config.model) ? config.model : 'gpt-4o-mini';
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
@@ -543,7 +543,7 @@ Regeln:
           return {
             success: true,
             text: toolCalls.length > 0 ? toolCallsToText(toolCalls, message?.content || '') : (message?.content || ''),
-            tokenVerbrauch: { inputTokens: data.usage?.prompt_tokens || 0, outputTokens: data.usage?.completion_tokens || 0, kostenCent: 0 },
+            tokenUsage: { inputTokens: data.usage?.prompt_tokens || 0, outputTokens: data.usage?.completion_tokens || 0, costCent: 0 },
           };
         }
       } catch (e: any) {
@@ -551,13 +551,13 @@ Regeln:
       }
     }
 
-    return { success: false, text: '', tokenVerbrauch: { inputTokens: 0, outputTokens: 0, kostenCent: 0 } };
+    return { success: false, text: '', tokenUsage: { inputTokens: 0, outputTokens: 0, costCent: 0 } };
   }
 
   private async callLLM(systemPrompt: string, userPrompt: string, options: AdapterRunOptions): Promise<{
     success: boolean;
     text: string;
-    tokenVerbrauch: { inputTokens: number; outputTokens: number; kostenCent: number };
+    tokenUsage: { inputTokens: number; outputTokens: number; costCent: number };
   }> {
     // ── Try native tool_use first (more reliable than text parsing) ──────────
     const toolResult = await this.callLLMWithTools(systemPrompt, userPrompt, options);
@@ -565,13 +565,13 @@ Regeln:
     console.log('[CEO] Tool-use failed or no key found — falling back to text-based LLM');
 
     // 1. Check if a specific engine was requested via connection settings
-    if (options.verbindungsTyp && options.verbindungsTyp !== 'ceo') {
-      const type = options.verbindungsTyp;
+    if (options.connectionType && options.connectionType !== 'ceo') {
+      const type = options.connectionType;
       const apiKey = options.apiKey;
       const baseUrl = options.apiBaseUrl;
-      const config = JSON.parse(options.verbindungsConfig || '{}');
+      const config = JSON.parse(options.connectionConfig || '{}');
       const ollamaDefaultRaw = type === 'ollama'
-        ? db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'ollama_default_model')).get()?.wert
+        ? db.select().from(settings).where(eq(settings.key, 'ollama_default_model')).get()?.value
         : undefined;
       const model = config.model || (type === 'ollama' ? (ollamaDefaultRaw || 'llama3') : 'openrouter/auto');
 
@@ -598,7 +598,7 @@ Regeln:
             });
             if (res.ok) {
               const data = await res.json() as any;
-              return { success: true, text: data.choices?.[0]?.message?.content || '', tokenVerbrauch: { inputTokens: data.usage?.prompt_tokens || 0, outputTokens: data.usage?.completion_tokens || 0, kostenCent: 0 } };
+              return { success: true, text: data.choices?.[0]?.message?.content || '', tokenUsage: { inputTokens: data.usage?.prompt_tokens || 0, outputTokens: data.usage?.completion_tokens || 0, costCent: 0 } };
             } else {
               const errBody = await res.text().catch(() => '');
               console.error(`[CEO] OpenRouter error ${res.status} (model=${tryModel}): ${errBody.slice(0, 200)}`);
@@ -620,7 +620,7 @@ Regeln:
           });
           if (res.ok) {
             const data = await res.json() as any;
-            return { success: true, text: data.message?.content || '', tokenVerbrauch: { inputTokens: data.prompt_eval_count || 0, outputTokens: data.eval_count || 0, kostenCent: 0 } };
+            return { success: true, text: data.message?.content || '', tokenUsage: { inputTokens: data.prompt_eval_count || 0, outputTokens: data.eval_count || 0, costCent: 0 } };
           }
         }
 
@@ -635,7 +635,7 @@ Regeln:
           });
           if (res.ok) {
             const data = await res.json() as any;
-            return { success: true, text: data.choices?.[0]?.message?.content || '', tokenVerbrauch: { inputTokens: data.usage?.prompt_tokens || 0, outputTokens: data.usage?.completion_tokens || 0, kostenCent: 0 } };
+            return { success: true, text: data.choices?.[0]?.message?.content || '', tokenUsage: { inputTokens: data.usage?.prompt_tokens || 0, outputTokens: data.usage?.completion_tokens || 0, costCent: 0 } };
           }
         }
 
@@ -652,7 +652,7 @@ Regeln:
           });
           if (res.ok) {
             const data = await res.json() as any;
-            return { success: true, text: data.content?.[0]?.text || '', tokenVerbrauch: { inputTokens: data.usage?.input_tokens || 0, outputTokens: data.usage?.output_tokens || 0, kostenCent: 0 } };
+            return { success: true, text: data.content?.[0]?.text || '', tokenUsage: { inputTokens: data.usage?.input_tokens || 0, outputTokens: data.usage?.output_tokens || 0, costCent: 0 } };
           }
         }
       } catch (e: any) {
@@ -664,14 +664,14 @@ Regeln:
     }
 
     // 2. Fallback to existing global keys if no specific connection worked
-    const orKey = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'openrouter_api_key')).get();
-    const anthropicKey = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'anthropic_api_key')).get();
-    const openaiKey = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'openai_api_key')).get();
-    const ollamaUrl = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'ollama_base_url')).get();
+    const orKey = db.select().from(settings).where(eq(settings.key, 'openrouter_api_key')).get();
+    const anthropicKey = db.select().from(settings).where(eq(settings.key, 'anthropic_api_key')).get();
+    const openaiKey = db.select().from(settings).where(eq(settings.key, 'openai_api_key')).get();
+    const ollamaUrl = db.select().from(settings).where(eq(settings.key, 'ollama_base_url')).get();
 
     try {
-      if (orKey?.wert) {
-        const apiKey = decryptSetting('openrouter_api_key', orKey.wert);
+      if (orKey?.value) {
+        const apiKey = decryptSetting('openrouter_api_key', orKey.value);
         const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -696,17 +696,17 @@ Regeln:
           return {
             success: true,
             text,
-            tokenVerbrauch: {
+            tokenUsage: {
               inputTokens: data.usage?.prompt_tokens || 0,
               outputTokens: data.usage?.completion_tokens || 0,
-              kostenCent: 0,
+              costCent: 0,
             },
           };
         }
       }
 
-      if (anthropicKey?.wert) {
-        const apiKey = decryptSetting('anthropic_api_key', anthropicKey.wert);
+      if (anthropicKey?.value) {
+        const apiKey = decryptSetting('anthropic_api_key', anthropicKey.value);
         const res = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
@@ -727,17 +727,17 @@ Regeln:
           return {
             success: true,
             text,
-            tokenVerbrauch: {
+            tokenUsage: {
               inputTokens: data.usage?.input_tokens || 0,
               outputTokens: data.usage?.output_tokens || 0,
-              kostenCent: 0,
+              costCent: 0,
             },
           };
         }
       }
 
-      if (openaiKey?.wert) {
-        const apiKey = decryptSetting('openai_api_key', openaiKey.wert);
+      if (openaiKey?.value) {
+        const apiKey = decryptSetting('openai_api_key', openaiKey.value);
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -760,17 +760,17 @@ Regeln:
           return {
             success: true,
             text,
-            tokenVerbrauch: {
+            tokenUsage: {
               inputTokens: data.usage?.prompt_tokens || 0,
               outputTokens: data.usage?.completion_tokens || 0,
-              kostenCent: 0,
+              costCent: 0,
             },
           };
         }
       }
  
-      if (ollamaUrl?.wert) {
-        const baseUrl = ollamaUrl.wert;
+      if (ollamaUrl?.value) {
+        const baseUrl = ollamaUrl.value;
         const endpoint = baseUrl.endsWith('/') ? `${baseUrl}api/chat` : `${baseUrl}/api/chat`;
         const res = await fetch(endpoint, {
           method: 'POST',
@@ -791,10 +791,10 @@ Regeln:
           return {
             success: true,
             text,
-            tokenVerbrauch: {
+            tokenUsage: {
               inputTokens: data.prompt_eval_count || 0,
               outputTokens: data.eval_count || 0,
-              kostenCent: 0,
+              costCent: 0,
             },
           };
         }
@@ -803,7 +803,7 @@ Regeln:
       console.error('CEO LLM call failed:', e);
     }
 
-    return { success: false, text: '', tokenVerbrauch: { inputTokens: 0, outputTokens: 0, kostenCent: 0 } };
+    return { success: false, text: '', tokenUsage: { inputTokens: 0, outputTokens: 0, costCent: 0 } };
   }
 
   private async executeCEODecisions(
@@ -850,100 +850,100 @@ Regeln:
 
         if (task && agent) {
           // Resolve workDir: projekt.workDir → companyWorkDir (per-project takes priority)
-          const projektRow = task.projektId
-            ? db.select({ workDir: projekte.workDir }).from(projekte).where(eq(projekte.id, task.projektId)).get() as any
+          const projektRow = task.projectId
+            ? db.select({ workDir: projects.workDir }).from(projects).where(eq(projects.id, task.projectId)).get() as any
             : null;
           const effectiveWorkDir = projektRow?.workDir || companyWorkDir;
-          const wsPath = task.workspacePath || createProjectWorkspace(effectiveWorkDir, task.titel);
+          const wsPath = task.workspacePath || createProjectWorkspace(effectiveWorkDir, task.title);
 
-          db.update(aufgaben).set({
-            zugewiesenAn: agent.id,
+          db.update(tasks).set({
+            assignedTo: agent.id,
             status: 'todo',
-            aktualisiertAm: now(),
+            updatedAt: now(),
             ...(wsPath && !task.workspacePath ? { workspacePath: wsPath } : {}),
-          }).where(eq(aufgaben.id, task.id)).run();
+          }).where(eq(tasks.id, task.id)).run();
 
           const wsInfo = wsPath ? `\nArbeitsverzeichnis: ${wsPath}` : '';
-          db.insert(chatNachrichten).values({
+          db.insert(chatMessages).values({
             id: uuid(),
-            unternehmenId: options.unternehmenId,
-            expertId: agent.id,
-            absenderTyp: 'system',
-            nachricht: `📋 Neue Aufgabe von CEO zugewiesen: "${task.titel}" — ${action.reason || ''}${wsInfo}`,
+            companyId: options.companyId,
+            agentId: agent.id,
+            senderType: 'system',
+            message: `📋 Neue Aufgabe von CEO zugewiesen: "${task.title}" — ${action.reason || ''}${wsInfo}`,
             gelesen: false,
             erstelltAm: now(),
           }).run();
 
-          agentsToWake.push({ agentId: agent.id, unternehmenId: options.unternehmenId });
-          log.push(`✅ "${task.titel}" → ${agent.name}${wsPath ? ` 📁 ${path.basename(wsPath)}` : ''}`);
+          agentsToWake.push({ agentId: agent.id, unternehmenId: options.companyId });
+          log.push(`✅ "${task.title}" → ${agent.name}${wsPath ? ` 📁 ${path.basename(wsPath)}` : ''}`);
         }
 
       } else if (action.type === 'create_task') {
         const agent = action.agentId ? agents.find(a => a.id === action.agentId) : null;
         const taskId = uuid();
 
-        // Resolve workDir: use action.projektId's workDir if set, else companyWorkDir
-        const newTaskProjektRow = action.projektId
-          ? db.select({ workDir: projekte.workDir }).from(projekte).where(eq(projekte.id, action.projektId)).get() as any
+        // Resolve workDir: use action.projectId's workDir if set, else companyWorkDir
+        const newTaskProjektRow = action.projectId
+          ? db.select({ workDir: projects.workDir }).from(projects).where(eq(projects.id, action.projectId)).get() as any
           : null;
         const newTaskWorkDir = newTaskProjektRow?.workDir || companyWorkDir;
-        const wsPath = createProjectWorkspace(newTaskWorkDir, action.titel);
+        const wsPath = createProjectWorkspace(newTaskWorkDir, action.title);
 
-        db.insert(aufgaben).values({
+        db.insert(tasks).values({
           id: taskId,
-          unternehmenId: options.unternehmenId,
-          titel: action.titel,
-          beschreibung: action.beschreibung || '',
+          companyId: options.companyId,
+          title: action.title,
+          description: action.description || '',
           status: agent ? 'todo' : 'backlog',
-          prioritaet: action.prioritaet || 'medium',
-          zugewiesenAn: agent?.id || null,
-          erstelltVon: options.expertId,
+          priority: action.priority || 'medium',
+          assignedTo: agent?.id || null,
+          erstelltVon: options.agentId,
           workspacePath: wsPath,
-          erstelltAm: now(),
-          aktualisiertAm: now(),
+          createdAt: now(),
+          updatedAt: now(),
         }).run();
 
         if (agent) {
           const wsInfo = wsPath ? `\nArbeitsverzeichnis: ${wsPath}` : '';
-          db.insert(chatNachrichten).values({
+          db.insert(chatMessages).values({
             id: uuid(),
-            unternehmenId: options.unternehmenId,
-            expertId: agent.id,
-            absenderTyp: 'system',
-            nachricht: `📋 CEO hat neue Aufgabe erstellt und dir zugewiesen: "${action.titel}"${wsInfo}`,
+            companyId: options.companyId,
+            agentId: agent.id,
+            senderType: 'system',
+            message: `📋 CEO hat neue Aufgabe erstellt und dir zugewiesen: "${action.title}"${wsInfo}`,
             gelesen: false,
             erstelltAm: now(),
           }).run();
-          agentsToWake.push({ agentId: agent.id, unternehmenId: options.unternehmenId });
-          log.push(`🆕 "${action.titel}" → ${agent.name}${wsPath ? ` 📁 ${path.basename(wsPath)}` : ''}`);
+          agentsToWake.push({ agentId: agent.id, unternehmenId: options.companyId });
+          log.push(`🆕 "${action.title}" → ${agent.name}${wsPath ? ` 📁 ${path.basename(wsPath)}` : ''}`);
         } else {
-          log.push(`🆕 "${action.titel}" im Backlog${wsPath ? ` 📁 ${path.basename(wsPath)}` : ''}`);
+          log.push(`🆕 "${action.title}" im Backlog${wsPath ? ` 📁 ${path.basename(wsPath)}` : ''}`);
         }
 
       } else if (action.type === 'hire_agent') {
-        const existing = db.select().from(genehmigungen)
+        const existing = db.select().from(approvals)
           .where(and(
-            eq(genehmigungen.unternehmenId, options.unternehmenId),
-            eq(genehmigungen.typ, 'hire_expert'),
-            eq(genehmigungen.status, 'pending'),
+            eq(approvals.companyId, options.companyId),
+            eq(approvals.type, 'hire_expert'),
+            eq(approvals.status, 'pending'),
           ))
           .all()
           .find(g => {
-            try { return JSON.parse(g.payload || '{}').rolle === action.rolle; } catch { return false; }
+            try { return JSON.parse(g.payload || '{}').role === action.role; } catch { return false; }
           });
 
         if (!existing) {
-          db.insert(genehmigungen).values({
+          db.insert(approvals).values({
             id: uuid(),
-            unternehmenId: options.unternehmenId,
-            typ: 'hire_expert',
-            titel: `Neue Stelle: ${action.rolle}`,
-            beschreibung: `${action.reason || ''}\n\nBenötigte Fähigkeiten: ${action.faehigkeiten || action.rolle}`,
-            angefordertVon: options.expertId,
+            companyId: options.companyId,
+            type: 'hire_expert',
+            title: `Neue Stelle: ${action.role}`,
+            beschreibung: `${action.reason || ''}\n\nBenötigte Fähigkeiten: ${action.skills || action.role}`,
+            angefordertVon: options.agentId,
             status: 'pending',
             payload: JSON.stringify({
-              rolle: action.rolle,
-              faehigkeiten: action.faehigkeiten || '',
+              rolle: action.role,
+              faehigkeiten: action.skills || '',
               budgetMonatCent: 50000,
               verbindungsTyp: 'openrouter',
             }),
@@ -951,31 +951,31 @@ Regeln:
             aktualisiertAm: now(),
           }).run();
 
-          log.push(`👥 Hiring-Antrag für "${action.rolle}" zur Board-Genehmigung eingereicht`);
+          log.push(`👥 Hiring-Antrag für "${action.role}" zur Board-Genehmigung eingereicht`);
         }
       } else if (action.type === 'chat') {
         const agent = action.agentId ? agents.find(a => a.id === action.agentId) : null;
         if (agent) {
-          db.insert(chatNachrichten).values({
+          db.insert(chatMessages).values({
             id: uuid(),
-            unternehmenId: options.unternehmenId,
-            expertId: agent.id,
-            vonExpertId: options.expertId,
-            absenderTyp: 'agent',
-            nachricht: `[CEO]: ${action.nachricht || action.text}`,
+            companyId: options.companyId,
+            agentId: agent.id,
+            vonExpertId: options.agentId,
+            senderType: 'agent',
+            message: `[CEO]: ${action.message || action.text}`,
             gelesen: false,
             erstelltAm: now(),
           }).run();
           // Wake up the agent so they process the message (batched with others for parallel fire)
-          agentsToWake.push({ agentId: agent.id, unternehmenId: options.unternehmenId });
+          agentsToWake.push({ agentId: agent.id, unternehmenId: options.companyId });
           log.push(`💬 Nachricht an ${agent.name} gesendet`);
         }
 
       } else if (action.type === 'call_meeting') {
         // Delegate to scheduler's executeAgentAction which handles full meeting setup
         await scheduler.executeAgentAction(
-          options.unternehmenId,
-          options.expertId,
+          options.companyId,
+          options.agentId,
           'call_meeting',
           { frage: action.frage, teilnehmer: action.teilnehmer },
           true, // skipAutonomyCheck — CEO is always autonomous
@@ -1008,30 +1008,30 @@ Regeln:
     startTime: number,
   ): Promise<AdapterRunResult> {
     // Save task IDs before assignment to know which agents were newly assigned
-    const previouslyAssigned = new Set(unassignedTasks.map(t => t.zugewiesenAn).filter(Boolean));
+    const previouslyAssigned = new Set(unassignedTasks.map(t => t.assignedTo).filter(Boolean));
     const ausgabe = this.runRuleBasedSync(options, unassignedTasks, agents);
 
     // Wake up agents that were newly assigned tasks (with stagger)
-    const assignedTasks = db.select({ zugewiesenAn: aufgaben.zugewiesenAn })
-      .from(aufgaben)
-      .where(and(eq(aufgaben.unternehmenId, options.unternehmenId), eq(aufgaben.status, 'todo')))
+    const assignedTasks = db.select({ zugewiesenAn: tasks.assignedTo })
+      .from(tasks)
+      .where(and(eq(tasks.companyId, options.companyId), eq(tasks.status, 'todo')))
       .all()
-      .map((t: any) => t.zugewiesenAn)
+      .map((t: any) => t.assignedTo)
       .filter((id: string | null) => id && !previouslyAssigned.has(id));
 
     const uniqueAgents = [...new Set(assignedTasks)] as string[];
     if (uniqueAgents.length > 0) {
       console.log(`[CEO] Rule-based: waking ${uniqueAgents.length} agent(s) in parallel`);
       await Promise.all(uniqueAgents.map(agentId =>
-        scheduler.triggerZyklus(agentId, options.unternehmenId, 'manual').catch(console.error),
+        scheduler.triggerZyklus(agentId, options.companyId, 'manual').catch(console.error),
       ));
     }
 
     return {
       success: true,
-      ausgabe,
-      dauer: Date.now() - startTime,
-      tokenVerbrauch: { inputTokens: 0, outputTokens: 0, kostenCent: 0 },
+      output: ausgabe,
+      duration: Date.now() - startTime,
+      tokenUsage: { inputTokens: 0, outputTokens: 0, costCent: 0 },
     };
   }
 
@@ -1041,25 +1041,25 @@ Regeln:
     for (const task of unassignedTasks) {
       const agent = this.findBestAgent(task, agents);
       if (agent) {
-        db.update(aufgaben).set({
-          zugewiesenAn: agent.id,
+        db.update(tasks).set({
+          assignedTo: agent.id,
           status: 'todo',
-          aktualisiertAm: now(),
-        }).where(eq(aufgaben.id, task.id)).run();
+          updatedAt: now(),
+        }).where(eq(tasks.id, task.id)).run();
 
-        db.insert(chatNachrichten).values({
+        db.insert(chatMessages).values({
           id: uuid(),
-          unternehmenId: options.unternehmenId,
-          expertId: agent.id,
-          absenderTyp: 'system',
-          nachricht: `📋 Neue Aufgabe zugewiesen: "${task.titel}"`,
+          companyId: options.companyId,
+          agentId: agent.id,
+          senderType: 'system',
+          message: `📋 Neue Aufgabe zugewiesen: "${task.title}"`,
           gelesen: false,
           erstelltAm: now(),
         }).run();
 
-        log.push(`✅ "${task.titel}" → ${agent.name}`);
+        log.push(`✅ "${task.title}" → ${agent.name}`);
       } else {
-        log.push(`⚠️ Kein passender Agent für "${task.titel}"`);
+        log.push(`⚠️ Kein passender Agent für "${task.title}"`);
       }
     }
 
@@ -1069,10 +1069,10 @@ Regeln:
   }
 
   private findBestAgent(task: any, agents: any[]): any {
-    const text = (task.titel + ' ' + (task.beschreibung || '')).toLowerCase();
+    const text = (task.title + ' ' + (task.description || '')).toLowerCase();
 
     const scored = agents.map(agent => {
-      const skills = ((agent.faehigkeiten || '') + ' ' + agent.rolle).toLowerCase();
+      const skills = ((agent.skills || '') + ' ' + agent.role).toLowerCase();
       const words = text.split(/\s+/);
       const score = words.filter(w => w.length > 3 && skills.includes(w)).length;
       return { agent, score };
@@ -1084,10 +1084,10 @@ Regeln:
 
     const taskCounts = new Map<string, number>();
     for (const a of agents) {
-      const count = db.select().from(aufgaben)
+      const count = db.select().from(tasks)
         .where(and(
-          eq(aufgaben.zugewiesenAn, a.id),
-          eq(aufgaben.status, 'in_progress'),
+          eq(tasks.assignedTo, a.id),
+          eq(tasks.status, 'in_progress'),
         ))
         .all().length;
       taskCounts.set(a.id, count);

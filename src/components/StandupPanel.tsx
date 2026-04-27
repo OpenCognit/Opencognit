@@ -51,7 +51,7 @@ function Typewriter({ text, delay = 0, speed = 18 }: { text: string; delay?: num
   return (
     <span>
       {displayed}
-      {!done && <span style={{ animation: 'blink 1s step-end infinite', color: '#23CDCB' }}>|</span>}
+      {!done && <span style={{ animation: 'blink 1s step-end infinite', color: '#c5a059' }}>|</span>}
     </span>
   );
 }
@@ -66,7 +66,7 @@ function ParticipantCard({ participant, index, visible }: { participant: Standup
   const agent = participant.agent;
 
   const STATUS_COLOR: Record<string, string> = {
-    running: '#23CDCB', active: '#22c55e', idle: '#94a3b8',
+    running: '#c5a059', active: '#22c55e', idle: '#94a3b8',
     paused: '#f59e0b', error: '#ef4444', terminated: '#475569',
   };
   const statusColor = STATUS_COLOR[agent.status] ?? '#94a3b8';
@@ -78,7 +78,7 @@ function ParticipantCard({ participant, index, visible }: { participant: Standup
       transition: `opacity 0.4s ease ${delay}ms, transform 0.4s ease ${delay}ms`,
       background: 'rgba(255,255,255,0.02)',
       border: '1px solid rgba(255,255,255,0.07)',
-      borderRadius: 16,
+      borderRadius: 0,
       overflow: 'hidden',
     }}>
       {/* Agent Header */}
@@ -89,8 +89,8 @@ function ParticipantCard({ participant, index, visible }: { participant: Standup
         background: 'rgba(255,255,255,0.01)',
       }}>
         <div style={{
-          width: 38, height: 38, borderRadius: 10, flexShrink: 0,
-          background: agent.avatarFarbe || 'rgba(35,205,202,0.2)',
+          width: 38, height: 38, borderRadius: 0, flexShrink: 0,
+          background: agent.avatarFarbe || 'rgba(197,160,89,0.2)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: '1rem', fontWeight: 700, color: '#fff',
           boxShadow: `0 0 12px ${statusColor}30`,
@@ -109,8 +109,8 @@ function ParticipantCard({ participant, index, visible }: { participant: Standup
         </div>
         {participant.source === 'ai' && (
           <span style={{
-            padding: '0.125rem 0.5rem', borderRadius: 999,
-            background: 'rgba(35,205,202,0.1)', color: '#23CDCB',
+            padding: '0.125rem 0.5rem', borderRadius: 0,
+            background: 'rgba(197,160,89,0.1)', color: '#c5a059',
             fontSize: '0.625rem', fontWeight: 700, letterSpacing: '0.06em',
             display: 'flex', alignItems: 'center', gap: 3,
           }}>
@@ -137,8 +137,8 @@ function ParticipantCard({ participant, index, visible }: { participant: Standup
         {/* Today */}
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '0.3rem' }}>
-            <Clock size={12} style={{ color: '#23CDCB', flexShrink: 0 }} />
-            <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#23CDCB', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            <Clock size={12} style={{ color: '#c5a059', flexShrink: 0 }} />
+            <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#c5a059', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               {isDE ? 'Heute' : 'Today'}
             </span>
           </div>
@@ -236,10 +236,10 @@ export function StandupPanel({ open, onClose }: StandupPanelProps) {
         onClick={e => e.stopPropagation()}
         style={{
           width: '92vw', maxWidth: 760, maxHeight: '88vh',
-          background: 'rgba(10,10,18,0.98)', backdropFilter: 'blur(40px)',
-          border: '1px solid rgba(255,255,255,0.1)',
-          borderRadius: 20,
-          boxShadow: '0 30px 90px rgba(0,0,0,0.7)',
+          background: 'linear-gradient(180deg, rgba(16,14,10,0.97) 0%, rgba(12,10,8,0.97) 100%)', backdropFilter: 'blur(40px)',
+          border: '1px solid rgba(197,160,89,0.15)',
+          borderRadius: 0,
+          boxShadow: '0 30px 90px rgba(0,0,0,0.7), 0 0 40px rgba(197,160,89,0.06)',
           display: 'flex', flexDirection: 'column',
           animation: 'modalSlideUp 0.25s cubic-bezier(0.34,1.56,0.64,1)',
           overflow: 'hidden',
@@ -254,10 +254,10 @@ export function StandupPanel({ open, onClose }: StandupPanelProps) {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <div style={{
-              width: 34, height: 34, borderRadius: 10,
-              background: 'linear-gradient(135deg, rgba(35,205,202,0.15), rgba(168,85,247,0.15))',
-              border: '1px solid rgba(35,205,202,0.2)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#23CDCB',
+              width: 34, height: 34, borderRadius: 0,
+              background: 'linear-gradient(135deg, rgba(197,160,89,0.15), rgba(155,135,200,0.15))',
+              border: '1px solid rgba(197,160,89,0.2)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#c5a059',
             }}>
               <Users size={16} />
             </div>
@@ -276,7 +276,7 @@ export function StandupPanel({ open, onClose }: StandupPanelProps) {
               <button
                 onClick={handleCopy}
                 style={{
-                  padding: '0.375rem 0.75rem', borderRadius: 8,
+                  padding: '0.375rem 0.75rem', borderRadius: 0,
                   background: copied ? 'rgba(34,197,94,0.1)' : 'rgba(255,255,255,0.04)',
                   border: `1px solid ${copied ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
                   color: copied ? '#22c55e' : '#71717a', cursor: 'pointer',
@@ -291,7 +291,7 @@ export function StandupPanel({ open, onClose }: StandupPanelProps) {
               onClick={runStandup}
               disabled={loading}
               style={{
-                padding: '0.375rem 0.75rem', borderRadius: 8,
+                padding: '0.375rem 0.75rem', borderRadius: 0,
                 background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
                 color: '#71717a', cursor: loading ? 'wait' : 'pointer',
                 fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: 4,
@@ -310,7 +310,7 @@ export function StandupPanel({ open, onClose }: StandupPanelProps) {
         <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1.5rem' }}>
           {loading ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 200, gap: '0.875rem' }}>
-              <Loader2 size={24} style={{ color: '#23CDCB', animation: 'spin 1s linear infinite' }} />
+              <Loader2 size={24} style={{ color: '#c5a059', animation: 'spin 1s linear infinite' }} />
               <div style={{ color: '#52525b', fontSize: '0.875rem', textAlign: 'center' }}>
                 {isDE ? 'Agenten werden befragt…' : 'Querying your agents…'}
               </div>

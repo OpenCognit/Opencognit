@@ -50,7 +50,7 @@ export function registerWorker(input: {
       status: 'online',
       maxConcurrency: input.maxConcurrency ?? existing.maxConcurrency,
       lastHeartbeatAt: now,
-      aktualisiertAm: now,
+      updatedAt: now,
     }).where(eq(workerNodes.id, id)).run();
   } else {
     db.insert(workerNodes).values({
@@ -65,7 +65,7 @@ export function registerWorker(input: {
       totalRuns: 0,
       lastHeartbeatAt: now,
       registriertAm: now,
-      aktualisiertAm: now,
+      updatedAt: now,
     }).run();
   }
 
@@ -83,7 +83,7 @@ export function heartbeat(id: string): { ok: boolean } {
   const r = db.update(workerNodes).set({
     lastHeartbeatAt: now,
     status: 'online',
-    aktualisiertAm: now,
+    updatedAt: now,
   }).where(eq(workerNodes.id, id)).run();
   return { ok: (r as any).changes > 0 };
 }
@@ -134,7 +134,7 @@ export function claimWork(
     if (requiredCapability) {
       const caps = safeJson(worker.capabilities, [] as string[]);
       const payload = safeJson(req.payload, {} as any);
-      const needed = payload?.verbindungsTyp || requiredCapability;
+      const needed = payload?.connectionType || requiredCapability;
       if (!caps.includes(needed)) continue;
     }
 
@@ -146,12 +146,12 @@ export function claimWork(
 
     if ((claimed as any).changes > 0) {
       db.update(workerNodes)
-        .set({ activeRuns: sql`${workerNodes.activeRuns} + 1`, aktualisiertAm: now })
+        .set({ activeRuns: sql`${workerNodes.activeRuns} + 1`, updatedAt: now })
         .where(eq(workerNodes.id, workerId)).run();
       return {
         runId: req.id,
-        expertId: req.expertId,
-        unternehmenId: req.unternehmenId,
+        expertId: req.agentId,
+        unternehmenId: req.companyId,
         payload: safeJson(req.payload, {}),
       };
     }
@@ -170,7 +170,7 @@ export function submitResult(workerId: string, wakeupId: string, success: boolea
   db.update(workerNodes).set({
     activeRuns: sql`MAX(${workerNodes.activeRuns} - 1, 0)`,
     totalRuns: sql`${workerNodes.totalRuns} + 1`,
-    aktualisiertAm: now,
+    updatedAt: now,
   }).where(eq(workerNodes.id, workerId)).run();
 
   return { ok: true };
@@ -179,6 +179,6 @@ export function submitResult(workerId: string, wakeupId: string, success: boolea
 export function disableWorker(id: string): void {
   db.update(workerNodes).set({
     status: 'disabled',
-    aktualisiertAm: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   }).where(eq(workerNodes.id, id)).run();
 }

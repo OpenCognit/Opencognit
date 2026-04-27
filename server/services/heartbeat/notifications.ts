@@ -2,7 +2,7 @@
 
 import crypto from 'crypto';
 import { db } from '../../db/client.js';
-import { experten, aufgaben, ziele, chatNachrichten, einstellungen, agentMeetings } from '../../db/schema.js';
+import { agents, tasks, goals, chatMessages, settings, agentMeetings } from '../../db/schema.js';
 import { eq, and, sql } from 'drizzle-orm';
 import { wakeupService } from '../wakeup.js';
 import { isFocusModeActive, trace } from './utils.js';
@@ -15,7 +15,7 @@ import { isFocusModeActive, trace } from './utils.js';
  * 2. Trigger orchestrator wakeup for re-evaluation (new tasks, goal check)
  */
 export async function notifyOrchestratorTaskDone(
-  unternehmenId: string,
+  companyId: string,
   workerExpertId: string,
   workerName: string,
   taskTitel: string,
@@ -25,11 +25,11 @@ export async function notifyOrchestratorTaskDone(
   try {
     // Find orchestrator for this company
     const orchestrator = await db.select()
-      .from(experten)
+      .from(agents)
       .where(and(
-        eq(experten.unternehmenId, unternehmenId),
-        eq(experten.isOrchestrator, true),
-        eq(experten.status, 'active'),
+        eq(agents.companyId, companyId),
+        eq(agents.isOrchestrator, true),
+        eq(agents.status, 'active'),
       ))
       .limit(1)
       .then((r: any[]) => r[0]);
@@ -46,22 +46,22 @@ export async function notifyOrchestratorTaskDone(
       .slice(0, 300);
 
     // Check goal progress for this task
-    const taskRow = await db.select({ zielId: aufgaben.zielId }).from(aufgaben).where(eq(aufgaben.id, taskId)).get() as any;
+    const taskRow = await db.select({ targetId: tasks.goalId }).from(tasks).where(eq(tasks.id, taskId)).get() as any;
     let goalLine = '';
-    if (taskRow?.zielId) {
+    if (taskRow?.goalId) {
       const goalTasks = await db.select({
-        done: sql<number>`count(case when ${aufgaben.status} = 'done' then 1 end)`,
+        done: sql<number>`count(case when ${tasks.status} = 'done' then 1 end)`,
         total: sql<number>`count(*)`,
-        titel: ziele.titel,
+        title: goals.title,
       })
-        .from(aufgaben)
-        .leftJoin(ziele, eq(ziele.id, aufgaben.zielId))
-        .where(eq(aufgaben.zielId, taskRow.zielId))
+        .from(tasks)
+        .leftJoin(goals, eq(goals.id, tasks.goalId))
+        .where(eq(tasks.goalId, taskRow.goalId))
         .get() as any;
 
       if (goalTasks?.total > 0) {
         const pct = Math.round((goalTasks.done / goalTasks.total) * 100);
-        goalLine = `\n📊 Ziel **${goalTasks.titel}**: ${goalTasks.done}/${goalTasks.total} Tasks (${pct}%)`;
+        goalLine = `\n📊 Ziel **${goalTasks.title}**: ${goalTasks.done}/${goalTasks.total} Tasks (${pct}%)`;
         if (pct === 100) goalLine += ' — **Ziel erreicht! 🎉**';
       }
     }
@@ -71,24 +71,24 @@ export async function notifyOrchestratorTaskDone(
       goalLine;
 
     // Save chat message from orchestrator (suppress during focus mode)
-    if (!isFocusModeActive(unternehmenId)) {
-      await db.insert(chatNachrichten).values({
+    if (!isFocusModeActive(companyId)) {
+      await db.insert(chatMessages).values({
         id: crypto.randomUUID(),
-        unternehmenId,
-        expertId: orchestrator.id,
-        absenderTyp: 'agent',
-        nachricht: msg,
-        gelesen: false,
-        erstelltAm: new Date().toISOString(),
+        companyId,
+        agentId: orchestrator.id,
+        senderType: 'agent',
+        message: msg,
+        read: false,
+        createdAt: new Date().toISOString(),
       });
       console.log(`  📣 CEO Report gesendet: Task "${taskTitel}" abgeschlossen von ${workerName}`);
     } else {
       console.log(`  🔇 CEO Report unterdrückt (Focus Mode aktiv): Task "${taskTitel}" abgeschlossen von ${workerName}`);
     }
-    trace(orchestrator.id, unternehmenId, 'info', `${workerName} hat Task abgeschlossen: ${taskTitel}`, msg);
+    trace(orchestrator.id, companyId, 'info', `${workerName} hat Task abgeschlossen: ${taskTitel}`, msg);
 
     // Trigger orchestrator wakeup for re-evaluation (create new tasks, check goals)
-    await wakeupService.wakeup(orchestrator.id, unternehmenId, {
+    await wakeupService.wakeup(orchestrator.id, companyId, {
       source: 'automation',
       triggerDetail: 'callback',
       reason: `Task "${taskTitel}" von ${workerName} abgeschlossen — bitte Fortschritt prüfen und neue Tasks erstellen falls nötig`,
@@ -103,23 +103,23 @@ export async function notifyOrchestratorTaskDone(
 
 /**
  * Handle a meeting wakeup: load meeting context, call LLM for response,
- * save the answer into agentMeetings.antworten, mark meeting done if all responded.
+ * save the answer into agentMeetings.responses, mark meeting done if all responded.
  */
-export async function handleMeetingWakeup(runId: string, expertId: string, unternehmenId: string, meetingId: string): Promise<void> {
+export async function handleMeetingWakeup(runId: string, agentId: string, companyId: string, meetingId: string): Promise<void> {
   try {
     const meeting = db.select().from(agentMeetings).where(eq(agentMeetings.id, meetingId)).get() as any;
     if (!meeting) { console.warn(`  ⚠️ Meeting ${meetingId} not found`); return; }
 
-    const expert = db.select({ name: experten.name, rolle: experten.rolle, faehigkeiten: experten.faehigkeiten })
-      .from(experten).where(eq(experten.id, expertId)).get() as any;
+    const expert = db.select({ name: agents.name, role: agents.role, skills: agents.skills })
+      .from(agents).where(eq(agents.id, agentId)).get() as any;
 
     const existingAnswers: Record<string, string> = (() => {
-      try { return JSON.parse(meeting.antworten || '{}'); } catch { return {}; }
+      try { return JSON.parse(meeting.responses || '{}'); } catch { return {}; }
     })();
 
     const meetingPrompt = `Du nimmst an einem Team-Meeting teil.
 
-**Meeting-Thema:** ${meeting.titel}
+**Meeting-Thema:** ${meeting.title}
 
 **Bisherige Antworten der Teilnehmer:**
 ${Object.entries(existingAnswers).map(([id, ans]) => `- ${id}: ${ans}`).join('\n') || '(noch keine)'}
@@ -127,21 +127,21 @@ ${Object.entries(existingAnswers).map(([id, ans]) => `- ${id}: ${ans}`).join('\n
 Bitte gib deine Meinung, deinen Input oder deine Empfehlung zum Thema in 2-4 Sätzen. Sei präzise und konstruktiv.`;
 
     // Call LLM via custom API
-    const customKey  = db.select({ wert: einstellungen.wert }).from(einstellungen).where(eq(einstellungen.schluessel, 'custom_api_key')).get();
-    const customBase = db.select({ wert: einstellungen.wert }).from(einstellungen).where(eq(einstellungen.schluessel, 'custom_api_base_url')).get();
+    const customKey  = db.select({ value: settings.value }).from(settings).where(eq(settings.key, 'custom_api_key')).get();
+    const customBase = db.select({ value: settings.value }).from(settings).where(eq(settings.key, 'custom_api_base_url')).get();
 
-    let response = `(${expert?.name || expertId} hat nicht geantwortet — kein LLM verfügbar)`;
+    let response = `(${expert?.name || agentId} hat nicht geantwortet — kein LLM verfügbar)`;
 
-    if (customKey?.wert && customBase?.wert) {
-      const apiBase = customBase.wert.replace(/\/$/, '');
+    if (customKey?.value && customBase?.value) {
+      const apiBase = customBase.value.replace(/\/$/, '');
       const res = await fetch(`${apiBase}/chat/completions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${customKey.wert}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${customKey.value}` },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           max_tokens: 400,
           messages: [
-            { role: 'system', content: `Du bist ${expert?.name || 'ein Agent'}, ${expert?.rolle || 'Teammitglied'}. ${expert?.faehigkeiten ? `Deine Skills: ${expert.faehigkeiten}.` : ''}` },
+            { role: 'system', content: `Du bist ${expert?.name || 'ein Agent'}, ${expert?.role || 'Teammitglied'}. ${expert?.skills ? `Deine Skills: ${expert.skills}.` : ''}` },
             { role: 'user', content: meetingPrompt },
           ],
         }),
@@ -152,39 +152,39 @@ Bitte gib deine Meinung, deinen Input oder deine Empfehlung zum Thema in 2-4 Sä
       }
     }
 
-    // Save answer keyed by expertId (as per schema: { expertId: "response" })
-    existingAnswers[expertId] = response;
+    // Save answer keyed by agentId (as per schema: { agentId: "response" })
+    existingAnswers[agentId] = response;
     db.update(agentMeetings)
-      .set({ antworten: JSON.stringify(existingAnswers) })
+      .set({ responses: JSON.stringify(existingAnswers) })
       .where(eq(agentMeetings.id, meetingId)).run();
 
     // Check if all participants have answered → close meeting
-    const teilnehmerIds: string[] = (() => {
-      try { return JSON.parse(meeting.teilnehmerIds || '[]'); } catch { return []; }
+    const participantIds: string[] = (() => {
+      try { return JSON.parse(meeting.participantIds || '[]'); } catch { return []; }
     })();
-    const allAnswered = teilnehmerIds.every((id: string) => existingAnswers[id]);
+    const allAnswered = participantIds.every((id: string) => existingAnswers[id]);
 
     if (allAnswered) {
       // Build human-readable summary for CEO notification
-      const summary = teilnehmerIds.map((id: string) => {
-        const name = db.select({ name: experten.name }).from(experten).where(eq(experten.id, id)).get()?.name || id;
+      const summary = participantIds.map((id: string) => {
+        const name = db.select({ name: agents.name }).from(agents).where(eq(agents.id, id)).get()?.name || id;
         return `${name}: "${(existingAnswers[id] || '').slice(0, 100)}"`;
       }).join(' | ');
 
       db.update(agentMeetings)
-        .set({ status: 'completed', abgeschlossenAm: new Date().toISOString() })
+        .set({ status: 'completed', completedAt: new Date().toISOString() })
         .where(eq(agentMeetings.id, meetingId)).run();
-      console.log(`  ✅ Meeting "${meeting.titel}" — alle Antworten eingegangen, abgeschlossen`);
+      console.log(`  ✅ Meeting "${meeting.title}" — alle Antworten eingegangen, abgeschlossen`);
       // Notify orchestrator with full summary
-      await wakeupService.wakeup(meeting.veranstalterExpertId, unternehmenId, {
+      await wakeupService.wakeup(meeting.organizerAgentId, companyId, {
         source: 'automation',
         triggerDetail: 'callback',
-        reason: `Meeting abgeschlossen: "${meeting.titel}". Alle Antworten: ${summary}`,
+        reason: `Meeting abgeschlossen: "${meeting.title}". Alle Antworten: ${summary}`,
       });
     }
 
-    console.log(`  📋 Meeting "${meeting.titel}" — ${expert?.name} hat geantwortet`);
-    trace(expertId, unternehmenId, 'result', `Meeting-Antwort: ${meeting.titel}`, response.slice(0, 200), runId);
+    console.log(`  📋 Meeting "${meeting.title}" — ${expert?.name} hat geantwortet`);
+    trace(agentId, companyId, 'result', `Meeting-Antwort: ${meeting.title}`, response.slice(0, 200), runId);
   } catch (err: any) {
     console.error(`  ❌ Meeting wakeup handler failed: ${err.message}`);
   }

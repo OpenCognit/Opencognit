@@ -43,7 +43,7 @@ function makeDemoMeetings(m: ReturnType<typeof useTranslation>['t']['meetings'])
       erstelltAm: new Date(Date.now() - 4 * 60000).toISOString(),
       abgeschlossenAm: null,
       ergebnis: null,
-      veranstalter: { id: 'ceo', name: 'CEO', avatarFarbe: '#23CDCB' },
+      veranstalter: { id: 'ceo', name: 'CEO', avatarFarbe: '#c5a059' },
       teilnehmer: [
         {
           id: 't1', name: 'Alex Dev', avatarFarbe: '#6366f1', hatGeantwortet: true,
@@ -66,7 +66,7 @@ function makeDemoMeetings(m: ReturnType<typeof useTranslation>['t']['meetings'])
       erstelltAm: new Date(Date.now() - 2 * 60 * 60000).toISOString(),
       abgeschlossenAm: new Date(Date.now() - 90 * 60000).toISOString(),
       ergebnis: "The main problem was misaligned types between frontend and backend. Alex and Max will adopt a shared Zod schema as single source of truth starting next week. Sara will add an automated schema validator to the pipeline. Short check-in next Friday to see if it's working.",
-      veranstalter: { id: 'ceo', name: 'CEO', avatarFarbe: '#23CDCB' },
+      veranstalter: { id: 'ceo', name: 'CEO', avatarFarbe: '#c5a059' },
       teilnehmer: [
         {
           id: 't1', name: 'Alex Dev', avatarFarbe: '#6366f1', hatGeantwortet: true,
@@ -89,7 +89,7 @@ function makeDemoMeetings(m: ReturnType<typeof useTranslation>['t']['meetings'])
       erstelltAm: new Date(Date.now() - 24 * 60 * 60000).toISOString(),
       abgeschlossenAm: new Date(Date.now() - 23 * 60 * 60000).toISOString(),
       ergebnis: "Team consensus: yes, a QA agent makes sense once we have >10 active tasks in parallel. I'll submit a hiring request. Until then, Alex handles manual testing for critical features.",
-      veranstalter: { id: 'ceo', name: 'CEO', avatarFarbe: '#23CDCB' },
+      veranstalter: { id: 'ceo', name: 'CEO', avatarFarbe: '#c5a059' },
       teilnehmer: [
         {
           id: 't1', name: 'Alex Dev', avatarFarbe: '#6366f1', hatGeantwortet: true,
@@ -114,7 +114,7 @@ function Avatar({ name, farbe, size = 30 }: { name: string; farbe?: string; size
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%',
-      background: farbe || '#23CDCB',
+      background: farbe || '#c5a059',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontSize: size * 0.36, fontWeight: 700, color: '#0f111a',
       flexShrink: 0,
@@ -126,13 +126,13 @@ function Avatar({ name, farbe, size = 30 }: { name: string; farbe?: string; size
 
 function StatusBadge({ status, m }: { status: Meeting['status']; m: ReturnType<typeof useTranslation>['t']['meetings'] }) {
   const cfg = {
-    running:   { label: m.statusRunning,   color: '#23CDCB', bg: 'rgba(35,205,203,0.10)' },
+    running:   { label: m.statusRunning,   color: '#c5a059', bg: 'rgba(35,205,203,0.10)' },
     completed: { label: m.statusCompleted, color: '#10b981', bg: 'rgba(16,185,129,0.10)' },
     cancelled: { label: m.statusCancelled, color: '#6b7280', bg: 'rgba(107,114,128,0.10)' },
   }[status];
   return (
     <span style={{
-      padding: '3px 11px', borderRadius: 20, fontSize: 11.5, fontWeight: 600,
+      padding: '3px 11px', borderRadius: 0, fontSize: 11.5, fontWeight: 600,
       color: cfg.color, background: cfg.bg, letterSpacing: '0.04em', flexShrink: 0,
     }}>
       {cfg.label}
@@ -178,7 +178,7 @@ function MeetingCard({
   const progress = total > 0 ? (answered / total) * 100 : 0;
   const isRunning = meeting.status === 'running';
   const boardEntry = meeting.teilnehmer.find(t => t.isBoard);
-  const accentColor = isRunning ? '#23CDCB' : meeting.status === 'completed' ? '#10b981' : '#4b5563';
+  const accentColor = isRunning ? '#c5a059' : meeting.status === 'completed' ? '#10b981' : '#4b5563';
 
   // Remove agents from "typing" list once they've actually replied
   useEffect(() => {
@@ -251,7 +251,7 @@ function MeetingCard({
           prioritaet: 'medium',
         }),
       });
-      if (!r.ok) throw new Error('Fehler beim Erstellen der Aufgabe');
+      if (!r.ok) throw new Error('Error creating task');
     } catch (err: any) {
       console.error('[Meeting] createTask error:', err?.message);
     } finally {
@@ -266,7 +266,7 @@ function MeetingCard({
 
   return (
     <div style={{
-      borderRadius: '20px', overflow: 'hidden',
+      borderRadius: 0, overflow: 'hidden',
       backgroundColor: 'rgba(255,255,255,0.02)',
       border: `1px solid ${isRunning ? 'rgba(35,205,203,0.2)' : 'rgba(255,255,255,0.08)'}`,
       backdropFilter: 'blur(20px)',
@@ -280,7 +280,7 @@ function MeetingCard({
         onClick={() => setExpanded(e => !e)}
       >
         <div style={{
-          width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+          width: 40, height: 40, borderRadius: 0, flexShrink: 0,
           background: isRunning ? 'rgba(35,205,203,0.10)' : 'rgba(255,255,255,0.04)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           color: accentColor,
@@ -323,7 +323,7 @@ function MeetingCard({
                 onClick={e => { e.stopPropagation(); onComplete(meeting.id, meeting.titel); }}
                 style={{
                   background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)',
-                  color: '#10b981', borderRadius: 8, padding: '4px 12px', fontSize: 12,
+                  color: '#10b981', borderRadius: 0, padding: '4px 12px', fontSize: 12,
                   cursor: 'pointer', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4,
                 }}
               >
@@ -333,7 +333,7 @@ function MeetingCard({
                 onClick={e => { e.stopPropagation(); onCancel(meeting.id); }}
                 style={{
                   background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.18)',
-                  color: '#ef4444', borderRadius: 8, padding: '4px 12px', fontSize: 12,
+                  color: '#ef4444', borderRadius: 0, padding: '4px 12px', fontSize: 12,
                   cursor: 'pointer', fontWeight: 500,
                 }}
               >
@@ -348,7 +348,7 @@ function MeetingCard({
               style={{
                 background: 'none', border: 'none', color: '#475569',
                 cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 4,
-                borderRadius: 6, transition: 'color 0.15s',
+                borderRadius: 0, transition: 'color 0.15s',
               }}
               onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
               onMouseLeave={e => (e.currentTarget.style.color = '#475569')}
@@ -367,8 +367,8 @@ function MeetingCard({
         <div style={{ height: 3, background: 'rgba(255,255,255,0.04)', margin: '0 20px' }}>
           <div style={{
             height: '100%', width: `${progress}%`,
-            background: 'linear-gradient(90deg, rgba(35,205,203,0.4), #23CDCB)',
-            borderRadius: '0 2px 2px 0', transition: 'width 0.6s ease',
+            background: 'linear-gradient(90deg, rgba(35,205,203,0.4), #c5a059)',
+            borderRadius: '0', transition: 'width 0.6s ease',
           }} />
         </div>
       )}
@@ -383,7 +383,7 @@ function MeetingCard({
               const isTyping = typingAgents.includes(t.id) && !t.hatGeantwortet;
               return (
                 <div key={t.id} style={{
-                  borderRadius: '12px',
+                  borderRadius: 0,
                   backgroundColor: t.hatGeantwortet
                     ? 'rgba(34,197,94,0.04)'
                     : isTyping ? 'rgba(35,205,203,0.03)' : 'rgba(255,255,255,0.01)',
@@ -400,7 +400,7 @@ function MeetingCard({
                       <span style={{
                         fontSize: 10.5, color: '#475569', fontWeight: 500,
                         background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)',
-                        borderRadius: 5, padding: '1px 6px', letterSpacing: '0.02em',
+                        borderRadius: 0, padding: '1px 6px', letterSpacing: '0.02em',
                       }}>
                         {t.modellLabel}
                       </span>
@@ -412,13 +412,13 @@ function MeetingCard({
                             <button
                               onClick={() => createTaskFromAnswer(t)}
                               disabled={!!creatingTask}
-                              title="Als Aufgabe erstellen"
+                              title="Create as task"
                               style={{
                                 display: 'flex', alignItems: 'center', gap: 4,
                                 background: creatingTask === t.id ? 'rgba(35,205,203,0.12)' : 'rgba(255,255,255,0.04)',
                                 border: '1px solid rgba(255,255,255,0.08)',
-                                color: creatingTask === t.id ? '#23CDCB' : '#64748b',
-                                borderRadius: 7, padding: '3px 9px', fontSize: 11.5,
+                                color: creatingTask === t.id ? '#c5a059' : '#64748b',
+                                borderRadius: 0, padding: '3px 9px', fontSize: 11.5,
                                 cursor: creatingTask ? 'default' : 'pointer',
                                 fontWeight: 500, transition: 'all 0.15s',
                               }}
@@ -432,7 +432,7 @@ function MeetingCard({
                           <CheckCircle2 size={15} color="#10b981" />
                         </>
                       ) : isTyping ? (
-                        <span style={{ fontSize: 11.5, color: '#23CDCB', display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ fontSize: 11.5, color: '#c5a059', display: 'flex', alignItems: 'center', gap: 5 }}>
                           <Loader2 size={13} style={{ animation: 'spin 0.8s linear infinite' }} />
                           tippt…
                         </span>
@@ -461,7 +461,7 @@ function MeetingCard({
           {/* Board's own entry (if already posted) */}
           {boardEntry?.antwort && (
             <div style={{
-              marginTop: '0.625rem', borderRadius: '12px',
+              marginTop: '0.625rem', borderRadius: 0,
               backgroundColor: 'rgba(99,102,241,0.05)',
               border: '1px solid rgba(99,102,241,0.15)',
               padding: '0.75rem 1rem',
@@ -485,7 +485,7 @@ function MeetingCard({
           {isRunning && (
             <div style={{
               marginTop: '0.875rem',
-              borderRadius: '12px',
+              borderRadius: 0,
               backgroundColor: 'rgba(255,255,255,0.01)',
               border: '1px solid rgba(255,255,255,0.06)',
               padding: '1rem',
@@ -498,11 +498,11 @@ function MeetingCard({
                     <div style={{
                       position: 'absolute', bottom: 'calc(100% + 6px)', left: 0,
                       background: 'rgba(15,17,30,0.98)', border: '1px solid rgba(35,205,203,0.3)',
-                      borderRadius: 10, overflow: 'hidden', zIndex: 200,
+                      borderRadius: 0, overflow: 'hidden', zIndex: 200,
                       boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
                       minWidth: 180,
                     }}>
-                      <div style={{ padding: '6px 10px 4px', fontSize: 10.5, color: '#23CDCB', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+                      <div style={{ padding: '6px 10px 4px', fontSize: 10.5, color: '#c5a059', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
                         <AtSign size={10} style={{ verticalAlign: 'middle', marginRight: 3 }} />
                         Erwähnen
                       </div>
@@ -535,7 +535,7 @@ function MeetingCard({
                     style={{
                       width: '100%', boxSizing: 'border-box',
                       background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-                      borderRadius: 8, color: '#e2e8f0', fontSize: 13.5, lineHeight: 1.6,
+                      borderRadius: 0, color: '#e2e8f0', fontSize: 13.5, lineHeight: 1.6,
                       padding: '8px 12px', resize: 'none', outline: 'none',
                       fontFamily: 'inherit',
                     }}
@@ -554,7 +554,7 @@ function MeetingCard({
                           ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)',
                         border: `1px solid ${msg.trim() && !sending ? 'rgba(99,102,241,0.35)' : 'rgba(255,255,255,0.07)'}`,
                         color: msg.trim() && !sending ? '#818cf8' : '#475569',
-                        borderRadius: 8, padding: '6px 14px', fontSize: 12.5,
+                        borderRadius: 0, padding: '6px 14px', fontSize: 12.5,
                         cursor: msg.trim() && !sending && !meeting.id.startsWith('demo') ? 'pointer' : 'default',
                         fontWeight: 600, transition: 'all 0.15s',
                       }}
@@ -573,13 +573,13 @@ function MeetingCard({
           {/* CEO synthesis */}
           {meeting.ergebnis ? (
             <div style={{
-              marginTop: '0.875rem', borderRadius: '12px',
-              backgroundColor: 'rgba(35,205,202,0.05)',
-              border: '1px solid rgba(35,205,202,0.15)',
+              marginTop: '0.875rem', borderRadius: 0,
+              backgroundColor: 'rgba(197,160,89,0.05)',
+              border: '1px solid rgba(197,160,89,0.15)',
               padding: '1rem 1.25rem',
             }}>
               <div style={{
-                fontSize: 10.5, fontWeight: 700, color: '#23CDCB',
+                fontSize: 10.5, fontWeight: 700, color: '#c5a059',
                 letterSpacing: '0.09em', marginBottom: 8,
               }}>
                 {m.ceoSummary}
@@ -590,7 +590,7 @@ function MeetingCard({
             </div>
           ) : meeting.status === 'completed' && (
             <div style={{
-              marginTop: 14, borderRadius: 12,
+              marginTop: 14, borderRadius: 0,
               background: 'rgba(255,255,255,0.02)',
               border: '1px solid rgba(255,255,255,0.05)',
               padding: '12px 16px',
@@ -670,7 +670,7 @@ function CallMeetingModal({
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem',
     }} onClick={onClose}>
       <div style={{
-        width: '100%', maxWidth: 520, borderRadius: '20px',
+        width: '100%', maxWidth: 520, borderRadius: 0,
         background: 'rgba(15,17,30,0.97)', border: '1px solid rgba(255,255,255,0.1)',
         padding: '1.75rem', boxShadow: '0 24px 80px rgba(0,0,0,0.7)',
       }} onClick={e => e.stopPropagation()}>
@@ -696,7 +696,7 @@ function CallMeetingModal({
             style={{
               width: '100%', boxSizing: 'border-box', padding: '0.75rem',
               background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '10px', color: '#f1f5f9', fontSize: '0.9375rem', resize: 'vertical',
+              borderRadius: 0, color: '#f1f5f9', fontSize: '0.9375rem', resize: 'vertical',
               fontFamily: 'inherit', outline: 'none', lineHeight: 1.5,
             }}
           />
@@ -713,7 +713,7 @@ function CallMeetingModal({
             style={{
               width: '100%', padding: '0.625rem 0.75rem',
               background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '10px', color: '#f1f5f9', fontSize: '0.875rem',
+              borderRadius: 0, color: '#f1f5f9', fontSize: '0.875rem',
               fontFamily: 'inherit', outline: 'none', cursor: 'pointer',
             }}
           >
@@ -728,7 +728,7 @@ function CallMeetingModal({
           </span>
           {loadingAgents ? (
             <div style={{ display: 'flex', justifyContent: 'center', padding: '1rem' }}>
-              <Loader2 size={18} style={{ animation: 'spin 1s linear infinite', color: '#23CDCB' }} />
+              <Loader2 size={18} style={{ animation: 'spin 1s linear infinite', color: '#c5a059' }} />
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem', maxHeight: 200, overflow: 'auto' }}>
@@ -740,14 +740,14 @@ function CallMeetingModal({
                     onClick={() => toggleAgent(a.id)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: '0.75rem',
-                      padding: '0.5rem 0.75rem', borderRadius: '10px', cursor: 'pointer',
-                      background: isSelected ? 'rgba(35,205,202,0.06)' : 'rgba(255,255,255,0.02)',
-                      border: `1px solid ${isSelected ? 'rgba(35,205,202,0.3)' : 'rgba(255,255,255,0.06)'}`,
+                      padding: '0.5rem 0.75rem', borderRadius: 0, cursor: 'pointer',
+                      background: isSelected ? 'rgba(197,160,89,0.06)' : 'rgba(255,255,255,0.02)',
+                      border: `1px solid ${isSelected ? 'rgba(197,160,89,0.3)' : 'rgba(255,255,255,0.06)'}`,
                       transition: 'all 0.15s',
                     }}
                   >
                     <div style={{
-                      width: 28, height: 28, borderRadius: '8px', flexShrink: 0,
+                      width: 28, height: 28, borderRadius: 0, flexShrink: 0,
                       background: a.avatarFarbe + '20', border: `1px solid ${a.avatarFarbe}30`,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: '0.6875rem', fontWeight: 700, color: a.avatarFarbe,
@@ -760,8 +760,8 @@ function CallMeetingModal({
                     </div>
                     <div style={{
                       width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
-                      background: isSelected ? '#23CDCB' : 'rgba(255,255,255,0.06)',
-                      border: `1px solid ${isSelected ? '#23CDCB' : 'rgba(255,255,255,0.12)'}`,
+                      background: isSelected ? '#c5a059' : 'rgba(255,255,255,0.06)',
+                      border: `1px solid ${isSelected ? '#c5a059' : 'rgba(255,255,255,0.12)'}`,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       transition: 'all 0.15s',
                     }}>
@@ -780,23 +780,23 @@ function CallMeetingModal({
         </div>
 
         {err && (
-          <p style={{ fontSize: '0.8125rem', color: '#ef4444', marginBottom: '0.75rem', padding: '0.5rem 0.75rem', background: 'rgba(239,68,68,0.08)', borderRadius: '8px' }}>
+          <p style={{ fontSize: '0.8125rem', color: '#ef4444', marginBottom: '0.75rem', padding: '0.5rem 0.75rem', background: 'rgba(239,68,68,0.08)', borderRadius: 0 }}>
             {err}
           </p>
         )}
 
         <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{
-            padding: '0.625rem 1.25rem', borderRadius: '10px', cursor: 'pointer', fontSize: '0.875rem',
+            padding: '0.625rem 1.25rem', borderRadius: 0, cursor: 'pointer', fontSize: '0.875rem',
             background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: '#64748b',
           }}>
             Abbrechen
           </button>
           <button onClick={handleCreate} disabled={creating} style={{
-            padding: '0.625rem 1.25rem', borderRadius: '10px', cursor: creating ? 'wait' : 'pointer',
+            padding: '0.625rem 1.25rem', borderRadius: 0, cursor: creating ? 'wait' : 'pointer',
             fontSize: '0.875rem', fontWeight: 700,
-            background: creating ? 'rgba(35,205,202,0.08)' : 'rgba(35,205,202,0.1)',
-            border: '1px solid rgba(35,205,202,0.3)', color: '#23CDCB',
+            background: creating ? 'rgba(197,160,89,0.08)' : 'rgba(197,160,89,0.1)',
+            border: '1px solid rgba(197,160,89,0.3)', color: '#c5a059',
             display: 'flex', alignItems: 'center', gap: '0.5rem',
           }}>
             {creating
@@ -851,7 +851,7 @@ function CompleteModal({
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem',
     }} onClick={onClose}>
       <div style={{
-        width: '100%', maxWidth: 480, borderRadius: '20px',
+        width: '100%', maxWidth: 480, borderRadius: 0,
         background: 'rgba(15,17,30,0.97)', border: '1px solid rgba(255,255,255,0.1)',
         padding: '1.75rem', boxShadow: '0 24px 80px rgba(0,0,0,0.7)',
       }} onClick={e => e.stopPropagation()}>
@@ -874,17 +874,17 @@ function CompleteModal({
             style={{
               width: '100%', boxSizing: 'border-box', padding: '0.75rem',
               background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '10px', color: '#f1f5f9', fontSize: '0.875rem', resize: 'vertical',
+              borderRadius: 0, color: '#f1f5f9', fontSize: '0.875rem', resize: 'vertical',
               fontFamily: 'inherit', outline: 'none', lineHeight: 1.5,
             }}
           />
         </label>
         <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
-          <button onClick={onClose} style={{ padding: '0.625rem 1.25rem', borderRadius: '10px', cursor: 'pointer', fontSize: '0.875rem', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: '#64748b' }}>
+          <button onClick={onClose} style={{ padding: '0.625rem 1.25rem', borderRadius: 0, cursor: 'pointer', fontSize: '0.875rem', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: '#64748b' }}>
             {m.cancel}
           </button>
           <button onClick={save} disabled={saving} style={{
-            padding: '0.625rem 1.25rem', borderRadius: '10px', cursor: saving ? 'wait' : 'pointer',
+            padding: '0.625rem 1.25rem', borderRadius: 0, cursor: saving ? 'wait' : 'pointer',
             fontSize: '0.875rem', fontWeight: 700,
             background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', color: '#10b981',
             display: 'flex', alignItems: 'center', gap: '0.5rem',
@@ -910,12 +910,12 @@ function StatsBar({ meetings, m }: { meetings: Meeting[]; m: ReturnType<typeof u
     <div style={{ display: 'flex', gap: 12, marginBottom: 28, flexWrap: 'wrap' }}>
       {[
         { label: m.statTotal,     value: total,     color: '#64748b' },
-        { label: m.statActive,    value: running,   color: '#23CDCB' },
+        { label: m.statActive,    value: running,   color: '#c5a059' },
         { label: m.statCompleted, value: completed, color: '#10b981' },
         { label: m.statThisWeek,  value: thisWeek,  color: '#6366f1' },
       ].map(s => (
         <div key={s.label} style={{
-          borderRadius: '12px',
+          borderRadius: 0,
           backgroundColor: 'rgba(255,255,255,0.02)',
           backdropFilter: 'blur(20px)',
           border: '1px solid rgba(255,255,255,0.08)',
@@ -991,7 +991,12 @@ export function Meetings() {
         if (msg.type === 'meeting_created' || msg.type === 'meeting_updated') fetchMeetings();
       } catch {}
     };
-    return () => { ws.close(); wsRef.current = null; };
+    return () => {
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
+        ws.close();
+      }
+      wsRef.current = null;
+    };
   }, [aktivesUnternehmen?.id, fetchMeetings]);
 
   const filtered = displayMeetings.filter(x => {
@@ -1023,7 +1028,7 @@ export function Meetings() {
         <div>
           <h1 style={{
             fontSize: 28, fontWeight: 800, margin: 0,
-            background: 'linear-gradient(135deg, #23CDCB, #6366f1)',
+            background: 'linear-gradient(135deg, #c5a059, #6366f1)',
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
           }}>
             {m.title}
@@ -1036,9 +1041,9 @@ export function Meetings() {
           onClick={() => setShowCallModal(true)}
           style={{
             display: 'flex', alignItems: 'center', gap: 8,
-            padding: '0.625rem 1.125rem', borderRadius: '12px',
-            background: 'rgba(35,205,202,0.1)', border: '1px solid rgba(35,205,202,0.25)',
-            color: '#23CDCB', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer',
+            padding: '0.625rem 1.125rem', borderRadius: 0,
+            background: 'rgba(197,160,89,0.1)', border: '1px solid rgba(197,160,89,0.25)',
+            color: '#c5a059', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer',
           }}
         >
           <Plus size={15} /> Meeting einberufen
@@ -1063,7 +1068,7 @@ export function Meetings() {
                 paddingLeft: '2.25rem', paddingRight: search ? '2.25rem' : '0.875rem',
                 paddingTop: '0.5625rem', paddingBottom: '0.5625rem',
                 backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: '10px', color: '#f8fafc', fontSize: '0.875rem', outline: 'none',
+                borderRadius: 0, color: '#f8fafc', fontSize: '0.875rem', outline: 'none',
               }}
             />
             {search && (
@@ -1087,9 +1092,9 @@ export function Meetings() {
                 onClick={() => setFilter(f)}
                 style={{
                   padding: '0.4375rem 1rem', borderRadius: '9999px', fontSize: '0.8125rem', fontWeight: 600,
-                  border: `1px solid ${active ? '#23CDCB' : 'rgba(255,255,255,0.08)'}`,
-                  backgroundColor: active ? 'rgba(35,205,202,0.1)' : 'rgba(255,255,255,0.02)',
-                  color: active ? '#23CDCB' : '#64748b',
+                  border: `1px solid ${active ? '#c5a059' : 'rgba(255,255,255,0.08)'}`,
+                  backgroundColor: active ? 'rgba(197,160,89,0.1)' : 'rgba(255,255,255,0.02)',
+                  color: active ? '#c5a059' : '#64748b',
                   cursor: 'pointer', transition: 'all 0.15s',
                 }}
               >
@@ -1105,7 +1110,7 @@ export function Meetings() {
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           backgroundColor: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.18)',
-          borderRadius: '10px', padding: '0.625rem 1.125rem', marginBottom: '1.25rem', gap: '0.625rem',
+          borderRadius: 0, padding: '0.625rem 1.125rem', marginBottom: '1.25rem', gap: '0.625rem',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Eye size={14} color="#6366f1" />
@@ -1115,7 +1120,7 @@ export function Meetings() {
             onClick={() => setShowDemo(false)}
             style={{
               background: 'none', border: '1px solid rgba(99,102,241,0.3)',
-              color: '#6366f1', borderRadius: 7, padding: '4px 12px',
+              color: '#6366f1', borderRadius: 0, padding: '4px 12px',
               fontSize: 12, cursor: 'pointer', fontWeight: 500,
             }}
           >
@@ -1127,12 +1132,12 @@ export function Meetings() {
       {/* Content */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}>
-          <Loader2 size={30} color="#23CDCB" style={{ animation: 'spin 1s linear infinite' }} />
+          <Loader2 size={30} color="#c5a059" style={{ animation: 'spin 1s linear infinite' }} />
         </div>
       ) : meetings.length === 0 && !showDemo ? (
         <div style={{
           textAlign: 'center', padding: '4rem 2rem',
-          borderRadius: '20px', border: '1px dashed rgba(255,255,255,0.07)',
+          borderRadius: 0, border: '1px dashed rgba(255,255,255,0.07)',
           backgroundColor: 'rgba(255,255,255,0.01)',
         }}>
           <MessageSquare size={44} color="rgba(35,205,203,0.22)" style={{ marginBottom: 16 }} />
@@ -1145,7 +1150,7 @@ export function Meetings() {
             style={{
               marginTop: 22, display: 'inline-flex', alignItems: 'center', gap: 8,
               background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.25)',
-              color: '#818cf8', borderRadius: 10, padding: '9px 20px',
+              color: '#818cf8', borderRadius: 0, padding: '9px 20px',
               fontSize: 13, cursor: 'pointer', fontWeight: 600,
             }}
           >
@@ -1161,8 +1166,8 @@ export function Meetings() {
           {running.length > 0 && (
             <section style={{ marginBottom: 32 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                <Loader2 size={14} color="#23CDCB" style={{ animation: 'spin 1.2s linear infinite' }} />
-                <span style={{ fontWeight: 700, fontSize: 12, color: '#23CDCB', letterSpacing: '0.07em' }}>
+                <Loader2 size={14} color="#c5a059" style={{ animation: 'spin 1.2s linear infinite' }} />
+                <span style={{ fontWeight: 700, fontSize: 12, color: '#c5a059', letterSpacing: '0.07em' }}>
                   {m.sectionActive} ({running.length})
                 </span>
               </div>
@@ -1187,7 +1192,7 @@ export function Meetings() {
                       marginLeft: 'auto', background: 'none', border: 'none',
                       color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center',
                       gap: 5, fontSize: 11, fontWeight: 600, padding: '2px 8px',
-                      borderRadius: 6, transition: 'color 0.15s',
+                      borderRadius: 0, transition: 'color 0.15s',
                     }}
                     onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
                     onMouseLeave={e => (e.currentTarget.style.color = '#475569')}

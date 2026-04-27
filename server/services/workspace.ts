@@ -130,7 +130,7 @@ export function getWorkspaceInfo(taskId: string): WorkspaceInfo {
   if (fs.existsSync(metaFile)) {
     try {
       const meta = JSON.parse(fs.readFileSync(metaFile, 'utf-8'));
-      erstelltAm = meta.erstelltAm || null;
+      erstelltAm = meta.createdAt || null;
     } catch { /* ignore */ }
   }
 

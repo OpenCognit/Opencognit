@@ -34,7 +34,7 @@ export class HttpAdapter implements Adapter {
   }
 
   canHandle(task: AdapterTask): boolean {
-    const text = `${task.titel} ${task.beschreibung || ''}`;
+    const text = `${task.title} ${task.description || ''}`;
     // Only handle tasks that contain an actual HTTP URL or an explicit HTTP method + URL
     return /https?:\/\/[^\s]+/.test(text) ||
            /\b(GET|POST|PUT|PATCH|DELETE)\s+https?:\/\//.test(text);
@@ -76,10 +76,10 @@ export class HttpAdapter implements Adapter {
     }
 
     // Agent permission check — erlaubteDomains
-    if (config.expertId) {
+    if (config.agentId) {
       try {
         const perms = db.select().from(agentPermissions)
-          .where(eq(agentPermissions.expertId, config.expertId)).get();
+          .where(eq(agentPermissions.agentId, config.agentId)).get();
         if (perms?.erlaubteDomains) {
           const allowed: string[] = JSON.parse(perms.erlaubteDomains);
           if (allowed.length > 0) {
@@ -156,7 +156,7 @@ export class HttpAdapter implements Adapter {
   }
 
   private parseRequest(task: AdapterTask): HttpRequest | null {
-    const text = task.beschreibung || task.titel;
+    const text = task.description || task.title;
 
     // Try to parse JSON request
     try {

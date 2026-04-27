@@ -8,7 +8,7 @@
 // Blockiert NICHT die Agent-Antwort — läuft async im Hintergrund.
 
 import { db } from '../db/client.js';
-import { chatNachrichten, experten, palaceSummaries, palaceDrawers, palaceWings } from '../db/schema.js';
+import { chatMessages, agents, palaceSummaries, palaceDrawers, palaceWings } from '../db/schema.js';
 import { eq, desc, and } from 'drizzle-orm';
 import { v4 as uuid } from 'uuid';
 import { nachZyklusVerarbeitung } from './learning-loop.js';
@@ -129,8 +129,8 @@ const COMPRESSION_THRESHOLD_CHARS = 20000; // Ab 20k Zeichen komprimieren
 // ─── Background Review (async, non-blocking) ────────────────────────────────
 
 export interface ReviewTrigger {
-  expertId: string;
-  unternehmenId: string;
+  agentId: string;
+  companyId: string;
   agentOutput: string;
   zyklusNummer: number;
   reviewMemory: boolean;
@@ -151,9 +151,9 @@ export function spawnBackgroundReview(trigger: ReviewTrigger): void {
 }
 
 async function runReview(trigger: ReviewTrigger): Promise<void> {
-  const { expertId, unternehmenId, agentOutput, reviewMemory, reviewSkills } = trigger;
+  const { agentId, companyId, agentOutput, reviewMemory, reviewSkills } = trigger;
 
-  const expert = db.select().from(experten).where(eq(experten.id, expertId)).get();
+  const expert = db.select().from(agents).where(eq(agents.id, agentId)).get();
   if (!expert) return;
 
   const wingName = expert.name.toLowerCase().replace(/\s+/g, '_');
@@ -169,15 +169,15 @@ async function runReview(trigger: ReviewTrigger): Promise<void> {
   }
 
   // Lade letzte 15 Nachrichten als Kontext
-  const recentMessages = db.select().from(chatNachrichten)
-    .where(eq(chatNachrichten.expertId, expertId))
-    .orderBy(desc(chatNachrichten.erstelltAm))
+  const recentMessages = db.select().from(chatMessages)
+    .where(eq(chatMessages.agentId, agentId))
+    .orderBy(desc(chatMessages.createdAt))
     .limit(15)
     .all()
     .reverse();
 
   const conversationContext = recentMessages
-    .map(m => `${m.absenderTyp === 'agent' ? 'AGENT' : 'BOARD/SYSTEM'}: ${m.nachricht}`)
+    .map(m => `${m.senderType === 'agent' ? 'AGENT' : 'BOARD/SYSTEM'}: ${m.message}`)
     .join('\n\n');
 
   // --- Memory Review: User-Kontext extrahieren und speichern ---
@@ -192,10 +192,10 @@ async function runReview(trigger: ReviewTrigger): Promise<void> {
 
     const matches: string[] = [];
     for (const msg of recentMessages) {
-      if (msg.absenderTyp === 'board') {
+      if (msg.senderType === 'board') {
         for (const pattern of userContextPatterns) {
-          const m = msg.nachricht.match(pattern);
-          if (m) matches.push(msg.nachricht.slice(0, 200));
+          const m = msg.message.match(pattern);
+          if (m) matches.push(msg.message.slice(0, 200));
           pattern.lastIndex = 0; // Reset regex
         }
       }
@@ -203,15 +203,15 @@ async function runReview(trigger: ReviewTrigger): Promise<void> {
 
     if (matches.length > 0) {
       const wing = db.select().from(palaceWings)
-        .where(and(eq(palaceWings.expertId, expertId), eq(palaceWings.unternehmenId, unternehmenId)))
+        .where(and(eq(palaceWings.agentId, agentId), eq(palaceWings.companyId, companyId)))
         .get();
       if (wing) {
         db.insert(palaceDrawers).values({
           id: uuid(),
           wingId: wing.id,
           room: 'user_context',
-          inhalt: `### Auto-Review (Background)\n\nNutzer-Kontext erkannt:\n${matches.map(m => `- ${m}`).join('\n')}`,
-          erstelltAm: new Date().toISOString(),
+          content: `### Auto-Review (Background)\n\nNutzer-Kontext erkannt:\n${matches.map(m => `- ${m}`).join('\n')}`,
+          createdAt: new Date().toISOString(),
         }).run();
         console.log(`💾 Background Review: ${matches.length} User-Kontext-Einträge für ${expert.name} gespeichert`);
       }
@@ -221,8 +221,8 @@ async function runReview(trigger: ReviewTrigger): Promise<void> {
   // --- Skill Review: wiederverwendbare Patterns extrahieren ---
   if (reviewSkills) {
     // Learning Loop-Style: Nutze den nachZyklusVerarbeitung Hook
-    const taskTitel = recentMessages.find(m => m.absenderTyp === 'board')?.nachricht?.slice(0, 50) || 'Background Review';
-    nachZyklusVerarbeitung(expertId, unternehmenId, taskTitel, agentOutput, true);
+    const taskTitel = recentMessages.find(m => m.senderType === 'board')?.message?.slice(0, 50) || 'Background Review';
+    nachZyklusVerarbeitung(agentId, companyId, taskTitel, agentOutput, true);
   }
 
   console.log(`🔍 Background Review für ${expert.name} abgeschlossen (Memory: ${reviewMemory}, Skills: ${reviewSkills})`);
@@ -238,15 +238,15 @@ async function runReview(trigger: ReviewTrigger): Promise<void> {
  * Gibt den Summary-Text zurück der in den System-Prompt injiziert werden kann.
  */
 export function komprimiereKontext(
-  expertId: string,
-  unternehmenId: string,
+  agentId: string,
+  companyId: string,
   neueTurns: string,
 ): string | null {
   const now = new Date().toISOString();
 
   // Vorherige Zusammenfassung laden
   const existing = db.select().from(palaceSummaries)
-    .where(eq(palaceSummaries.expertId, expertId))
+    .where(eq(palaceSummaries.agentId, agentId))
     .get();
 
   let summaryText: string;
@@ -254,34 +254,34 @@ export function komprimiereKontext(
   if (existing) {
     // Iteratives Update: Vorherige Summary + neue Turns → aktualisierte Summary
     summaryText = ITERATIVE_SUMMARY_PROMPT
-      .replace('{previous}', existing.inhalt)
+      .replace('{previous}', existing.content)
       .replace('{content}', neueTurns);
 
     // Update statt Insert
     db.update(palaceSummaries).set({
-      inhalt: summaryText.slice(0, 10000), // Max 10k Zeichen
+      content: summaryText.slice(0, 10000), // Max 10k Zeichen
       version: existing.version + 1,
       komprimierteTurns: existing.komprimierteTurns + neueTurns.split('\n\n').length,
-      aktualisiertAm: now,
+      updatedAt: now,
     }).where(eq(palaceSummaries.id, existing.id)).run();
 
-    console.log(`📋 Context-Kompression: Summary v${existing.version + 1} für ${expertId} (iterativ aktualisiert)`);
+    console.log(`📋 Context-Kompression: Summary v${existing.version + 1} für ${agentId} (iterativ aktualisiert)`);
   } else {
     // Erste Zusammenfassung
     summaryText = INITIAL_SUMMARY_PROMPT.replace('{content}', neueTurns);
 
     db.insert(palaceSummaries).values({
       id: uuid(),
-      expertId,
-      unternehmenId,
-      inhalt: summaryText.slice(0, 10000),
+      agentId,
+      companyId,
+      content: summaryText.slice(0, 10000),
       version: 1,
       komprimierteTurns: neueTurns.split('\n\n').length,
-      erstelltAm: now,
-      aktualisiertAm: now,
+      createdAt: now,
+      updatedAt: now,
     }).run();
 
-    console.log(`📋 Context-Kompression: Erste Summary für ${expertId} erstellt`);
+    console.log(`📋 Context-Kompression: Erste Summary für ${agentId} erstellt`);
   }
 
   return `[KONTEXT-ZUSAMMENFASSUNG] Frühere Turns wurden komprimiert um Kontext zu sparen. Die Zusammenfassung unten beschreibt bereits erledigte Arbeit:\n\n${summaryText.slice(0, 5000)}`;
@@ -291,15 +291,15 @@ export function komprimiereKontext(
  * Lädt die aktuelle Zusammenfassung eines Agenten (falls vorhanden).
  * Wird beim Zyklusstart in den System-Prompt injiziert.
  */
-export function ladeSummary(expertId: string): string | null {
+export function ladeSummary(agentId: string): string | null {
   const summary = db.select().from(palaceSummaries)
-    .where(eq(palaceSummaries.expertId, expertId))
+    .where(eq(palaceSummaries.agentId, agentId))
     .get();
 
   if (!summary) return null;
 
   return `[KONTEXT-ZUSAMMENFASSUNG v${summary.version} — ${summary.komprimierteTurns} Turns komprimiert]
-${summary.inhalt}`;
+${summary.content}`;
 }
 
 // ─── FTS5 Session-Suche ─────────────────────────────────────────────────────
@@ -308,8 +308,8 @@ ${summary.inhalt}`;
  * Durchsucht alle vergangenen Chat-Nachrichten und Drawer-Inhalte via FTS5.
  * Gibt die relevantesten Treffer als formatierten Text zurück.
  */
-export function sessionSearch(query: string, expertId?: string, limit: number = 10): string {
-  const results: Array<{ quelle: string; text: string; datum: string }> = [];
+export function sessionSearch(query: string, agentId?: string, limit: number = 10): string {
+  const results: Array<{ source: string; text: string; date: string }> = [];
 
   // FTS5 Suche über Chat-Nachrichten
   try {
@@ -317,43 +317,43 @@ export function sessionSearch(query: string, expertId?: string, limit: number = 
 
     // Direkte SQL-Abfrage für FTS5 (Drizzle unterstützt keine Virtual Tables nativ)
     const chatResults = (db as any).all(
-      `SELECT cn.nachricht, cn.erstellt_am, cn.absender_typ
+      `SELECT cn.message, cn.createdAt, cn.senderType
        FROM fts_nachrichten fts
-       JOIN chatNachrichten cn ON cn.rowid = fts.rowid
-       ${expertId ? 'WHERE cn.expert_id = ?' : ''}
+       JOIN chatMessages cn ON cn.rowid = fts.rowid
+       ${agentId ? 'WHERE cn.expert_id = ?' : ''}
        ORDER BY fts.rank
        LIMIT ?`,
-      expertId ? [expertId, limit] : [limit]
-    ) as Array<{ nachricht: string; erstellt_am: string; absender_typ: string }>;
+      agentId ? [agentId, limit] : [limit]
+    ) as Array<{ message: string; createdAt: string; senderType: string }>;
 
     // Fallback: Wenn FTS5 nicht verfügbar, nutze LIKE
     if (!chatResults || chatResults.length === 0) {
-      const likeResults = db.select().from(chatNachrichten)
-        .where(expertId ? eq(chatNachrichten.expertId, expertId) : undefined as any)
+      const likeResults = db.select().from(chatMessages)
+        .where(agentId ? eq(chatMessages.agentId, agentId) : undefined as any)
         .all()
-        .filter(m => m.nachricht.toLowerCase().includes(query.toLowerCase()))
+        .filter(m => m.message.toLowerCase().includes(query.toLowerCase()))
         .slice(0, limit);
 
       for (const m of likeResults) {
-        results.push({ quelle: `Chat (${m.absenderTyp})`, text: m.nachricht.slice(0, 300), datum: m.erstelltAm });
+        results.push({ source: `Chat (${m.senderType})`, text: m.message.slice(0, 300), date: m.createdAt });
       }
     } else {
       for (const r of chatResults) {
-        results.push({ quelle: `Chat (${r.absender_typ})`, text: r.nachricht.slice(0, 300), datum: r.erstellt_am });
+        results.push({ source: `Chat (${r.senderType})`, text: r.message.slice(0, 300), date: r.createdAt });
       }
     }
   } catch {
     // FTS5 nicht verfügbar — Fallback auf einfache Suche
-    const likeResults = db.select().from(chatNachrichten)
+    const likeResults = db.select().from(chatMessages)
       .all()
       .filter(m => {
-        if (expertId && m.expertId !== expertId) return false;
-        return m.nachricht.toLowerCase().includes(query.toLowerCase());
+        if (agentId && m.agentId !== agentId) return false;
+        return m.message.toLowerCase().includes(query.toLowerCase());
       })
       .slice(0, limit);
 
     for (const m of likeResults) {
-      results.push({ quelle: `Chat (${m.absenderTyp})`, text: m.nachricht.slice(0, 300), datum: m.erstelltAm });
+      results.push({ source: `Chat (${m.senderType})`, text: m.message.slice(0, 300), date: m.createdAt });
     }
   }
 
@@ -361,11 +361,11 @@ export function sessionSearch(query: string, expertId?: string, limit: number = 
   try {
     const drawerResults = db.select().from(palaceDrawers)
       .all()
-      .filter(d => d.inhalt.toLowerCase().includes(query.toLowerCase()))
+      .filter(d => d.content.toLowerCase().includes(query.toLowerCase()))
       .slice(0, 5);
 
     for (const d of drawerResults) {
-      results.push({ quelle: `Drawer (${d.room})`, text: d.inhalt.slice(0, 300), datum: d.erstelltAm });
+      results.push({ source: `Drawer (${d.room})`, text: d.content.slice(0, 300), date: d.createdAt });
     }
   } catch { /* silent */ }
 
@@ -375,8 +375,8 @@ export function sessionSearch(query: string, expertId?: string, limit: number = 
 
   // Formatiert für System-Prompt Injection
   const formatted = results
-    .sort((a, b) => b.datum.localeCompare(a.datum))
-    .map(r => `[${r.quelle} | ${r.datum.slice(0, 10)}]\n${r.text}`)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map(r => `[${r.source} | ${r.date.slice(0, 10)}]\n${r.text}`)
     .join('\n\n---\n\n');
 
   return `## Session-Suche: "${query}" (${results.length} Treffer)\n\n${formatted}`;

@@ -4,7 +4,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { appEvents } from '../../events.js';
 import { db } from '../../db/client.js';
-import { experten, einstellungen } from '../../db/schema.js';
+import { agents, settings } from '../../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 
 // ── SOUL.md Loader ────────────────────────────────────────────────────────────
@@ -43,9 +43,9 @@ export function loadSoul(expert: { soulPath?: string | null; soulVersion?: strin
     // Persist new version hash to DB asynchronously (non-blocking)
     setImmediate(() => {
       try {
-        db.update(experten)
+        db.update(agents)
           .set({ soulVersion: version })
-          .where(eq(experten.soulPath, filePath))
+          .where(eq(agents.soulPath, filePath))
           .run();
       } catch (e: any) {
         console.warn(`⚠️ SOUL.md version persist fehlgeschlagen: ${e.message}`);
@@ -60,24 +60,24 @@ export function loadSoul(expert: { soulPath?: string | null; soulVersion?: strin
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function trace(expertId: string, unternehmenId: string, typ: string, titel: string, details?: string, runId?: string) {
-  appEvents.emit('trace', { expertId, unternehmenId, typ, titel, details, runId });
+export function trace(agentId: string, companyId: string, type: string, title: string, details?: string, runId?: string) {
+  appEvents.emit('trace', { agentId, companyId, type, title, details, runId });
 }
 
 /**
  * Check if Focus Mode is currently active for a company.
  * Returns true if focus_mode_active = 'true' and not expired.
  */
-export function isFocusModeActive(unternehmenId: string): boolean {
-  const activeRow = db.select().from(einstellungen)
-    .where(and(eq(einstellungen.schluessel, 'focus_mode_active'), eq(einstellungen.unternehmenId, unternehmenId)))
+export function isFocusModeActive(companyId: string): boolean {
+  const activeRow = db.select().from(settings)
+    .where(and(eq(settings.key, 'focus_mode_active'), eq(settings.companyId, companyId)))
     .get();
-  if (activeRow?.wert !== 'true') return false;
+  if (activeRow?.value !== 'true') return false;
 
-  const untilRow = db.select().from(einstellungen)
-    .where(and(eq(einstellungen.schluessel, 'focus_mode_until'), eq(einstellungen.unternehmenId, unternehmenId)))
+  const untilRow = db.select().from(settings)
+    .where(and(eq(settings.key, 'focus_mode_until'), eq(settings.companyId, companyId)))
     .get();
-  if (untilRow?.wert && new Date(untilRow.wert) < new Date()) return false;
+  if (untilRow?.value && new Date(untilRow.value) < new Date()) return false;
 
   return true;
 }

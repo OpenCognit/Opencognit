@@ -1,5 +1,5 @@
 import { db } from './db/client.js';
-import { experten, unternehmen, aufgaben, arbeitszyklen, kostenbuchungen, aktivitaetslog, einstellungen, chatNachrichten, skillsLibrary, expertenSkills, genehmigungen, agentMeetings, ziele, routinen, routineTrigger, kommentare, agentPermissions, traceEreignisse } from './db/schema.js';
+import { agents, companies, tasks, workCycles, costEntries, activityLog, settings, chatMessages, skillsLibrary, agentSkills, approvals, agentMeetings, goals, routines, routineTrigger, comments, agentPermissions, traceEvents, projects } from './db/schema.js';
 import { eq, and, isNull, ne, inArray, desc, asc, sql } from 'drizzle-orm';
 import { getAdapter } from './adapters/index.js';
 import { decryptSetting } from './utils/crypto.js';
@@ -16,10 +16,10 @@ import { heartbeatService } from './services/heartbeat.js';
 import { findRelevantSkills, embeddingsAvailable } from './services/skill-embeddings.js';
 
 // Lazy import of emitTrace to avoid circular dependency (index.ts exports it)
-let _emitTrace: ((expertId: string, unternehmenId: string, typ: string, titel: string, details?: string, runId?: string) => void) | null = null;
+let _emitTrace: ((agentId: string, companyId: string, typ: string, titel: string, details?: string, runId?: string) => void) | null = null;
 export function setEmitTrace(fn: typeof _emitTrace) { _emitTrace = fn; }
-function trace(expertId: string, unternehmenId: string, typ: string, titel: string, details?: string, runId?: string) {
-  if (_emitTrace) _emitTrace(expertId, unternehmenId, typ, titel, details, runId);
+function trace(agentId: string, companyId: string, typ: string, titel: string, details?: string, runId?: string) {
+  if (_emitTrace) _emitTrace(agentId, companyId, typ, titel, details, runId);
 }
 
 // Lazy broadcastUpdate callback to avoid circular dependency
@@ -34,19 +34,19 @@ const API_BASE_URL = process.env.VITE_API_BASE_URL || 'http://localhost:3201';
 const now = () => new Date().toISOString();
 
 // ── Language helpers ─────────────────────────────────────────────────────────
-function getUiLanguage(unternehmenId: string): 'de' | 'en' {
+function getUiLanguage(companyId: string): 'de' | 'en' {
   try {
     // Try company-specific first, then global ('')
-    const row = db.select({ wert: einstellungen.wert })
-      .from(einstellungen)
-      .where(and(eq(einstellungen.schluessel, 'ui_language'), eq(einstellungen.unternehmenId, unternehmenId)))
+    const row = db.select({ wert: settings.value })
+      .from(settings)
+      .where(and(eq(settings.key, 'ui_language'), eq(settings.companyId, companyId)))
       .get()
-      ?? db.select({ wert: einstellungen.wert })
-        .from(einstellungen)
-        .where(and(eq(einstellungen.schluessel, 'ui_language'), eq(einstellungen.unternehmenId, '')))
+      ?? db.select({ wert: settings.value })
+        .from(settings)
+        .where(and(eq(settings.key, 'ui_language'), eq(settings.companyId, '')))
         .get();
-    if (row?.wert) {
-      const lang = decryptSetting('ui_language', row.wert);
+    if (row?.value) {
+      const lang = decryptSetting('ui_language', row.value);
       if (lang === 'en' || lang === 'de') return lang;
     }
   } catch {}
@@ -78,16 +78,16 @@ function sanitizeForPrompt(text: string, maxLen = 200): string {
  * Used to sort task lists before building LLM context strings.
  */
 function taskPriorityScore(a: any): number {
-  const prio = a.prioritaet === 'critical' ? 100 : a.prioritaet === 'high' ? 70 : a.prioritaet === 'medium' ? 40 : 10;
+  const prio = a.priority === 'critical' ? 100 : a.priority === 'high' ? 70 : a.priority === 'medium' ? 40 : 10;
   // In-progress tasks surface above backlog; blocked tasks go to the bottom
   const statusBonus = a.status === 'in_progress' ? 25 : a.status === 'blocked' ? -40 : 0;
   // Age bonus: +2 points per day waiting, capped at 30 — prevents starvation
-  const daysSinceCreated = a.erstelltAm
-    ? Math.min(15, (Date.now() - new Date(a.erstelltAm).getTime()) / 86_400_000)
+  const daysSinceCreated = a.createdAt
+    ? Math.min(15, (Date.now() - new Date(a.createdAt).getTime()) / 86_400_000)
     : 0;
   const ageBonus = Math.round(daysSinceCreated * 2);
   // Goal-aligned tasks get a relevance boost
-  const goalBonus = a.zielId ? 15 : 0;
+  const goalBonus = a.goalId ? 15 : 0;
   // Maximizer tasks always float to top
   const maximizerBonus = a.isMaximizerMode ? 200 : 0;
   return prio + statusBonus + ageBonus + goalBonus + maximizerBonus;
@@ -113,7 +113,7 @@ export class Scheduler {
   }
 
   // Lädt den passenden API-Key aus den Einstellungen für den Adapter
-  private async getExpertApiKey(unternehmenId: string, verbindungsTyp: string): Promise<string> {
+  private async getExpertApiKey(companyId: string, connectionType: string): Promise<string> {
     const keys: Record<string, string> = {
       'openrouter': 'openrouter_api_key',
       'claude': 'anthropic_api_key',
@@ -122,49 +122,49 @@ export class Scheduler {
       'ollama': 'ollama_base_url'
     };
 
-    const sKey = keys[verbindungsTyp];
+    const sKey = keys[connectionType];
     if (!sKey) return `ak_${crypto.randomBytes(16).toString('hex')}`;
 
     // 1. Try company-specific key
-    if (unternehmenId) {
-       const uSetting = db.select().from(einstellungen)
-         .where(and(eq(einstellungen.schluessel, sKey), eq(einstellungen.unternehmenId, unternehmenId)))
+    if (companyId) {
+       const uSetting = db.select().from(settings)
+         .where(and(eq(settings.key, sKey), eq(settings.companyId, companyId)))
          .get();
-       if (uSetting?.wert) return sKey === 'ollama_base_url' ? uSetting.wert : decryptSetting(sKey, uSetting.wert);
+       if (uSetting?.value) return sKey === 'ollama_base_url' ? uSetting.value : decryptSetting(sKey, uSetting.value);
     }
 
     // 2. Fallback to global key
-    const gSetting = db.select().from(einstellungen)
-      .where(and(eq(einstellungen.schluessel, sKey), eq(einstellungen.unternehmenId, '')))
+    const gSetting = db.select().from(settings)
+      .where(and(eq(settings.key, sKey), eq(settings.companyId, '')))
       .get();
     
-    if (gSetting?.wert) return sKey === 'ollama_base_url' ? gSetting.wert : decryptSetting(sKey, gSetting.wert);
+    if (gSetting?.value) return sKey === 'ollama_base_url' ? gSetting.value : decryptSetting(sKey, gSetting.value);
     
-    return verbindungsTyp === 'ollama' ? 'http://localhost:11434' : '';
+    return connectionType === 'ollama' ? 'http://localhost:11434' : '';
   }
 
   // Ermittelt den effektiven Adapter + Key — fällt auf verfügbare Alternativen zurück
-  private async resolveAdapter(verbindungsTyp: string, config?: string, unternehmenId?: string): Promise<{ adapterType: string; apiKey: string }> {
+  private async resolveAdapter(connectionType: string, config?: string, companyId?: string): Promise<{ adapterType: string; apiKey: string }> {
     // CLI-Subscription-Adapter brauchen keinen API-Key → direkt zurückgeben
-    if (['claude-code', 'codex-cli', 'gemini-cli', 'bash', 'http'].includes(verbindungsTyp)) {
-      return { adapterType: verbindungsTyp, apiKey: '' };
+    if (['claude-code', 'codex-cli', 'gemini-cli', 'kimi-cli', 'bash', 'http'].includes(connectionType)) {
+      return { adapterType: connectionType, apiKey: '' };
     }
 
     // Wenn Ollama (Lokal oder Cloud), prüfe zuerst die Agenten-spezifische Config
-    if (verbindungsTyp === 'ollama' || verbindungsTyp === 'ollama_cloud') {
+    if (connectionType === 'ollama' || connectionType === 'ollama_cloud') {
       try {
         if (config) {
           const cfg = JSON.parse(config);
-          if (cfg.baseUrl) return { adapterType: verbindungsTyp, apiKey: cfg.baseUrl };
+          if (cfg.baseUrl) return { adapterType: connectionType, apiKey: cfg.baseUrl };
         }
       } catch { /* ignore */ }
     }
 
     // Try company-specific key first, then global
-    const key = unternehmenId
-      ? await this.getExpertApiKey(unternehmenId, verbindungsTyp) || await this.getExpertApiKey('', verbindungsTyp)
-      : await this.getExpertApiKey('', verbindungsTyp);
-    if (key) return { adapterType: verbindungsTyp, apiKey: key };
+    const key = companyId
+      ? await this.getExpertApiKey(companyId, connectionType) || await this.getExpertApiKey('', connectionType)
+      : await this.getExpertApiKey('', connectionType);
+    if (key) return { adapterType: connectionType, apiKey: key };
 
     // Fallback priority: anthropic → openrouter → openai → ollama
     const fallbacks: Array<{ type: string; settingsKey: string }> = [
@@ -174,19 +174,19 @@ export class Scheduler {
     ];
 
     for (const fb of fallbacks) {
-      if (fb.type === verbindungsTyp) continue; // already tried
-      const e = db.select().from(einstellungen).where(eq(einstellungen.schluessel, fb.settingsKey)).get();
-      if (e?.wert) {
-        const fbKey = decryptSetting(fb.settingsKey, e.wert);
+      if (fb.type === connectionType) continue; // already tried
+      const e = db.select().from(settings).where(eq(settings.key, fb.settingsKey)).get();
+      if (e?.value) {
+        const fbKey = decryptSetting(fb.settingsKey, e.value);
         if (fbKey) return { adapterType: fb.type, apiKey: fbKey };
       }
     }
 
     // Ollama as last resort (no key required)
-    const ollamaE = db.select().from(einstellungen).where(eq(einstellungen.schluessel, 'ollama_base_url')).get();
-    if (ollamaE?.wert) return { adapterType: 'ollama', apiKey: ollamaE.wert };
+    const ollamaE = db.select().from(settings).where(eq(settings.key, 'ollama_base_url')).get();
+    if (ollamaE?.value) return { adapterType: 'ollama', apiKey: ollamaE.value };
 
-    return { adapterType: verbindungsTyp, apiKey: '' };
+    return { adapterType: connectionType, apiKey: '' };
   }
 
   private async runTick() {
@@ -195,39 +195,39 @@ export class Scheduler {
 
     try {
       // Finde Experten, die aktiv/running sind und einen Zyklus brauchen
-      const activeExperts = db.select().from(experten).where(
-         inArray(experten.status, ['active', 'idle'])
+      const activeExperts = db.select().from(agents).where(
+         inArray(agents.status, ['active', 'idle'])
       ).all();
 
       const currentTime = new Date().getTime();
 
       for (const a of activeExperts) {
-        if (!a.zyklusAktiv || !a.zyklusIntervallSek) continue;
+        if (!a.autoCycleActive || !a.autoCycleIntervalSec) continue;
 
         // ── Load open tasks to drive adaptive interval and budget decisions ──
         const agentTasks = db.select({
-          prioritaet: aufgaben.prioritaet,
-          status: aufgaben.status,
-          isMaximizerMode: (aufgaben as any).isMaximizerMode,
-        }).from(aufgaben)
-          .where(and(eq(aufgaben.zugewiesenAn, a.id), inArray(aufgaben.status, ['todo', 'in_progress', 'blocked'])))
+          prioritaet: tasks.priority,
+          status: tasks.status,
+          isMaximizerMode: (tasks as any).isMaximizerMode,
+        }).from(tasks)
+          .where(and(eq(tasks.assignedTo, a.id), inArray(tasks.status, ['todo', 'in_progress', 'blocked'])))
           .all();
 
         // ── Adaptive interval: speed up for urgent work, stick to base otherwise ──
-        const hasCritical = agentTasks.some((t: any) => t.prioritaet === 'critical');
-        const hasHigh = agentTasks.some((t: any) => t.prioritaet === 'high');
+        const hasCritical = agentTasks.some((t: any) => t.priority === 'critical');
+        const hasHigh = agentTasks.some((t: any) => t.priority === 'high');
         const hasMaximizer = agentTasks.some((t: any) => t.isMaximizerMode);
         const effectiveIntervalSek = hasMaximizer || hasCritical
-          ? Math.max(60, Math.floor(a.zyklusIntervallSek / 3))   // 3× faster for critical/maximizer
+          ? Math.max(60, Math.floor(a.autoCycleIntervalSec / 3))   // 3× faster for critical/maximizer
           : hasHigh
-          ? Math.max(90, Math.floor(a.zyklusIntervallSek / 2))   // 2× faster for high priority
-          : a.zyklusIntervallSek;                                  // normal otherwise
+          ? Math.max(90, Math.floor(a.autoCycleIntervalSec / 2))   // 2× faster for high priority
+          : a.autoCycleIntervalSec;                                  // normal otherwise
 
         let needsZyklus = false;
-        if (!a.letzterZyklus) {
+        if (!a.lastCycle) {
           needsZyklus = true;
         } else {
-          const lastTime = new Date(a.letzterZyklus).getTime();
+          const lastTime = new Date(a.lastCycle).getTime();
           if (currentTime - lastTime > effectiveIntervalSek * 1000) {
             needsZyklus = true;
           }
@@ -237,20 +237,20 @@ export class Scheduler {
 
         // ── Predictive budget guard ───────────────────────────────────────────
         // budget=0 means unlimited. Only block when set AND exceeded.
-        if (a.budgetMonatCent > 0 && a.verbrauchtMonatCent >= a.budgetMonatCent) continue;
+        if (a.monthlyBudgetCent > 0 && a.monthlySpendCent >= a.monthlyBudgetCent) continue;
 
         // At 95%+ budget: skip non-urgent cycles to preserve headroom
-        if (a.budgetMonatCent > 0 && !hasMaximizer) {
-          const usedPct = a.verbrauchtMonatCent / a.budgetMonatCent;
+        if (a.monthlyBudgetCent > 0 && !hasMaximizer) {
+          const usedPct = a.monthlySpendCent / a.monthlyBudgetCent;
           if (usedPct >= 0.95 && !hasCritical) {
-            trace(a.id, a.unternehmenId, 'warning', '⚠️ Budget fast erschöpft',
+            trace(a.id, a.companyId, 'warning', '⚠️ Budget fast erschöpft',
               `${Math.round(usedPct * 100)}% verbraucht — Zyklus übersprungen (kein critical/maximizer Task). Nur kritische Aufgaben werden noch ausgeführt.`);
             continue;
           }
         }
 
         // Fire and forget — Scheduler darf nicht blockieren
-        this.triggerZyklus(a.id, a.unternehmenId, 'scheduler').catch(e => {
+        this.triggerZyklus(a.id, a.companyId, 'scheduler').catch(e => {
           console.error(`Fehler bei Arbeitszyklus für ${a.id}:`, e);
         });
       }
@@ -263,18 +263,20 @@ export class Scheduler {
   }
 
   private wakeupCEOIfNeeded(activeExperts: any[]) {
-    // Find CEO agent (verbindungsTyp === 'ceo' OR rolle matches CEO/Manager)
+    // Find CEO agent (isOrchestrator flag OR connectionType 'ceo' OR role matches CEO/Manager)
     const ceoAgent = activeExperts.find(a =>
-      a.verbindungsTyp === 'ceo' ||
-      /ceo|geschäftsführer|projektmanager|manager/i.test(a.rolle)
+      a.isOrchestrator === true ||
+      a.isOrchestrator === 1 ||
+      a.connectionType === 'ceo' ||
+      /ceo|geschäftsführer|projektmanager|manager/i.test(a.role)
     );
     if (!ceoAgent) return;
 
     // Check for unassigned tasks in this company
-    const unassigned = db.select().from(aufgaben)
+    const unassigned = db.select().from(tasks)
       .where(and(
-        eq(aufgaben.unternehmenId, ceoAgent.unternehmenId),
-        isNull(aufgaben.zugewiesenAn),
+        eq(tasks.companyId, ceoAgent.companyId),
+        isNull(tasks.assignedTo),
       ))
       .all()
       .filter((t: any) => t.status !== 'done' && t.status !== 'cancelled');
@@ -285,46 +287,46 @@ export class Scheduler {
     if (ceoAgent.status === 'running') return;
 
     // Check CEO was not triggered in the last 60s
-    if (ceoAgent.letzterZyklus) {
-      const elapsed = Date.now() - new Date(ceoAgent.letzterZyklus).getTime();
+    if (ceoAgent.lastCycle) {
+      const elapsed = Date.now() - new Date(ceoAgent.lastCycle).getTime();
       if (elapsed < 60000) return;
     }
 
     console.log(`🧠 CEO auto-wakeup: ${unassigned.length} unzugewiesene Task(s) erkannt`);
-    this.triggerZyklus(ceoAgent.id, ceoAgent.unternehmenId, 'scheduler').catch(e => {
+    this.triggerZyklus(ceoAgent.id, ceoAgent.companyId, 'scheduler').catch(e => {
       console.error('CEO wakeup error:', e);
     });
   }
 
   // Public: trigger CEO wakeup for a company (called when a new task is created)
-  triggerCEOForCompany(unternehmenId: string) {
+  triggerCEOForCompany(companyId: string) {
     // Include 'idle' agents — CEO is normally idle between cycles, not 'active'
-    const agents = db.select().from(experten)
+    const agentsRows = db.select().from(agents)
       .where(and(
-        eq(experten.unternehmenId, unternehmenId),
-        inArray(experten.status, ['active', 'idle']),
+        eq(agents.companyId, companyId),
+        inArray(agents.status, ['active', 'idle']),
       ))
       .all();
-    this.wakeupCEOIfNeeded(agents);
+    this.wakeupCEOIfNeeded(agentsRows);
   }
 
   async triggerZyklus(
-    expertId: string,
-    unternehmenId: string,
+    agentId: string,
+    companyId: string,
     quelle: 'scheduler' | 'manual' | 'callback' | 'telegram' = 'manual',
     vonExpertId?: string,   // set when triggered by a peer agent (P2P / meeting)
     meetingId?: string,     // set when this cycle is part of a meeting
   ) {
-    const expert = db.select().from(experten).where(eq(experten.id, expertId)).get();
-    const company = db.select().from(unternehmen).where(eq(unternehmen.id, unternehmenId)).get();
+    const expert = db.select().from(agents).where(eq(agents.id, agentId)).get();
+    const company = db.select().from(companies).where(eq(companies.id, companyId)).get();
 
     if (!expert || !company) return;
 
     // Asynchroner Workflow: Blockiere parallele Zyklen, wenn der Experte bereits arbeitet
     if (expert.status === 'running') {
       let isStuck = false;
-      if (expert.letzterZyklus) {
-        const elapsed = Date.now() - new Date(expert.letzterZyklus).getTime();
+      if (expert.lastCycle) {
+        const elapsed = Date.now() - new Date(expert.lastCycle).getTime();
         // Wenn länger als 5 Minuten "running", gehen wir von einem Crash aus und starten neu
         if (elapsed > 300000) {
           isStuck = true;
@@ -332,23 +334,23 @@ export class Scheduler {
       }
       
       if (!isStuck) {
-        console.log(`⏱️  Agent ${expertId} arbeitet bereits. Eingangssignal (Quelle: ${quelle}) wird in die Warteschlange gestellt.`);
+        console.log(`⏱️  Agent ${agentId} arbeitet bereits. Eingangssignal (Quelle: ${quelle}) wird in die Warteschlange gestellt.`);
         // Optional: Einen Info-Trace absetzen, damit der User das sieht
-        trace(expertId, unternehmenId, 'info', `Eingangswarteschlange (Queue)`, `Neue Aufgabe/Nachricht empfangen. Agent arbeitet dies sofort nach aktuellem Task ab.`);
+        trace(agentId, companyId, 'info', `Eingangswarteschlange (Queue)`, `Neue Aufgabe/Nachricht empfangen. Agent arbeitet dies sofort nach aktuellem Task ab.`);
         return;
       } else {
-        console.log(`⚠️ Agent ${expertId} war >5 Min blockiert. Neustart erzwungen.`);
-        trace(expertId, unternehmenId, 'warning', `Blockierung erkannt`, `Letzter Zyklus dauerte zu lange. Task-Prozess wird neu gestartet.`);
+        console.log(`⚠️ Agent ${agentId} war >5 Min blockiert. Neustart erzwungen.`);
+        trace(agentId, companyId, 'warning', `Blockierung erkannt`, `Letzter Zyklus dauerte zu lange. Task-Prozess wird neu gestartet.`);
       }
     }
 
     // Resolve effective adapter + key (check company-specific key first, then global)
-    const { adapterType, apiKey: resolvedApiKey } = await this.resolveAdapter(expert.verbindungsTyp, expert.verbindungsConfig || undefined, unternehmenId);
+    const { adapterType, apiKey: resolvedApiKey } = await this.resolveAdapter(expert.connectionType, expert.connectionConfig || undefined, companyId);
 
     let isOrchestrator = false;
     let parsedConfig: any = {};
     try {
-      parsedConfig = JSON.parse(expert.verbindungsConfig || '{}');
+      parsedConfig = JSON.parse(expert.connectionConfig || '{}');
       isOrchestrator = parsedConfig.isOrchestrator === true;
     } catch (e) {}
 
@@ -356,7 +358,7 @@ export class Scheduler {
     const configuredModel: string = parsedConfig.model || '';
     if (configuredModel.endsWith(':free') || configuredModel === 'auto:free') {
       console.error(`[Scheduler] Agent ${expert.name} hat ein Free-Model (${configuredModel}) konfiguriert. Ausführung blockiert.`);
-      trace(expertId, unternehmenId, 'error', 'Free-Model blockiert',
+      trace(agentId, companyId, 'error', 'Free-Model blockiert',
         `Modell "${configuredModel}" ist ein kostenloses Modell und wurde aus Stabilitätsgründen blockiert. Bitte wechsle zu einem bezahlten Modell.`);
       return;
     }
@@ -364,39 +366,39 @@ export class Scheduler {
     // CEO-Agenten: 'ceo' Verbindung ODER Orchestrator-Flag gesetzt.
     // Ausnahme: Wenn der Nutzer explizit 'claude-code' oder 'anthropic' wählt,
     // wird die Wahl respektiert — diese haben eigene Adapter und brauchen keinen API-Key.
-    const explicitAdapter = ['claude-code', 'anthropic', 'gemini-cli', 'codex-cli', 'ollama', 'ollama_cloud', 'bash', 'http'];
-    const useExplicitAdapter = explicitAdapter.includes(expert.verbindungsTyp || '');
-    const isCEO = !useExplicitAdapter && (expert.verbindungsTyp === 'ceo' || isOrchestrator);
+    const explicitAdapter = ['claude-code', 'anthropic', 'gemini-cli', 'codex-cli', 'kimi-cli', 'ollama', 'ollama_cloud', 'bash', 'http'];
+    const useExplicitAdapter = explicitAdapter.includes(expert.connectionType || '');
+    const isCEO = !useExplicitAdapter && (expert.connectionType === 'ceo' || isOrchestrator);
 
     const finalAdapterType = isCEO ? 'ceo' : adapterType;
     const adapter = getAdapter(finalAdapterType);
 
     if (!adapter) {
-      trace(expertId, unternehmenId, 'error', `Adapter nicht gefunden: ${finalAdapterType}`);
-      console.error(`Adapter ${finalAdapterType} nicht gefunden für Experte ${expertId}`);
+      trace(agentId, companyId, 'error', `Adapter nicht gefunden: ${finalAdapterType}`);
+      console.error(`Adapter ${finalAdapterType} nicht gefunden für Experte ${agentId}`);
       return;
     }
 
     const laufId = uuid();
-    db.insert(arbeitszyklen).values({
+    db.insert(workCycles).values({
       id: laufId,
-      unternehmenId,
-      expertId,
+      companyId,
+      agentId,
       quelle,
       status: 'running',
       gestartetAm: now(),
-      erstelltAm: now(),
+      createdAt: now(),
     }).run();
 
     // Status auf 'running' setzen
-    db.update(experten).set({ status: 'running', letzterZyklus: now(), aktualisiertAm: now() }).where(eq(experten.id, expertId)).run();
-    trace(expertId, unternehmenId, 'info', `Arbeitszyklus gestartet`, `Quelle: ${quelle} · Adapter: ${expert.verbindungsTyp}`, laufId);
+    db.update(agents).set({ status: 'running', lastCycle: now(), updatedAt: now() }).where(eq(agents.id, agentId)).run();
+    trace(agentId, companyId, 'info', `Arbeitszyklus gestartet`, `Quelle: ${quelle} · Adapter: ${expert.connectionType}`, laufId);
 
     // Kontext sammeln
     // Load todo + in_progress + blocked tasks (so agent knows what to work on next)
-    const expertAufgaben = db.select().from(aufgaben)
+    const expertAufgaben = db.select().from(tasks)
       .where(and(
-        eq(aufgaben.zugewiesenAn, expertId),
+        eq(tasks.assignedTo, agentId),
       ))
       .all()
       .filter((a: any) => a.status === 'todo' || a.status === 'in_progress' || a.status === 'blocked');
@@ -406,52 +408,52 @@ export class Scheduler {
     // Sort by priority score so the agent sees the most urgent tasks first
     const sortedAufgaben = [...expertAufgaben].sort((a, b) => taskPriorityScore(b) - taskPriorityScore(a));
 
-    const tasksStrings = sortedAufgaben.map((a: any) => `[${a.id.slice(0,8)}] ${sanitizeForPrompt(a.titel, 120)} (${a.status}${(a as any).isMaximizerMode ? ' MAXIMIZER' : ''}${a.beschreibung ? ': ' + sanitizeForPrompt(a.beschreibung, 80) : ''})`);
+    const tasksStrings = sortedAufgaben.map((a: any) => `[${a.id.slice(0,8)}] ${sanitizeForPrompt(a.title, 120)} (${a.status}${(a as any).isMaximizerMode ? ' MAXIMIZER' : ''}${a.description ? ': ' + sanitizeForPrompt(a.description, 80) : ''})`);
     if (tasksStrings.length > 0) {
-      trace(expertId, unternehmenId, 'thinking', `Aufgaben laden`, `${tasksStrings.length} aktive Aufgabe(n): ${tasksStrings.slice(0, 3).join(', ')}${tasksStrings.length > 3 ? '…' : ''}`, laufId);
+      trace(agentId, companyId, 'thinking', `Aufgaben laden`, `${tasksStrings.length} aktive Aufgabe(n): ${tasksStrings.slice(0, 3).join(', ')}${tasksStrings.length > 3 ? '…' : ''}`, laufId);
     }
 
     // Load team members for agent-to-agent messaging
     const alleExperten = db.select({
-      id: experten.id, name: experten.name, rolle: experten.rolle,
-      status: experten.status, letzterZyklus: experten.letzterZyklus,
-      reportsTo: experten.reportsTo, isOrchestrator: experten.isOrchestrator,
-    }).from(experten).where(eq(experten.unternehmenId, unternehmenId)).all()
-      .filter((e: any) => e.id !== expertId);
+      id: agents.id, name: agents.name, role: agents.role,
+      status: agents.status, letzterZyklus: agents.lastCycle,
+      reportsTo: agents.reportsTo, isOrchestrator: agents.isOrchestrator,
+    }).from(agents).where(eq(agents.companyId, companyId)).all()
+      .filter((e: any) => e.id !== agentId);
 
     // Build team context string
-    let teamKontext = '';
+    let teamContext = '';
     if (expert.reportsTo) {
       const supervisor = alleExperten.find((e: any) => e.id === expert.reportsTo);
-      teamKontext = supervisor
-        ? `Vorgesetzter: ${supervisor.name} (${supervisor.rolle})`
+      teamContext = supervisor
+        ? `Vorgesetzter: ${supervisor.name} (${supervisor.role})`
         : `Vorgesetzter-ID: ${expert.reportsTo}`;
     } else {
-      teamKontext = 'Vorgesetzter: Board (oberste Ebene)';
+      teamContext = 'Vorgesetzter: Board (oberste Ebene)';
     }
 
     // ── Orchestrator: rich team status context ─────────────────────────────
     if (expert.isOrchestrator) {
       // Direct reports (agents that report to this orchestrator)
-      const directReports = alleExperten.filter((e: any) => e.reportsTo === expertId);
+      const directReports = alleExperten.filter((e: any) => e.reportsTo === agentId);
 
       if (directReports.length > 0) {
         // Load active task counts per report
         const now_ts = new Date().toISOString();
         const reportIds = directReports.map((e: any) => e.id);
         const teamTasks = db.select({
-          zugewiesenAn: aufgaben.zugewiesenAn,
-          status: aufgaben.status,
-          titel: aufgaben.titel,
-          prioritaet: aufgaben.prioritaet,
-        }).from(aufgaben)
-          .where(and(eq(aufgaben.unternehmenId, unternehmenId), inArray(aufgaben.zugewiesenAn, reportIds)))
+          zugewiesenAn: tasks.assignedTo,
+          status: tasks.status,
+          titel: tasks.title,
+          prioritaet: tasks.priority,
+        }).from(tasks)
+          .where(and(eq(tasks.companyId, companyId), inArray(tasks.assignedTo, reportIds)))
           .all();
 
         const tasksByAgent: Record<string, any[]> = {};
         for (const t of teamTasks) {
-          if (!tasksByAgent[t.zugewiesenAn]) tasksByAgent[t.zugewiesenAn] = [];
-          tasksByAgent[t.zugewiesenAn].push(t);
+          if (!tasksByAgent[t.assignedTo]) tasksByAgent[t.assignedTo] = [];
+          tasksByAgent[t.assignedTo].push(t);
         }
 
         // Load latest trace event per direct report for accurate status
@@ -459,17 +461,17 @@ export class Scheduler {
         for (const e of directReports) {
           try {
             const latestTrace = db.select({
-              typ: traceEreignisse.typ,
-              titel: traceEreignisse.titel,
-              erstelltAm: traceEreignisse.erstelltAm,
-            }).from(traceEreignisse)
-              .where(eq(traceEreignisse.expertId, e.id))
-              .orderBy(desc(traceEreignisse.erstelltAm))
+              typ: traceEvents.type,
+              titel: traceEvents.title,
+              erstelltAm: traceEvents.createdAt,
+            }).from(traceEvents)
+              .where(eq(traceEvents.agentId, e.id))
+              .orderBy(desc(traceEvents.createdAt))
               .limit(1)
               .get() as any;
             if (latestTrace) {
-              const diffMin = Math.floor((Date.now() - new Date(latestTrace.erstelltAm).getTime()) / 60000);
-              latestTraceByAgent[e.id] = `last action ${diffMin}m ago: ${sanitizeForPrompt(latestTrace.titel, 80)}`;
+              const diffMin = Math.floor((Date.now() - new Date(latestTrace.createdAt).getTime()) / 60000);
+              latestTraceByAgent[e.id] = `last action ${diffMin}m ago: ${sanitizeForPrompt(latestTrace.title, 80)}`;
             }
           } catch { /* skip */ }
         }
@@ -480,39 +482,39 @@ export class Scheduler {
           const inProgressTasks = activeTasks.filter((t: any) => t.status === 'in_progress');
           const doneTasks = agentTasks.filter((t: any) => ['done', 'abgeschlossen'].includes(t.status));
           const statusEmoji: Record<string, string> = { active: '🟢', running: '⚡', idle: '⏸', paused: '🔴', error: '❌', terminated: '💀' };
-          const lastSeen = e.letzterZyklus
-            ? (() => { const diff = Date.now() - new Date(e.letzterZyklus).getTime(); const m = Math.floor(diff/60000); return m < 60 ? `${m}m ago` : `${Math.floor(m/60)}h ago`; })()
+          const lastSeen = e.lastCycle
+            ? (() => { const diff = Date.now() - new Date(e.lastCycle).getTime(); const m = Math.floor(diff/60000); return m < 60 ? `${m}m ago` : `${Math.floor(m/60)}h ago`; })()
             : 'never';
           const currentTask = inProgressTasks[0] || activeTasks[0];
-          const topTask = currentTask ? ` | CURRENTLY: "${sanitizeForPrompt(currentTask.titel, 100)}" [${currentTask.status}/${currentTask.prioritaet}]` : ' | NO ACTIVE TASK';
+          const topTask = currentTask ? ` | CURRENTLY: "${sanitizeForPrompt(currentTask.title, 100)}" [${currentTask.status}/${currentTask.priority}]` : ' | NO ACTIVE TASK';
           const lastTrace = latestTraceByAgent[e.id] ? ` | ${latestTraceByAgent[e.id]}` : '';
-          return `  ${statusEmoji[e.status] || '⬜'} ${e.name} (${e.rolle}) [ID:${e.id.slice(0,8)}] — status:${e.status}, ${activeTasks.length} open tasks (${inProgressTasks.length} in_progress), ${doneTasks.length} done, last_seen:${lastSeen}${topTask}${lastTrace}`;
+          return `  ${statusEmoji[e.status] || '⬜'} ${e.name} (${e.role}) [ID:${e.id.slice(0,8)}] — status:${e.status}, ${activeTasks.length} open tasks (${inProgressTasks.length} in_progress), ${doneTasks.length} done, last_seen:${lastSeen}${topTask}${lastTrace}`;
         }).join('\n');
 
-        teamKontext += `\n\n═══ DEIN TEAM (DIREKTE BERICHTE) ═══\n${reportLines}`;
+        teamContext += `\n\n═══ DEIN TEAM (DIREKTE BERICHTE) ═══\n${reportLines}`;
 
         // Unassigned tasks in the company (orchestrator can delegate these)
-        const unassigned = db.select({ id: aufgaben.id, titel: aufgaben.titel, prioritaet: aufgaben.prioritaet, status: aufgaben.status })
-          .from(aufgaben)
-          .where(and(eq(aufgaben.unternehmenId, unternehmenId), isNull(aufgaben.zugewiesenAn)))
+        const unassigned = db.select({ id: tasks.id, titel: tasks.title, prioritaet: tasks.priority, status: tasks.status })
+          .from(tasks)
+          .where(and(eq(tasks.companyId, companyId), isNull(tasks.assignedTo)))
           .all()
           .filter((t: any) => !['done', 'cancelled'].includes(t.status));
 
         if (unassigned.length > 0) {
-          teamKontext += `\n\n═══ NICHT ZUGEWIESENE AUFGABEN ═══\n${unassigned.slice(0, 10).map((t: any) => `  [${t.id.slice(0,8)}] ${sanitizeForPrompt(t.titel, 120)} (${t.prioritaet}/${t.status})`).join('\n')}`;
+          teamContext += `\n\n═══ NICHT ZUGEWIESENE AUFGABEN ═══\n${unassigned.slice(0, 10).map((t: any) => `  [${t.id.slice(0,8)}] ${sanitizeForPrompt(t.title, 120)} (${t.priority}/${t.status})`).join('\n')}`;
         }
       }
     }
 
     // Skill Library: Smart RAG — score skills by relevance to current tasks
-    const allAssignedSkills = db.select({ skill: skillsLibrary }).from(expertenSkills)
-      .innerJoin(skillsLibrary, eq(expertenSkills.skillId, skillsLibrary.id))
-      .where(eq(expertenSkills.expertId, expertId)).all().map((r: any) => r.skill);
+    const allAssignedSkills = db.select({ skill: skillsLibrary }).from(agentSkills)
+      .innerJoin(skillsLibrary, eq(agentSkills.skillId, skillsLibrary.id))
+      .where(eq(agentSkills.agentId, agentId)).all().map((r: any) => r.skill);
 
     let skillContext = '';
     if (allAssignedSkills.length > 0) {
       // Build query from current tasks + agent role for relevance scoring
-      const queryText = (tasksStrings.join(' ') + ' ' + expert.rolle + ' ' + (expert.faehigkeiten || '')).toLowerCase();
+      const queryText = (tasksStrings.join(' ') + ' ' + expert.role + ' ' + (expert.skills || '')).toLowerCase();
 
       // ── Semantic matching (MiniLM-L6-v2) with BM25 keyword fallback ────────
       let toInject: any[] = [];
@@ -534,7 +536,7 @@ export class Scheduler {
         // BM25 keyword overlap (original logic)
         const queryWords = queryText.split(/\W+/).filter((w: string) => w.length > 3);
         const scored = allAssignedSkills.map((skill: any) => {
-          const skillText = `${skill.name} ${skill.beschreibung ?? ''} ${skill.inhalt}`.toLowerCase();
+          const skillText = `${skill.name} ${skill.description ?? ''} ${skill.content}`.toLowerCase();
           const score = queryWords.reduce((s: number, w: string) => s + (skillText.includes(w) ? 1 : 0), 0);
           return { skill, score };
         });
@@ -546,9 +548,9 @@ export class Scheduler {
       }
 
       if (toInject.length > 0) {
-        trace(expertId, unternehmenId, 'action', `Skills (RAG/${matchMethod})`, `${toInject.length}/${allAssignedSkills.length} Skill(s) relevant: ${toInject.map((s: any) => s.skill.name).join(', ')}`, laufId);
+        trace(agentId, companyId, 'action', `Skills (RAG/${matchMethod})`, `${toInject.length}/${allAssignedSkills.length} Skill(s) relevant: ${toInject.map((s: any) => s.skill.name).join(', ')}`, laufId);
         skillContext = '\n\nWISSENSBASIS (Skills, nach Relevanz):\n' + toInject.map((s: any) =>
-          `### ${s.skill.name}\n${s.skill.inhalt.slice(0, 1500)}`
+          `### ${s.skill.name}\n${s.skill.content.slice(0, 1500)}`
         ).join('\n\n');
       }
     }
@@ -556,7 +558,7 @@ export class Scheduler {
     
     // Task workspace: prefer task-specific path, fall back to agent/company/root
     const activeTaskWorkspace = expertAufgaben.find((t: any) => t.workspacePath)?.workspacePath || null;
-    const effectiveWorkDir = resolveWorkDir(expertId, unternehmenId, activeTaskWorkspace);
+    const effectiveWorkDir = resolveWorkDir(agentId, companyId, activeTaskWorkspace);
     const isCustomWorkDir = effectiveWorkDir !== process.cwd();
 
     // Tools Erklärung
@@ -586,7 +588,7 @@ VERFÜGBARE TOOLS (Ausgabe als JSON in \`\`\`json Block):
 - { "action": "screen_record", "params": { "nodeId": "...", "durationSec": 10 } }
 - { "action": "location_get", "params": { "nodeId": "..." } }
 - { "action": "clipboard_read", "params": { "nodeId": "..." } }
-- { "action": "hire_agent", "params": { "name": "...", "rolle": "...", "faehigkeiten": "...", "verbindungsTyp": "openrouter" } }
+- { "action": "hire_agent", "params": { "name": "...", "rolle": "...", "faehigkeiten": "...", "connectionType": "openrouter" } }
 - { "action": "call_meeting", "params": { "frage": "Eure Einschätzung zu X?", "teilnehmer": ["AGENT_ID_1", "AGENT_ID_2"] } }
 - { "action": "delegate_task", "params": { "taskId": "TASK_ID", "agentId": "AGENT_ID", "message": "Briefing für den Agenten (optional)" } }
 - { "action": "add_dependency", "params": { "blockerId": "...", "blockedId": "..." } }
@@ -603,37 +605,37 @@ Wenn du eine wiederverwendbare Lösung findest, kannst du sie als Skill taggen:
 Das System speichert diese automatisch und stellt sie dir bei zukünftigen Tasks bereit.`;
 
     // Lade ungelesene Nachrichten (CEO + SYSTEM BEOBACHTUNGEN)
-    const unreadMsgs = db.select().from(chatNachrichten)
-      .where(and(eq(chatNachrichten.expertId, expertId), eq(chatNachrichten.gelesen, false)))
+    const unreadMsgs = db.select().from(chatMessages)
+      .where(and(eq(chatMessages.agentId, agentId), eq(chatMessages.read, false)))
       .all();
 
     // P2P: messages from a peer agent (vonExpertId set) — these are direct agent-to-agent messages
-    const peerMsgs = unreadMsgs.filter((m: any) => m.absenderTyp === 'agent' && m.vonExpertId);
+    const peerMsgs = unreadMsgs.filter((m: any) => m.senderType === 'agent' && m.vonExpertId);
     // Board / normal chat messages
-    const boardMsgs = unreadMsgs.filter((m: any) => m.absenderTyp === 'board' || (m.absenderTyp === 'agent' && !m.vonExpertId));
+    const boardMsgs = unreadMsgs.filter((m: any) => m.senderType === 'board' || (m.senderType === 'agent' && !m.vonExpertId));
 
     const chatContext = boardMsgs.map((m: any) =>
-      m.absenderTyp === 'board' ? `CEO: ${m.nachricht}` : `Kollege: ${m.nachricht}`
+      m.senderType === 'board' ? `CEO: ${m.message}` : `Kollege: ${m.message}`
     );
 
     const systemObservations = unreadMsgs
-      .filter((m: any) => m.absenderTyp === 'system')
-      .map((m: any) => m.nachricht);
+      .filter((m: any) => m.senderType === 'system')
+      .map((m: any) => m.message);
 
     const isPeerTriggered = vonExpertId != null || peerMsgs.length > 0;
 
     if (isPeerTriggered) {
       const senderLabel = vonExpertId
-        ? (db.select({ name: experten.name }).from(experten).where(eq(experten.id, vonExpertId)).get() as any)?.name || 'Kollege'
+        ? (db.select({ name: agents.name }).from(agents).where(eq(agents.id, vonExpertId)).get() as any)?.name || 'Kollege'
         : 'Kollege';
-      trace(expertId, unternehmenId, 'thinking', `P2P Nachricht von ${senderLabel}`, `${peerMsgs.length} Nachricht(en)${meetingId ? ` · Meeting ${meetingId.slice(0,8)}` : ''}`, laufId);
+      trace(agentId, companyId, 'thinking', `P2P Nachricht von ${senderLabel}`, `${peerMsgs.length} Nachricht(en)${meetingId ? ` · Meeting ${meetingId.slice(0,8)}` : ''}`, laufId);
     } else if (chatContext.length > 0) {
-      trace(expertId, unternehmenId, 'thinking', `Neue Nachrichten`, `${chatContext.length} Nachricht(en) vom Board`, laufId);
+      trace(agentId, companyId, 'thinking', `Neue Nachrichten`, `${chatContext.length} Nachricht(en) vom Board`, laufId);
     }
 
     if (unreadMsgs.length > 0) {
       for (const m of unreadMsgs) {
-        db.update(chatNachrichten).set({ gelesen: true }).where(eq(chatNachrichten.id, m.id)).run();
+        db.update(chatMessages).set({ read: true }).where(eq(chatMessages.id, m.id)).run();
       }
     }
 
@@ -644,35 +646,35 @@ Das System speichert diese automatisch und stellt sie dir bei zukünftigen Tasks
     const defaultModelKey = adapterType === 'ollama' ? 'ollama_default_model' : 'openrouter_default_model';
     if (adapterType === 'openrouter' || adapterType === 'ollama') {
       try {
-        const defaultModelRow = db.select({ wert: einstellungen.wert })
-          .from(einstellungen)
-          .where(and(eq(einstellungen.schluessel, defaultModelKey), eq(einstellungen.unternehmenId, unternehmenId)))
+        const defaultModelRow = db.select({ wert: settings.value })
+          .from(settings)
+          .where(and(eq(settings.key, defaultModelKey), eq(settings.companyId, companyId)))
           .get()
-          ?? db.select({ wert: einstellungen.wert })
-            .from(einstellungen)
-            .where(and(eq(einstellungen.schluessel, defaultModelKey), eq(einstellungen.unternehmenId, '')))
+          ?? db.select({ wert: settings.value })
+            .from(settings)
+            .where(and(eq(settings.key, defaultModelKey), eq(settings.companyId, '')))
             .get();
-        if (defaultModelRow?.wert) {
-          globalDefaultModel = decryptSetting(defaultModelKey, defaultModelRow.wert);
+        if (defaultModelRow?.value) {
+          globalDefaultModel = decryptSetting(defaultModelKey, defaultModelRow.value);
         }
       } catch { /* ignore */ }
     }
 
-    trace(expertId, unternehmenId, 'action', `LLM-Anfrage senden`, `Modell: ${adapterType}`, laufId);
+    trace(agentId, companyId, 'action', `LLM-Anfrage senden`, `Modell: ${adapterType}`, laufId);
 
     // --- ITERATIVE CONTEXT-KOMPRESSION (Learning Loop-Vorbild) ---
     // Statt Kontext zu verwerfen, wird eine strukturierte Zusammenfassung erstellt/aktualisiert.
     const kontextLaenge = chatContext.join('\n').length + systemObservations.join('\n').length;
     if (sollteKomprimieren(kontextLaenge)) {
       const turnText = [...chatContext, ...systemObservations].join('\n\n');
-      komprimiereKontext(expertId, unternehmenId, turnText);
-      trace(expertId, unternehmenId, 'info', '📋 Kontext komprimiert', `${kontextLaenge} Zeichen → iterative Summary aktualisiert`);
+      komprimiereKontext(agentId, companyId, turnText);
+      trace(agentId, companyId, 'info', '📋 Kontext komprimiert', `${kontextLaenge} Zeichen → iterative Summary aktualisiert`);
     }
 
     // Summary in den Kontext laden (wenn vorhanden)
-    const existingSummary = ladeSummary(expertId);
+    const existingSummary = ladeSummary(agentId);
     if (existingSummary) {
-      teamKontext += `\n\n${existingSummary}`;
+      teamContext += `\n\n${existingSummary}`;
     }
 
     // --- MEMORY AUTO-LOAD (relevante Erinnerungen injizieren) ---
@@ -682,13 +684,13 @@ Das System speichert diese automatisch und stellt sie dir bei zukünftigen Tasks
       .split(/\W+/)
       .filter(w => w.length > 4)
       .slice(0, 15);
-    const memoryContext = loadRelevantMemory(expertId, taskKeywords);
+    const memoryContext = loadRelevantMemory(agentId, taskKeywords);
     if (memoryContext) {
-      teamKontext += memoryContext;
+      teamContext += memoryContext;
     }
 
     // Determine UI language for this company → agents respond accordingly
-    const uiLang = getUiLanguage(unternehmenId);
+    const uiLang = getUiLanguage(companyId);
     const li = langInstruction(uiLang);
 
     // Build prompt — priority: peer message > board message > observations > default cycle
@@ -696,10 +698,10 @@ Das System speichert diese automatisch und stellt sie dir bei zukünftigen Tasks
     if (isPeerTriggered && (peerMsgs.length > 0 || vonExpertId)) {
       // Responding to a peer agent (P2P or meeting)
       const senderName = vonExpertId
-        ? (db.select({ name: experten.name }).from(experten).where(eq(experten.id, vonExpertId)).get() as any)?.name || (uiLang === 'en' ? 'Colleague' : 'Kollege')
+        ? (db.select({ name: agents.name }).from(agents).where(eq(agents.id, vonExpertId)).get() as any)?.name || (uiLang === 'en' ? 'Colleague' : 'Kollege')
         : (uiLang === 'en' ? 'Colleague' : 'Kollege');
       const peerText = peerMsgs.length > 0
-        ? peerMsgs.map((m: any) => m.nachricht).join('\n')
+        ? peerMsgs.map((m: any) => m.message).join('\n')
         : (uiLang === 'en' ? '(Waiting for your assessment)' : '(Warte auf deine Einschätzung)');
       const meetingContext = meetingId
         ? (uiLang === 'en'
@@ -727,8 +729,8 @@ ${peerText}`;
         : '';
 
       const teamList = alleExperten
-        .filter((e: any) => e.id !== expertId)
-        .map((e: any) => `  • ${e.name} (ID: ${e.id}) — ${e.rolle}`)
+        .filter((e: any) => e.id !== agentId)
+        .map((e: any) => `  • ${e.name} (ID: ${e.id}) — ${e.role}`)
         .join('\n');
 
       if (uiLang === 'en') {
@@ -771,7 +773,7 @@ Store credentials/API keys:
 
 Hire new agent:
 \`\`\`json
-{"action": "hire_agent", "params": {"name": "Social Media Manager", "rolle": "Content & Social Media", "faehigkeiten": "Instagram, Content Creation", "verbindungsTyp": "openrouter"}}
+{"action": "hire_agent", "params": {"name": "Social Media Manager", "rolle": "Content & Social Media", "faehigkeiten": "Instagram, Content Creation", "connectionType": "openrouter"}}
 \`\`\`
 
 ${teamList ? `TEAM:\n${teamList}\n` : ''}
@@ -819,7 +821,7 @@ Credentials/API-Keys sicher speichern:
 
 Neuen Agenten einstellen:
 \`\`\`json
-{"action": "hire_agent", "params": {"name": "Social Media Manager", "rolle": "Content & Social Media", "faehigkeiten": "Instagram, Content Creation", "verbindungsTyp": "openrouter"}}
+{"action": "hire_agent", "params": {"name": "Social Media Manager", "rolle": "Content & Social Media", "faehigkeiten": "Instagram, Content Creation", "connectionType": "openrouter"}}
 \`\`\`
 
 ${teamList ? `TEAM:\n${teamList}\n` : ''}
@@ -856,23 +858,23 @@ ${systemObservations.length > 0 ? `\nLetzte Aktionsergebnisse:\n${systemObservat
       let goalsSection = '';
       try {
         const activeGoals = db.select({
-          id: ziele.id, titel: ziele.titel, beschreibung: ziele.beschreibung,
-        }).from(ziele)
-          .where(and(eq(ziele.unternehmenId, unternehmenId), inArray(ziele.status, ['active', 'planned'])))
-          .orderBy(asc(ziele.erstelltAm))
+          id: goals.id, titel: goals.title, beschreibung: goals.description,
+        }).from(goals)
+          .where(and(eq(goals.companyId, companyId), inArray(goals.status, ['active', 'planned'])))
+          .orderBy(asc(goals.createdAt))
           .limit(5).all();
 
         if (activeGoals.length > 0) {
           const goalLines = activeGoals.map(g => {
-            const linked = db.select({ status: aufgaben.status })
-              .from(aufgaben).where(and(eq(aufgaben.zielId, g.id), eq(aufgaben.unternehmenId, unternehmenId))).all();
+            const linked = db.select({ status: tasks.status })
+              .from(tasks).where(and(eq(tasks.goalId, g.id), eq(tasks.companyId, companyId))).all();
             const done = linked.filter(t => t.status === 'done').length;
             const total = linked.length;
             const pct = total > 0 ? Math.round((done / total) * 100) : 0;
             const bar = '█'.repeat(Math.round(pct / 10)) + '░'.repeat(10 - Math.round(pct / 10));
             const open = linked.filter(t => t.status !== 'done');
-            const openList = open.slice(0, 3).map((t: any) => `    - ${(t as any).titel || '?'}`).join('\n');
-            return `  • ${g.titel} [${bar}] ${pct}% (${done}/${total} Tasks)${openList ? `\n    Offene Tasks:\n${openList}` : ''}`;
+            const openList = open.slice(0, 3).map((t: any) => `    - ${(t as any).title || '?'}`).join('\n');
+            return `  • ${g.title} [${bar}] ${pct}% (${done}/${total} Tasks)${openList ? `\n    Offene Tasks:\n${openList}` : ''}`;
           });
           goalsSection = `\n\n🎯 STRATEGISCHE ZIELE:\n${goalLines.join('\n')}`;
         }
@@ -880,13 +882,13 @@ ${systemObservations.length > 0 ? `\nLetzte Aktionsergebnisse:\n${systemObservat
 
       // Load unassigned tasks with goal links for delegation recommendations
       const unassigned = db.select({
-        id: aufgaben.id, titel: aufgaben.titel, prioritaet: aufgaben.prioritaet, zielId: aufgaben.zielId,
-      }).from(aufgaben)
-        .where(and(eq(aufgaben.unternehmenId, unternehmenId), isNull(aufgaben.zugewiesenAn), inArray(aufgaben.status, ['todo', 'backlog'])))
+        id: tasks.id, titel: tasks.title, prioritaet: tasks.priority, zielId: tasks.goalId,
+      }).from(tasks)
+        .where(and(eq(tasks.companyId, companyId), isNull(tasks.assignedTo), inArray(tasks.status, ['todo', 'backlog'])))
         .limit(8).all();
 
       const unassignedSection = unassigned.length > 0
-        ? `\n\n📋 UNDELEGIERTE AUFGABEN (${unassigned.length}):\n${unassigned.map(t => `  • [${t.prioritaet.toUpperCase()}] ${t.titel} (ID: ${t.id})${t.zielId ? ' 🎯' : ''}`).join('\n')}`
+        ? `\n\n📋 UNDELEGIERTE AUFGABEN (${unassigned.length}):\n${unassigned.map(t => `  • [${t.priority.toUpperCase()}] ${t.title} (ID: ${t.id})${t.goalId ? ' 🎯' : ''}`).join('\n')}`
         : '';
 
       // ── Risk Signals: computed situation awareness for the CEO ─────────────
@@ -899,48 +901,48 @@ ${systemObservations.length > 0 ? `\nLetzte Aktionsergebnisse:\n${systemObservat
         // 1. Stale in-progress tasks (>24h without update → agent might be stuck)
         const staleThreshold = now_ts - 24 * 60 * 60 * 1000;
         const staleTasks = db.select({
-          id: aufgaben.id, titel: aufgaben.titel, zugewiesenAn: aufgaben.zugewiesenAn, aktualisiertAm: aufgaben.aktualisiertAm,
-        }).from(aufgaben)
-          .where(and(eq(aufgaben.unternehmenId, unternehmenId), eq(aufgaben.status, 'in_progress')))
+          id: tasks.id, titel: tasks.title, zugewiesenAn: tasks.assignedTo, aktualisiertAm: tasks.updatedAt,
+        }).from(tasks)
+          .where(and(eq(tasks.companyId, companyId), eq(tasks.status, 'in_progress')))
           .all()
-          .filter((t: any) => t.aktualisiertAm && new Date(t.aktualisiertAm).getTime() < staleThreshold);
+          .filter((t: any) => t.updatedAt && new Date(t.updatedAt).getTime() < staleThreshold);
 
         if (staleTasks.length > 0) {
           const staleLines = staleTasks.slice(0, 3).map((t: any) => {
-            const agent = alleExperten.find((e: any) => e.id === t.zugewiesenAn);
-            const hoursAgo = Math.round((now_ts - new Date(t.aktualisiertAm).getTime()) / 3_600_000);
-            return `  ⚠️ "${sanitizeForPrompt(t.titel, 60)}" → ${agent?.name || '?'} (${hoursAgo}h ohne Update)`;
+            const agent = alleExperten.find((e: any) => e.id === t.assignedTo);
+            const hoursAgo = Math.round((now_ts - new Date(t.updatedAt).getTime()) / 3_600_000);
+            return `  ⚠️ "${sanitizeForPrompt(t.title, 60)}" → ${agent?.name || '?'} (${hoursAgo}h ohne Update)`;
           }).join('\n');
           risks.push(`STALE TASKS (${staleTasks.length}):\n${staleLines}`);
         }
 
         // 2. Budget-critical agents with open work
         const budgetCritical = db.select({
-          id: experten.id, name: experten.name, budgetMonatCent: experten.budgetMonatCent, verbrauchtMonatCent: experten.verbrauchtMonatCent,
-        }).from(experten)
-          .where(and(eq(experten.unternehmenId, unternehmenId), ne(experten.budgetMonatCent, 0)))
+          id: agents.id, name: agents.name, budgetMonatCent: agents.monthlyBudgetCent, monthlySpendCent: agents.monthlySpendCent,
+        }).from(agents)
+          .where(and(eq(agents.companyId, companyId), ne(agents.monthlyBudgetCent, 0)))
           .all()
-          .filter((a: any) => a.budgetMonatCent > 0 && a.verbrauchtMonatCent / a.budgetMonatCent >= 0.85);
+          .filter((a: any) => a.monthlyBudgetCent > 0 && a.monthlySpendCent / a.monthlyBudgetCent >= 0.85);
 
         if (budgetCritical.length > 0) {
           const budgetLines = budgetCritical.map((a: any) =>
-            `  💸 ${a.name}: ${Math.round(a.verbrauchtMonatCent / a.budgetMonatCent * 100)}% Budget verbraucht`
+            `  💸 ${a.name}: ${Math.round(a.monthlySpendCent / a.monthlyBudgetCent * 100)}% Budget verbraucht`
           ).join('\n');
           risks.push(`BUDGET-WARNUNG:\n${budgetLines}`);
         }
 
         // 3. Goals with 0 progress and no assigned tasks (gap in planning)
-        const goalsWithNoWork = db.select({ id: ziele.id, titel: ziele.titel }).from(ziele)
-          .where(and(eq(ziele.unternehmenId, unternehmenId), eq(ziele.status, 'active')))
+        const goalsWithNoWork = db.select({ id: goals.id, titel: goals.title }).from(goals)
+          .where(and(eq(goals.companyId, companyId), eq(goals.status, 'active')))
           .all()
           .filter((g: any) => {
-            const linked = db.select({ status: aufgaben.status }).from(aufgaben)
-              .where(and(eq(aufgaben.zielId, g.id), inArray(aufgaben.status, ['todo', 'in_progress']))).all();
+            const linked = db.select({ status: tasks.status }).from(tasks)
+              .where(and(eq(tasks.goalId, g.id), inArray(tasks.status, ['todo', 'in_progress']))).all();
             return linked.length === 0;
           });
 
         if (goalsWithNoWork.length > 0) {
-          const goalLines = goalsWithNoWork.slice(0, 3).map((g: any) => `  🎯 "${sanitizeForPrompt(g.titel, 60)}" — keine aktiven Tasks!`).join('\n');
+          const goalLines = goalsWithNoWork.slice(0, 3).map((g: any) => `  🎯 "${sanitizeForPrompt(g.title, 60)}" — keine aktiven Tasks!`).join('\n');
           risks.push(`ZIELE OHNE AKTIVE TASKS:\n${goalLines}`);
         }
 
@@ -1007,9 +1009,9 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
     const MAX_CONTEXT_CHARS = 800_000;
     const totalContextChars =
       basePrompt.length +
-      ((expert.faehigkeiten || '').length) +
+      ((expert.skills || '').length) +
       skillContext.length + toolsContext.length +
-      teamKontext.length;
+      teamContext.length;
     if (totalContextChars > MAX_CONTEXT_CHARS) {
       // First truncate basePrompt (least critical parts), then skillContext
       const overhead = totalContextChars - MAX_CONTEXT_CHARS;
@@ -1019,7 +1021,7 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
         // Last resort: truncate skill context
         skillContext = skillContext.slice(0, Math.max(500, skillContext.length - overhead));
       }
-      trace(expertId, unternehmenId, 'info', 'Kontext gekürzt', `Gesamtkontext war ${Math.round(totalContextChars/4000)}k tokens — auf ${Math.round(MAX_CONTEXT_CHARS/4000)}k tokens reduziert`, laufId);
+      trace(agentId, companyId, 'info', 'Kontext gekürzt', `Gesamtkontext war ${Math.round(totalContextChars/4000)}k tokens — auf ${Math.round(MAX_CONTEXT_CHARS/4000)}k tokens reduziert`, laufId);
     }
     // ────────────────────────────────────────────────────────────────────────────
 
@@ -1027,28 +1029,28 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
     let result: Awaited<ReturnType<typeof adapter.run>>;
     try {
       result = await adapter.run({
-        expertId,
+        agentId,
         expertName: expert.name,
-        unternehmenId,
-        unternehmenName: company.name,
-        rolle: expert.rolle,
-        faehigkeiten: (expert.faehigkeiten || '') + skillContext + toolsContext,
+        companyId,
+        companyName: company.name,
+        role: expert.role,
+        skills: (expert.skills || '') + skillContext + toolsContext,
         prompt: basePrompt,
-        aufgaben: tasksStrings,
-        teamKontext,
-        teamMitglieder: alleExperten,
-        chatNachrichten: chatContext,
+        tasks: tasksStrings,
+        teamContext,
+        teamMembers: alleExperten,
+        chatMessages: chatContext,
         apiKey,
         apiBaseUrl: API_BASE_URL,
-        verbindungsTyp: adapterType,
-        verbindungsConfig: expert.verbindungsConfig,
+        connectionType: adapterType,
+        connectionConfig: expert.connectionConfig,
         globalDefaultModel,
       });
     } catch (adapterErr: any) {
       console.error(`[Scheduler] adapter.run() threw for ${expert.name}:`, adapterErr?.message);
-      trace(expertId, unternehmenId, 'error', `Adapter-Exception`, adapterErr?.message ?? 'Unbekannt', laufId);
-      db.update(arbeitszyklen).set({ status: 'failed', beendetAm: now(), fehler: adapterErr?.message }).where(eq(arbeitszyklen.id, laufId)).run();
-      db.update(experten).set({ status: 'error' as any, aktualisiertAm: now() }).where(eq(experten.id, expertId)).run();
+      trace(agentId, companyId, 'error', `Adapter-Exception`, adapterErr?.message ?? 'Unbekannt', laufId);
+      db.update(workCycles).set({ status: 'failed', beendetAm: now(), fehler: adapterErr?.message }).where(eq(workCycles.id, laufId)).run();
+      db.update(agents).set({ status: 'error' as any, updatedAt: now() }).where(eq(agents.id, agentId)).run();
       return;
     }
 
@@ -1056,30 +1058,30 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
     let newStatus = expert.status;
     if (result.success) {
       newStatus = 'active';
-      trace(expertId, unternehmenId, 'result', `Antwort erhalten`, result.ausgabe?.slice(0, 300) + (result.ausgabe?.length > 300 ? '…' : ''), laufId);
+      trace(agentId, companyId, 'result', `Antwort erhalten`, result.output?.slice(0, 300) + (result.output?.length > 300 ? '…' : ''), laufId);
 
       // Extract JSON actions from output
-      const chatAction = this.extractChatAction(result.ausgabe);
+      const chatAction = this.extractChatAction(result.output);
 
-      const replyText = chatAction || result.ausgabe || '(Keine Antwort)';
+      const replyText = chatAction || result.output || '(Keine Antwort)';
 
-      // ── CEO Meeting Synthesis: save result to agentMeetings.ergebnis ────
+      // ── CEO Meeting Synthesis: save result to agentMeetings.result ────
       if (meetingId && !vonExpertId && replyText.trim()) {
         db.update(agentMeetings)
-          .set({ ergebnis: replyText.trim() })
+          .set({ result: replyText.trim() })
           .where(eq(agentMeetings.id, meetingId))
           .run();
-        broadcast('meeting_updated', { unternehmenId, meetingId, ergebnis: replyText.trim(), status: 'completed' });
-        trace(expertId, unternehmenId, 'info', `Meeting Synthesis gespeichert`, `"${replyText.slice(0, 80)}…"`);
+        broadcast('meeting_updated', { companyId, meetingId, ergebnis: replyText.trim(), status: 'completed' });
+        trace(agentId, companyId, 'info', `Meeting Synthesis gespeichert`, `"${replyText.slice(0, 80)}…"`);
       }
 
       if (isPeerTriggered && vonExpertId) {
         // ── P2P / Meeting: route response back to sender ──────────────────
         const responseMsg = {
           id: uuid(),
-          unternehmenId,
-          expertId: vonExpertId,
-          vonExpertId: expertId,
+          companyId,
+          agentId: vonExpertId,
+          vonExpertId: agentId,
           threadId: meetingId || null,
           absenderTyp: 'agent' as const,
           absenderName: expert.name,
@@ -1087,14 +1089,14 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
           gelesen: false,
           erstelltAm: now(),
         };
-        db.insert(chatNachrichten).values(responseMsg).run();
+        db.insert(chatMessages).values(responseMsg).run();
         broadcast('chat_message', responseMsg);
 
         // For simple P2P (no meeting): re-trigger the sender so they can
         // synthesize the reply and report back to the board.
         if (!meetingId) {
           setTimeout(() => {
-            this.triggerZyklus(vonExpertId, unternehmenId, 'manual').catch(console.error);
+            this.triggerZyklus(vonExpertId, companyId, 'manual').catch(console.error);
           }, 800);
         }
 
@@ -1104,58 +1106,58 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
           if (meeting && meeting.status === 'running') {
             let antworten: Record<string, string> = {};
             let allTeilnehmer: string[] = [];
-            try { antworten = JSON.parse(meeting.antworten || '{}'); } catch {}
-            try { allTeilnehmer = JSON.parse(meeting.teilnehmerIds || '[]'); } catch {}
-            antworten[expertId] = replyText.trim();
+            try { antworten = JSON.parse(meeting.responses || '{}'); } catch {}
+            try { allTeilnehmer = JSON.parse(meeting.participantIds || '[]'); } catch {}
+            antworten[agentId] = replyText.trim();
             const agentOnly = allTeilnehmer.filter((id: string) => id !== '__board__' && !id.startsWith('__board__'));
             const alleDa = agentOnly.length > 0 && agentOnly.every((id: string) => antworten[id]);
 
             db.update(agentMeetings)
               .set({
-                antworten: JSON.stringify(antworten),
-                ...(alleDa ? { status: 'completed', abgeschlossenAm: now() } : {}),
+                replies: JSON.stringify(antworten),
+                ...(alleDa ? { status: 'completed', completedAt: now() } : {}),
               })
               .where(and(eq(agentMeetings.id, meetingId), eq(agentMeetings.status, 'running')))
               .run();
 
-            broadcast('meeting_updated', { unternehmenId, meetingId, antworten, alleDa, status: alleDa ? 'completed' : 'running' });
+            broadcast('meeting_updated', { companyId, meetingId, antworten, alleDa, status: alleDa ? 'completed' : 'running' });
 
             if (alleDa) {
-              trace(expertId, unternehmenId, 'info', `Meeting abgeschlossen`, `"${meeting.titel}" — alle ${agentOnly.length} Antworten eingegangen`);
+              trace(agentId, companyId, 'info', `Meeting abgeschlossen`, `"${meeting.title}" — alle ${agentOnly.length} Antworten eingegangen`);
 
               // Build synthesis message for CEO/organizer
               const antwortenText = agentOnly.map((id: string) => {
-                const a = db.select({ name: experten.name }).from(experten).where(eq(experten.id, id)).get() as any;
+                const a = db.select({ name: agents.name }).from(agents).where(eq(agents.id, id)).get() as any;
                 return `**${a?.name || id}:** ${antworten[id]}`;
               }).join('\n\n');
 
               const synthMsg = {
                 id: uuid(),
-                unternehmenId,
-                expertId: meeting.veranstalterExpertId,
+                companyId,
+                agentId: meeting.organizerAgentId,
                 threadId: meetingId,
                 absenderTyp: 'system' as const,
-                nachricht: `📊 **Meeting abgeschlossen: "${meeting.titel}"**\n\nAlle Teilnehmer haben geantwortet:\n\n${antwortenText}\n\nBitte erstelle eine Zusammenfassung für das Board.`,
+                nachricht: `📊 **Meeting abgeschlossen: "${meeting.title}"**\n\nAlle Teilnehmer haben geantwortet:\n\n${antwortenText}\n\nBitte erstelle eine Zusammenfassung für das Board.`,
                 gelesen: false,
                 erstelltAm: now(),
               };
-              db.insert(chatNachrichten).values(synthMsg).run();
+              db.insert(chatMessages).values(synthMsg).run();
               broadcast('chat_message', synthMsg);
 
               // Archive meeting to Memory (non-blocking)
               saveMeetingResult(
                 meetingId,
-                meeting.titel,
+                meeting.title,
                 antworten,
                 agentOnly,
-                meeting.veranstalterExpertId,
-                unternehmenId,
+                meeting.organizerAgentId,
+                companyId,
               ).catch(() => {});
 
               // Trigger organizer (CEO) for synthesis
               // Pass meetingId (no vonExpertId) so the success handler saves the synthesis to ergebnis
               setTimeout(() => {
-                this.triggerZyklus(meeting.veranstalterExpertId, unternehmenId, 'manual', undefined, meetingId).catch(console.error);
+                this.triggerZyklus(meeting.organizerAgentId, companyId, 'manual', undefined, meetingId).catch(console.error);
               }, 600);
             }
           }
@@ -1164,127 +1166,127 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
         // ── Board-triggered or Telegram-triggered: send chat reply ────────
         const msg = {
           id: uuid(),
-          unternehmenId,
-          expertId,
+          companyId,
+          agentId,
           absenderTyp: 'agent' as const,
           absenderName: expert.name,
           nachricht: replyText.trim(),
           gelesen: false,
           erstelltAm: now(),
         };
-        db.insert(chatNachrichten).values(msg).run();
+        db.insert(chatMessages).values(msg).run();
         broadcast('chat_message', msg);
 
         // Only forward to Telegram when the message came FROM Telegram
         if (quelle === 'telegram') {
-          messagingService.sendTelegram(unternehmenId, `*${expert.name}*: ${replyText}`).catch(console.error);
+          messagingService.sendTelegram(companyId, `*${expert.name}*: ${replyText}`).catch(console.error);
         }
 
-        // ── Meeting context: also save answer to meeting.antworten ─────────
+        // ── Meeting context: also save answer to meeting.responses ─────────
         if (meetingId) {
           const mtg = db.select().from(agentMeetings).where(eq(agentMeetings.id, meetingId)).get() as any;
           if (mtg && mtg.status === 'running') {
             let antworten: Record<string, string> = {};
             let allTeilnehmer: string[] = [];
-            try { antworten = JSON.parse(mtg.antworten || '{}'); } catch {}
-            try { allTeilnehmer = JSON.parse(mtg.teilnehmerIds || '[]'); } catch {}
-            antworten[expertId] = replyText.trim();
+            try { antworten = JSON.parse(mtg.responses || '{}'); } catch {}
+            try { allTeilnehmer = JSON.parse(mtg.participantIds || '[]'); } catch {}
+            antworten[agentId] = replyText.trim();
             const agentTeilnehmer = allTeilnehmer.filter((id: string) => id !== '__board__' && !id.startsWith('__board__'));
             const alleDa = agentTeilnehmer.every((id: string) => antworten[id]);
 
             db.update(agentMeetings).set({
-              antworten: JSON.stringify(antworten),
-              ...(alleDa ? { status: 'completed', abgeschlossenAm: now() } : {}),
+              replies: JSON.stringify(antworten),
+              ...(alleDa ? { status: 'completed', completedAt: now() } : {}),
             }).where(and(eq(agentMeetings.id, meetingId), eq(agentMeetings.status, 'running'))).run();
 
-            broadcast('meeting_updated', { unternehmenId, meetingId, status: alleDa ? 'completed' : 'running' });
+            broadcast('meeting_updated', { companyId, meetingId, status: alleDa ? 'completed' : 'running' });
 
             if (alleDa) {
-              trace(expertId, unternehmenId, 'info', `Meeting abgeschlossen (Board-Round)`, `"${mtg.titel}" — alle Antworten da`);
+              trace(agentId, companyId, 'info', `Meeting abgeschlossen (Board-Round)`, `"${mtg.title}" — alle Antworten da`);
               const synthMsg = {
-                id: uuid(), unternehmenId,
-                expertId: mtg.veranstalterExpertId,
+                id: uuid(), companyId,
+                agentId: mtg.organizerAgentId,
                 threadId: meetingId,
                 absenderTyp: 'system' as const,
-                nachricht: `📊 **Meeting abgeschlossen: "${mtg.titel}"**\n\nAlle Antworten eingegangen. Bitte erstelle eine Zusammenfassung für das Board.`,
+                nachricht: `📊 **Meeting abgeschlossen: "${mtg.title}"**\n\nAlle Antworten eingegangen. Bitte erstelle eine Zusammenfassung für das Board.`,
                 gelesen: false, erstelltAm: now(),
               };
-              db.insert(chatNachrichten).values(synthMsg).run();
+              db.insert(chatMessages).values(synthMsg).run();
               broadcast('chat_message', synthMsg);
               setTimeout(() => {
-                this.triggerZyklus(mtg.veranstalterExpertId, unternehmenId, 'manual', undefined, meetingId).catch(console.error);
+                this.triggerZyklus(mtg.organizerAgentId, companyId, 'manual', undefined, meetingId).catch(console.error);
               }, 600);
             }
           }
         }
       }
 
-      this.triggerExpertActions(unternehmenId, expertId, result.ausgabe, effectiveWorkDir, quelle === 'manual' || quelle === 'telegram');
+      this.triggerExpertActions(companyId, agentId, result.output, effectiveWorkDir, quelle === 'manual' || quelle === 'telegram');
     } else {
       newStatus = 'error';
-      trace(expertId, unternehmenId, 'error', `Fehler`, result.fehler ?? 'Unbekannter Fehler', laufId);
+      trace(agentId, companyId, 'error', `Fehler`, result.error ?? 'Unbekannter Fehler', laufId);
 
       // Also send error as chat message on manual/telegram trigger
       if (quelle === 'manual' || quelle === 'telegram') {
         const errMsg = {
           id: uuid(),
-          unternehmenId,
-          expertId,
+          companyId,
+          agentId,
           absenderTyp: 'system' as const,
           absenderName: expert.name,
-          nachricht: `⚠ Fehler: ${result.fehler ?? 'Unbekannter Fehler'}`,
+          nachricht: `⚠ Fehler: ${result.error ?? 'Unbekannter Fehler'}`,
           gelesen: true,
           erstelltAm: now(),
         };
-        db.insert(chatNachrichten).values(errMsg).run();
+        db.insert(chatMessages).values(errMsg).run();
         broadcast('chat_message', errMsg);
         // Forward error to Telegram only if message originated there
         if (quelle === 'telegram') {
-          messagingService.sendTelegram(unternehmenId, `⚠️ *${expert.name}*: ${result.fehler ?? 'Unbekannter Fehler'}`).catch(console.error);
+          messagingService.notify(companyId, `${expert.name}: Fehler`, result.error ?? 'Unbekannter Fehler', 'warning').catch(console.error);
         }
       }
     }
 
-    db.update(arbeitszyklen).set({
+    db.update(workCycles).set({
       status: result.success ? 'succeeded' : 'failed',
       beendetAm: now(),
-      ausgabe: result.ausgabe,
-      fehler: result.fehler,
-    }).where(eq(arbeitszyklen.id, laufId)).run();
+      ausgabe: result.output,
+      fehler: result.error,
+    }).where(eq(workCycles.id, laufId)).run();
 
-    db.update(experten).set({ 
+    db.update(agents).set({ 
       status: newStatus as any, 
-      aktualisiertAm: now(),
-    }).where(eq(experten.id, expertId)).run();
+      updatedAt: now(),
+    }).where(eq(agents.id, agentId)).run();
 
     // --- AUTO-SAVE HOOK (Memory) ---
     // Inkrementiere Nachrichtencounter und speichere alle 15 Nachrichtenwechsel
     if (result.success) {
-      const neuCount = (expert.nachrichtenCount || 0) + 1;
-      db.update(experten).set({ nachrichtenCount: neuCount }).where(eq(experten.id, expertId)).run();
+      const neuCount = (expert.messageCount || 0) + 1;
+      db.update(agents).set({ nachrichtenCount: neuCount }).where(eq(agents.id, agentId)).run();
       
       if (neuCount >= 15) {
-        this.saveMemoryHistory(expertId, unternehmenId, result.ausgabe).catch(e => {
-          console.warn(`⚠️ Memory Auto-Save für ${expertId} fehlgeschlagen:`, e);
+        this.saveMemoryHistory(agentId, companyId, result.output).catch(e => {
+          console.warn(`⚠️ Memory Auto-Save für ${agentId} fehlgeschlagen:`, e);
         });
       }
     }
 
     // --- MEMORY AUTO-SAVE (Erkenntnisse aus dem Zyklus extrahieren) ---
     if (result.success) {
-      const currentTaskTitle = expertAufgaben[0]?.titel;
-      autoSaveInsights(expertId, unternehmenId, result.ausgabe || '', currentTaskTitle).catch(() => {});
+      const currentTaskTitle = expertAufgaben[0]?.title;
+      autoSaveInsights(agentId, companyId, result.output || '', currentTaskTitle).catch(() => {});
     }
 
     // --- LEARNING LOOP ---
     // Extrahiere Skills, aktualisiere Konfidenz, räume schlechte Skills auf
     try {
-      const taskTitel = expertAufgaben[0]?.titel || 'Arbeitszyklus';
+      const taskTitel = expertAufgaben[0]?.title || 'Arbeitszyklus';
       const learningLoopResult = nachZyklusVerarbeitung(
-        expertId, unternehmenId, taskTitel, result.ausgabe || '', result.success
+        agentId, companyId, taskTitel, result.output || '', result.success
       );
       if (learningLoopResult.neueSkills > 0 || learningLoopResult.deprecatedSkills > 0) {
-        trace(expertId, unternehmenId, 'info', '🧬 Learning Loop',
+        trace(agentId, companyId, 'info', '🧬 Learning Loop',
           `+${learningLoopResult.neueSkills} neue Skills, ${learningLoopResult.aktualisiertSkills} aktualisiert, -${learningLoopResult.deprecatedSkills} deprecated`);
       }
     } catch (e: any) {
@@ -1294,73 +1296,73 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
     // --- BACKGROUND REVIEW (Learning Loop async self-review) ---
     // Non-blocking: Spawnt async Prozess der Memory + Skills reviewed
     if (result.success) {
-      const zyklusNummer = (expert.nachrichtenCount || 0) + 1;
+      const zyklusNummer = (expert.messageCount || 0) + 1;
       const { memory, skills } = sollteReviewen(zyklusNummer);
       if (memory || skills) {
         spawnBackgroundReview({
-          expertId,
-          unternehmenId,
-          agentOutput: result.ausgabe || '',
+          agentId,
+          companyId,
+          agentOutput: result.output || '',
           zyklusNummer,
           reviewMemory: memory,
           reviewSkills: skills,
         });
-        trace(expertId, unternehmenId, 'info', '🔍 Background Review gestartet',
+        trace(agentId, companyId, 'info', '🔍 Background Review gestartet',
           `Memory: ${memory}, Skills: ${skills} (Zyklus #${zyklusNummer})`);
       }
     }
 
     // Kosten buchen
-    if (result.tokenVerbrauch && result.tokenVerbrauch.kostenCent > 0) {
+    if (result.tokenUsage && result.tokenUsage.costCent > 0) {
       const kostenId = uuid();
-      db.insert(kostenbuchungen).values({
+      db.insert(costEntries).values({
         id: kostenId,
-        unternehmenId,
-        expertId,
-        anbieter: expert.verbindungsTyp,
-        modell: expert.verbindungsTyp,
-        inputTokens: result.tokenVerbrauch.inputTokens,
-        outputTokens: result.tokenVerbrauch.outputTokens,
-        kostenCent: result.tokenVerbrauch.kostenCent,
+        companyId,
+        agentId,
+        anbieter: expert.connectionType,
+        modell: expert.connectionType,
+        inputTokens: result.tokenUsage.inputTokens,
+        outputTokens: result.tokenUsage.outputTokens,
+        costCent: result.tokenUsage.costCent,
         zeitpunkt: now(),
-        erstelltAm: now()
+        createdAt: now()
       }).run();
 
       // Check Budget Limit (Maximizer Mode überspringt dies)
       // Atomic SQL update to prevent race condition with concurrent heartbeat writes
-      db.update(experten)
-        .set({ verbrauchtMonatCent: sql`${experten.verbrauchtMonatCent} + ${result.tokenVerbrauch.kostenCent}` })
-        .where(eq(experten.id, expertId)).run();
-      const updatedExpert = db.select().from(experten).where(eq(experten.id, expertId)).get();
+      db.update(agents)
+        .set({ monthlySpendCent: sql`${agents.monthlySpendCent} + ${result.tokenUsage.costCent}` })
+        .where(eq(agents.id, agentId)).run();
+      const updatedExpert = db.select().from(agents).where(eq(agents.id, agentId)).get();
       if (updatedExpert) {
-        const neuesVerbraucht = updatedExpert.verbrauchtMonatCent;
+        const neuesVerbraucht = updatedExpert.monthlySpendCent;
 
-        if (updatedExpert.budgetMonatCent > 0 && !isMaximizerActive) {
-           const percent = (neuesVerbraucht / updatedExpert.budgetMonatCent) * 100;
+        if (updatedExpert.monthlyBudgetCent > 0 && !isMaximizerActive) {
+           const percent = (neuesVerbraucht / updatedExpert.monthlyBudgetCent) * 100;
            // Read pause threshold from company settings (default 100%)
-           const thresholdRow = db.select().from(einstellungen)
-             .where(and(eq(einstellungen.schluessel, 'budget_pause_threshold'), inArray(einstellungen.unternehmenId, ['', unternehmenId])))
+           const thresholdRow = db.select().from(settings)
+             .where(and(eq(settings.key, 'budget_pause_threshold'), inArray(settings.companyId, ['', companyId])))
              .all()
-             .sort((a, b) => (a.unternehmenId === '' ? -1 : 1))[0];
-           const pauseThreshold = thresholdRow ? Number(thresholdRow.wert) : 100;
+             .sort((a, b) => (a.companyId === '' ? -1 : 1))[0];
+           const pauseThreshold = thresholdRow ? Number(thresholdRow.value) : 100;
            if (percent >= pauseThreshold && updatedExpert.status !== 'paused') {
-              db.update(experten).set({ status: 'paused', aktualisiertAm: now() }).where(eq(experten.id, expertId)).run();
-              db.insert(aktivitaetslog).values({
+              db.update(agents).set({ status: 'paused', updatedAt: now() }).where(eq(agents.id, agentId)).run();
+              db.insert(activityLog).values({
                 id: uuid(),
-                unternehmenId,
-                akteurTyp: 'system',
-                akteurId: 'system',
-                akteurName: 'System',
-                aktion: `${updatedExpert.name} pausiert (Budget ${percent.toFixed(0)}% ≥ ${pauseThreshold}% Schwellwert)`,
-                entitaetTyp: 'experten',
-                entitaetId: expertId,
+                companyId,
+                actorType: 'system',
+                actorId: 'system',
+                actorName: 'System',
+                action: `${updatedExpert.name} pausiert (Budget ${percent.toFixed(0)}% ≥ ${pauseThreshold}% Schwellwert)`,
+                entitaetTyp: 'agents',
+                entitaetId: agentId,
                 erstelltAm: now()
               }).run();
            }
-        } else if (isMaximizerActive && updatedExpert.budgetMonatCent > 0) {
-           const percent = (neuesVerbraucht / updatedExpert.budgetMonatCent) * 100;
+        } else if (isMaximizerActive && updatedExpert.monthlyBudgetCent > 0) {
+           const percent = (neuesVerbraucht / updatedExpert.monthlyBudgetCent) * 100;
            if (percent >= 100) {
-             trace(expertId, unternehmenId, 'warning', `MAXIMIZER MODE`, `Budget bei ${percent.toFixed(0)}% — Limit wird ignoriert!`);
+             trace(agentId, companyId, 'warning', `MAXIMIZER MODE`, `Budget bei ${percent.toFixed(0)}% — Limit wird ignoriert!`);
            }
         }
       }
@@ -1370,20 +1372,20 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
     // --- Message Queue Loop (Posteingang prüfen) ---
     // Only re-trigger if there are NEW board messages (user/Telegram messages).
     // Agent's own replies (absenderTyp:'agent') must NOT re-trigger — that would cause infinite loops.
-    const unreadBoardMsgs = db.select().from(chatNachrichten)
+    const unreadBoardMsgs = db.select().from(chatMessages)
       .where(and(
-        eq(chatNachrichten.expertId, expertId),
-        eq(chatNachrichten.gelesen, false),
-        eq(chatNachrichten.absenderTyp, 'board') // Only real user messages trigger another cycle
+        eq(chatMessages.agentId, agentId),
+        eq(chatMessages.read, false),
+        eq(chatMessages.senderType, 'board') // Only real user messages trigger another cycle
       ))
       .all();
 
     if (unreadBoardMsgs.length > 0) {
-      console.log(`🔄 Agent ${expertId} hat ${unreadBoardMsgs.length} neue Board-Nachricht(en). Starte nächsten Loop...`);
+      console.log(`🔄 Agent ${agentId} hat ${unreadBoardMsgs.length} neue Board-Nachricht(en). Starte nächsten Loop...`);
       setTimeout(() => {
         // Use 'manual' so Telegram/chat reply is always sent back to the user
-        this.triggerZyklus(expertId, unternehmenId, 'manual').catch(e => {
-          console.error(`Fehler beim Auto-Loop für ${expertId}:`, e);
+        this.triggerZyklus(agentId, companyId, 'manual').catch(e => {
+          console.error(`Fehler beim Auto-Loop für ${agentId}:`, e);
         });
       }, 1000); // 1 Sekunde Puffer zwischen den Zyklen
     }
@@ -1395,18 +1397,18 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
   /**
    * Auto-Save Hook: Speichert den aktuellen Status und Verlauf in Memory.
    */
-  private async saveMemoryHistory(expertId: string, unternehmenId: string, lastOutput: string): Promise<void> {
-    const expert = db.select().from(experten).where(eq(experten.id, expertId)).get();
+  private async saveMemoryHistory(agentId: string, companyId: string, lastOutput: string): Promise<void> {
+    const expert = db.select().from(agents).where(eq(agents.id, agentId)).get();
     if (!expert) return;
 
     // 1. Hole letzte 15 Nachrichten für den Drawer (Input/Output History)
-    const msgs = db.select().from(chatNachrichten)
-      .where(eq(chatNachrichten.expertId, expertId))
-      .orderBy(desc(chatNachrichten.erstelltAm))
+    const msgs = db.select().from(chatMessages)
+      .where(eq(chatMessages.agentId, agentId))
+      .orderBy(desc(chatMessages.createdAt))
       .limit(15)
       .all();
 
-    const historyText = msgs.reverse().map(m => `${m.absenderTyp === 'agent' ? 'AGENT' : 'BOARD/SYSTEM'}: ${m.nachricht}`).join('\n\n');
+    const historyText = msgs.reverse().map(m => `${m.senderType === 'agent' ? 'AGENT' : 'BOARD/SYSTEM'}: ${m.message}`).join('\n\n');
 
     try {
       // 2. Drawer schreiben (Roher Verlauf)
@@ -1426,9 +1428,9 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
       });
 
       // 4. Counter zurücksetzen
-      db.update(experten).set({ nachrichtenCount: 0 }).where(eq(experten.id, expertId)).run();
+      db.update(agents).set({ nachrichtenCount: 0 }).where(eq(agents.id, agentId)).run();
       
-      trace(expertId, unternehmenId, 'info', '💾 Memory Save', 'Verlauf und Tagebuch erfolgreich gesichert.');
+      trace(agentId, companyId, 'info', '💾 Memory Save', 'Verlauf und Tagebuch erfolgreich gesichert.');
     } catch (err: any) {
       console.error(`Memory Hook Error: ${err.message}`);
     }
@@ -1441,17 +1443,17 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
     if (!match) return null;
     try {
       const data = JSON.parse(match[1] || match[0]);
-      if (data?.action === 'chat' && (data?.params?.nachricht || data?.params?.message)) return data.params.nachricht || data.params.message;
+      if (data?.action === 'chat' && (data?.params?.message || data?.params?.message)) return data.params.message || data.params.message;
     } catch {}
     return null;
   }
 
   // Hilfsfunktion: Überprüft, ob der Experte in seiner Ausgabe JSON-Aktionen gepostet hat
   // fromBoard=true: Board/Telegram hat die Aktion ausgelöst → Autonomy-Check überspringen
-  private async triggerExpertActions(unternehmenId: string, expertId: string, ausgabe: string, workspacePath?: string, fromBoard = false) {
+  private async triggerExpertActions(companyId: string, agentId: string, ausgabe: string, workspacePath?: string, fromBoard = false) {
     if (!ausgabe) return;
 
-    const expert = db.select().from(experten).where(eq(experten.id, expertId)).get();
+    const expert = db.select().from(agents).where(eq(agents.id, agentId)).get();
     if (!expert) return;
 
     // Extrahiere JSON-Blöcke aus Markdown-Codeblöcken
@@ -1468,7 +1470,7 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
       try {
         const data = JSON.parse(jsonStr.trim());
         if (data && data.action) {
-          await this.executeAgentAction(unternehmenId, expertId, data.action, data.params, fromBoard, workspacePath);
+          await this.executeAgentAction(companyId, agentId, data.action, data.params, fromBoard, workspacePath);
         }
       } catch (e) {
         console.error("Konnte Agent Action JSON nicht parsen:", e);
@@ -1480,12 +1482,12 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
    * Führt eine spezifische Agent-Aktion aus. 
    * Prüft dabei das Autonomie-Level und erstellt bei Bedarf eine Genehmigungsanfrage.
    */
-  async executeAgentAction(unternehmenId: string, expertId: string, action: string, params: any, skipAutonomyCheck = false, workspacePath?: string) {
-    const expert = db.select().from(experten).where(eq(experten.id, expertId)).get();
+  async executeAgentAction(companyId: string, agentId: string, action: string, params: any, skipAutonomyCheck = false, workspacePath?: string) {
+    const expert = db.select().from(agents).where(eq(agents.id, agentId)).get();
     if (!expert) return;
 
     let config: any = {};
-    try { config = JSON.parse(expert.verbindungsConfig || '{}'); } catch {}
+    try { config = JSON.parse(expert.connectionConfig || '{}'); } catch {}
     const autonomyLevel = config.autonomyLevel || 'copilot';
 
     // --- AUTONOMY LEVEL CHECK ---
@@ -1502,35 +1504,35 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
          
          // 1. Chat-Deduplisierung: selbe Nachricht in den letzten 10 Min. → kein Duplikat
          const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-         const existingMsg = db.select().from(chatNachrichten)
+         const existingMsg = db.select().from(chatMessages)
            .where(and(
-             eq(chatNachrichten.expertId, expertId),
-             eq(chatNachrichten.nachricht, nachricht)
+             eq(chatMessages.agentId, agentId),
+             eq(chatMessages.message, nachricht)
            ))
            .all()
-           .find(m => m.erstelltAm > tenMinutesAgo);
+           .find(m => m.createdAt > tenMinutesAgo);
            
          if (!existingMsg) {
            const msg = {
              id: uuid(),
-             unternehmenId,
-             expertId,
+             companyId,
+             agentId,
              absenderTyp: 'system' as const,
              nachricht,
              gelesen: false,
              erstelltAm: new Date().toISOString()
            };
-           db.insert(chatNachrichten).values(msg).run();
+           db.insert(chatMessages).values(msg).run();
            broadcast('chat_message', msg);
          }
 
          // 2. Formale Genehmigung erstellen (falls noch nicht vorhanden)
-         const existingApproval = db.select().from(genehmigungen)
+         const existingApproval = db.select().from(approvals)
            .where(and(
-             eq(genehmigungen.unternehmenId, unternehmenId),
-             eq(genehmigungen.typ, 'agent_action'),
-             eq(genehmigungen.angefordertVon, expertId),
-             eq(genehmigungen.status, 'pending')
+             eq(approvals.companyId, companyId),
+             eq(approvals.type, 'agent_action'),
+             eq(approvals.requestedBy, agentId),
+             eq(approvals.status, 'pending')
            ))
            .all()
            .find(g => {
@@ -1541,19 +1543,19 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
            });
 
          if (!existingApproval) {
-           db.insert(genehmigungen).values({
+           db.insert(approvals).values({
              id: uuid(),
-             unternehmenId,
-             typ: 'agent_action',
-             titel: `Aktion freigeben: ${action}`,
+             companyId,
+             type: 'agent_action',
+             title: `Aktion freigeben: ${action}`,
              beschreibung: `Agent ${expert.name} möchte folgende Aktion ausführen: ${action}`,
-             angefordertVon: expertId,
+             angefordertVon: agentId,
              status: 'pending',
              payload: JSON.stringify({ action, params }),
              erstelltAm: new Date().toISOString(),
              aktualisiertAm: new Date().toISOString()
            }).run();
-           broadcast('approval_created', { unternehmenId, agentName: expert.name, action, titel: `Aktion freigeben: ${action}` });
+           broadcast('approval_created', { companyId, agentName: expert.name, action, titel: `Aktion freigeben: ${action}` });
          }
 
          return; // Überspringe die physische Ausführung!
@@ -1565,112 +1567,126 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
        // Permission check: only agents with darfAufgabenErstellen may create tasks
        const perms = db.select({ darfAufgabenErstellen: agentPermissions.darfAufgabenErstellen })
          .from(agentPermissions)
-         .where(eq(agentPermissions.expertId, expertId))
+         .where(eq(agentPermissions.agentId, agentId))
          .get();
        // Default is true (no row = permitted), but explicit false = blocked
        if (perms && perms.darfAufgabenErstellen === false) {
-         trace(expertId, unternehmenId, 'error', 'create_task verweigert', 'Agent hat keine Berechtigung Aufgaben zu erstellen');
+         trace(agentId, companyId, 'error', 'create_task verweigert', 'Agent hat keine Berechtigung Aufgaben zu erstellen');
          return;
        }
 
        const newTaskId = uuid();
-       const assignTo = params.zugewiesenAn || null;
-       db.insert(aufgaben).values({
+       const assignTo = params.assignedTo || null;
+       
+       // Auto-assign to active project if no projektId specified
+       let projektId = params.projectId || null;
+       if (!projektId) {
+         const activeProject = db.select().from(projects)
+           .where(and(eq(projects.companyId, companyId), eq(projects.status, 'aktiv')))
+           .orderBy(desc(projects.createdAt))
+           .get();
+         if (activeProject) {
+           projektId = activeProject.id;
+         }
+       }
+       
+       db.insert(tasks).values({
          id: newTaskId,
-         unternehmenId,
-         titel: params.titel || 'Neue Aufgabe',
-         beschreibung: params.beschreibung || '',
-         zugewiesenAn: assignTo,
+         companyId,
+         title: params.title || 'Neue Aufgabe',
+         description: params.description || '',
+         assignedTo: assignTo,
+         projektId,
          status: 'todo',
-         prioritaet: (params.prioritaet || 'medium') as any,
-         erstelltAm: new Date().toISOString(),
-         aktualisiertAm: new Date().toISOString()
+         priority: (params.priority || 'medium') as any,
+         createdAt: new Date().toISOString(),
+         updatedAt: new Date().toISOString()
        }).run();
 
-       broadcast('task_updated', { unternehmenId, taskId: newTaskId, titel: params.titel });
-       trace(expertId, unternehmenId, 'action', `Aufgabe erstellt`, `"${params.titel}"${assignTo ? ` → zugewiesen an ${assignTo}` : ''}`);
+       broadcast('task_updated', { companyId, taskId: newTaskId, titel: params.title });
+       trace(agentId, companyId, 'action', `Aufgabe erstellt`, `"${params.title}"${assignTo ? ` → zugewiesen an ${assignTo}` : ''}`);
 
        // Confirmation in board chat
        let assigneeName = '';
        if (assignTo) {
-         const assignee = db.select({ name: experten.name }).from(experten).where(eq(experten.id, assignTo)).get() as any;
+         const assignee = db.select({ name: agents.name }).from(agents).where(eq(agents.id, assignTo)).get() as any;
          assigneeName = assignee?.name ? ` — zugewiesen an **${assignee.name}**` : '';
        }
        const confirmMsg = {
          id: uuid(),
-         unternehmenId,
-         expertId,
+         companyId,
+         agentId,
          absenderTyp: 'system' as const,
-         nachricht: `✅ Aufgabe erstellt: **${params.titel || 'Neue Aufgabe'}**${assigneeName}`,
+         nachricht: `✅ Aufgabe erstellt: **${params.title || 'Neue Aufgabe'}**${assigneeName}`,
          gelesen: false,
          erstelltAm: new Date().toISOString(),
        };
-       db.insert(chatNachrichten).values(confirmMsg).run();
+       db.insert(chatMessages).values(confirmMsg).run();
        broadcast('chat_message', confirmMsg);
     } else if (action === 'delegate_task') {
        // ─── Task Delegation (Orchestrator assigns an existing task to an agent) ─
        const { taskId, agentId, message } = params;
        if (!taskId || !agentId) {
-         trace(expertId, unternehmenId, 'error', 'delegate_task fehlgeschlagen', 'taskId und agentId erforderlich');
+         trace(agentId, companyId, 'error', 'delegate_task fehlgeschlagen', 'taskId und agentId erforderlich');
          return;
        }
 
-       const task = db.select().from(aufgaben).where(eq(aufgaben.id, taskId)).get() as any;
-       const targetAgent = db.select().from(experten).where(eq(experten.id, agentId)).get() as any;
+       const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get() as any;
+       const targetAgent = db.select().from(agents).where(eq(agents.id, agentId)).get() as any;
 
        if (!task) {
-         trace(expertId, unternehmenId, 'error', 'delegate_task fehlgeschlagen', `Task ${taskId} nicht gefunden`);
+         trace(agentId, companyId, 'error', 'delegate_task fehlgeschlagen', `Task ${taskId} nicht gefunden`);
          return;
        }
        if (!targetAgent) {
-         trace(expertId, unternehmenId, 'error', 'delegate_task fehlgeschlagen', `Agent ${agentId} nicht gefunden`);
+         trace(agentId, companyId, 'error', 'delegate_task fehlgeschlagen', `Agent ${agentId} nicht gefunden`);
          return;
        }
 
        // Assign task
-       db.update(aufgaben)
-         .set({ zugewiesenAn: agentId, status: 'todo', aktualisiertAm: new Date().toISOString() })
-         .where(eq(aufgaben.id, taskId))
+       db.update(tasks)
+         .set({ assignedTo: agentId, status: 'todo', updatedAt: new Date().toISOString() })
+         .where(eq(tasks.id, taskId))
          .run();
 
-       trace(expertId, unternehmenId, 'action', `Aufgabe delegiert`, `"${task.titel}" → ${targetAgent.name}`);
-       broadcast('task_updated', { unternehmenId, taskId, assignedTo: agentId, agentName: targetAgent.name });
+       trace(agentId, companyId, 'action', `Aufgabe delegiert`, `"${task.title}" → ${targetAgent.name}`);
+       broadcast('task_updated', { companyId, taskId, assignedTo: agentId, agentName: targetAgent.name });
 
        // Send briefing message to the target agent
        const briefing = message
          ? message
-         : `Neue Aufgabe delegiert von ${expert.name}:\n\n**${task.titel}**${task.beschreibung ? '\n' + task.beschreibung : ''}`;
+         : `Neue Aufgabe delegiert von ${expert.name}:\n\n**${task.title}**${task.description ? '\n' + task.description : ''}`;
 
        const delegateMsg = {
          id: uuid(),
-         unternehmenId,
-         expertId: agentId,
-         vonExpertId: expertId,
+         companyId,
+         agentId: agentId,
+         vonExpertId: agentId,
          absenderTyp: 'agent' as const,
          absenderName: expert.name,
          nachricht: briefing,
          gelesen: false,
          erstelltAm: new Date().toISOString(),
        };
-       db.insert(chatNachrichten).values(delegateMsg).run();
+       db.insert(chatMessages).values(delegateMsg).run();
        broadcast('chat_message', delegateMsg);
 
        // Notify board
        const boardMsg = {
          id: uuid(),
-         unternehmenId,
-         expertId,
+         companyId,
+         agentId,
          absenderTyp: 'system' as const,
-         nachricht: `📋 ${expert.name} hat "${task.titel}" an ${targetAgent.name} delegiert.`,
+         nachricht: `📋 ${expert.name} hat "${task.title}" an ${targetAgent.name} delegiert.`,
          gelesen: false,
          erstelltAm: new Date().toISOString(),
        };
-       db.insert(chatNachrichten).values(boardMsg).run();
+       db.insert(chatMessages).values(boardMsg).run();
        broadcast('chat_message', boardMsg);
 
        // Wake up the target agent so it picks up the task
        setTimeout(() => {
-         this.triggerZyklus(agentId, unternehmenId, 'manual', expertId).catch(e => {
+         this.triggerZyklus(agentId, companyId, 'manual', agentId).catch(e => {
            console.error(`delegate_task wakeup error for ${agentId}:`, e);
          });
        }, 300);
@@ -1681,19 +1697,19 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
        }
        
        try {
-         trace(expertId, unternehmenId, 'action', `Invoke Device Node`, `${params.action} an ${params.nodeId}`);
+         trace(agentId, companyId, 'action', `Invoke Device Node`, `${params.action} an ${params.nodeId}`);
          const result = await nodeManager.invokeNode(params.nodeId, params.action, params.params);
          
          const msg = {
            id: uuid(),
-           unternehmenId,
-           expertId,
+           companyId,
+           agentId,
            absenderTyp: 'system' as const,
            nachricht: `✅ Gerät ${params.nodeId} antwortet auf '${params.action}':\n${JSON.stringify(result, null, 2)}`,
            gelesen: false,
            erstelltAm: new Date().toISOString()
          };
-         db.insert(chatNachrichten).values(msg).run();
+         db.insert(chatMessages).values(msg).run();
          broadcast('chat_message', msg);
        } catch (err: any) {
          let errorMsg = err.message;
@@ -1703,14 +1719,14 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
          
          const msg = {
            id: uuid(),
-           unternehmenId,
-           expertId,
+           companyId,
+           agentId,
            absenderTyp: 'system' as const,
            nachricht: `❌ Fehler bei Geräte-Aktion '${params.action}': ${errorMsg}`,
            gelesen: false,
            erstelltAm: new Date().toISOString()
          };
-         db.insert(chatNachrichten).values(msg).run();
+         db.insert(chatMessages).values(msg).run();
          broadcast('chat_message', msg);
        }
     } else if (action === 'send_channel_message') {
@@ -1719,19 +1735,19 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
        
        try {
          if (channel === 'telegram') {
-           trace(expertId, unternehmenId, 'action', `Sending Telegram`, text.slice(0, 50) + (text.length > 50 ? '...' : ''));
-           await messagingService.sendTelegram(unternehmenId, `*${expert.name}*: ${text}`);
+           trace(agentId, companyId, 'action', `Sending Telegram`, text.slice(0, 50) + (text.length > 50 ? '...' : ''));
+           await messagingService.sendTelegram(companyId, `*${expert.name}*: ${text}`);
            
            const msg = {
              id: uuid(),
-             unternehmenId,
-             expertId,
+             companyId,
+             agentId,
              absenderTyp: 'agent' as const,
              nachricht: `[Gesendet via Telegram]: ${text}`,
              gelesen: true,
              erstelltAm: new Date().toISOString()
            };
-           db.insert(chatNachrichten).values(msg).run();
+           db.insert(chatMessages).values(msg).run();
          } else {
            throw new Error(`Channel ${channel} wird aktuell nicht unterstützt.`);
          }
@@ -1755,38 +1771,38 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
          const normalizedStatus = statusMap[params.status.toLowerCase()] || params.status;
          const VALID_STATUSES = ['backlog', 'todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled'];
          if (!VALID_STATUSES.includes(normalizedStatus)) {
-           trace(expertId, unternehmenId, 'error', `Ungültiger Task-Status`, `"${params.status}" ist kein gültiger Status. Erlaubt: ${VALID_STATUSES.join(', ')}`);
+           trace(agentId, companyId, 'error', `Ungültiger Task-Status`, `"${params.status}" ist kein gültiger Status. Erlaubt: ${VALID_STATUSES.join(', ')}`);
            return;
          }
-         const taskBefore = db.select().from(aufgaben).where(eq(aufgaben.id, params.id)).get();
+         const taskBefore = db.select().from(tasks).where(eq(tasks.id, params.id)).get();
 
          // ─── Critic gate: run review before finalising 'done' ───────────────
          if (normalizedStatus === 'done' && taskBefore && taskBefore.status !== 'done') {
            // Best-effort: use most recent task comment as agent output proxy; fall
-           // back to last arbeitszyklen output for this expert if none exists.
+           // back to last workCycles output for this expert if none exists.
            let agentOutputProxy = '';
            try {
-             const lastComment = db.select({ inhalt: kommentare.inhalt })
-               .from(kommentare).where(eq(kommentare.aufgabeId, params.id))
-               .orderBy(desc(kommentare.erstelltAm)).limit(1).get() as any;
-             if (lastComment?.inhalt) {
-               agentOutputProxy = lastComment.inhalt;
+             const lastComment = db.select({ content: comments.content })
+               .from(comments).where(eq(comments.taskId, params.id))
+               .orderBy(desc(comments.createdAt)).limit(1).get() as any;
+             if (lastComment?.content) {
+               agentOutputProxy = lastComment.content;
              } else {
-               const lastCycle = db.select({ ausgabe: arbeitszyklen.ausgabe })
-                 .from(arbeitszyklen).where(eq(arbeitszyklen.expertId, expertId))
-                 .orderBy(desc(arbeitszyklen.erstelltAm)).limit(1).get() as any;
-               agentOutputProxy = lastCycle?.ausgabe || '';
+               const lastCycle = db.select({ ausgabe: workCycles.output })
+                 .from(workCycles).where(eq(workCycles.agentId, agentId))
+                 .orderBy(desc(workCycles.createdAt)).limit(1).get() as any;
+               agentOutputProxy = lastCycle?.output || '';
              }
            } catch { /* ignore — critic will auto-approve on empty output */ }
 
            try {
              const criticResult = await heartbeatService.runCriticReview(
                params.id,
-               taskBefore.titel,
-               (taskBefore as any).beschreibung || '',
+               taskBefore.title,
+               (taskBefore as any).description || '',
                agentOutputProxy,
-               expertId,
-               unternehmenId,
+               agentId,
+               companyId,
              );
 
              if (!criticResult.approved) {
@@ -1798,19 +1814,19 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
                  ? '*Bitte prüfe manuell.*'
                  : '*Bitte überarbeite die Aufgabe.*';
 
-               db.insert(kommentare).values({
+               db.insert(comments).values({
                  id: uuid(),
-                 unternehmenId,
-                 aufgabeId: params.id,
-                 autorExpertId: expertId,
-                 autorTyp: 'agent',
-                 inhalt: `${commentPrefix}\n\n${criticResult.feedback}\n\n${commentSuffix}`,
+                 companyId,
+                 taskId: params.id,
+                 authorAgentId: agentId,
+                 authorType: 'agent',
+                 content: `${commentPrefix}\n\n${criticResult.feedback}\n\n${commentSuffix}`,
                  erstelltAm: new Date().toISOString(),
                }).run();
 
-               db.update(aufgaben).set({ status: finalStatus, aktualisiertAm: new Date().toISOString() }).where(eq(aufgaben.id, params.id)).run();
-               trace(expertId, unternehmenId, criticResult.escalate ? 'warning' : 'info',
-                 `Critic: ${criticResult.escalate ? 'Eskaliert' : 'Überarbeitung nötig'} — ${taskBefore.titel}`,
+               db.update(tasks).set({ status: finalStatus, updatedAt: new Date().toISOString() }).where(eq(tasks.id, params.id)).run();
+               trace(agentId, companyId, criticResult.escalate ? 'warning' : 'info',
+                 `Critic: ${criticResult.escalate ? 'Eskaliert' : 'Überarbeitung nötig'} — ${taskBefore.title}`,
                  criticResult.feedback);
                return; // skip the normal done path below
              }
@@ -1821,71 +1837,71 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
          }
          // ────────────────────────────────────────────────────────────────────
 
-         db.update(aufgaben).set({ status: normalizedStatus, aktualisiertAm: new Date().toISOString() }).where(eq(aufgaben.id, params.id)).run();
+         db.update(tasks).set({ status: normalizedStatus, updatedAt: new Date().toISOString() }).where(eq(tasks.id, params.id)).run();
          // Broadcast + Telegram notification when a task is completed
          if (normalizedStatus === 'done' && taskBefore && taskBefore.status !== 'done') {
-           broadcast('task_completed', { unternehmenId, taskId: params.id, titel: taskBefore.titel, agentName: expert.name });
-           messagingService.sendTelegram(unternehmenId,
-             `✅ *Aufgabe erledigt*\n\n*${taskBefore.titel}*\n_Abgeschlossen von ${expert.name}_`
+           broadcast('task_completed', { companyId, taskId: params.id, titel: taskBefore.title, agentName: expert.name });
+           messagingService.sendTelegram(companyId,
+             `✅ *Aufgabe erledigt*\n\n*${taskBefore.title}*\n_Abgeschlossen von ${expert.name}_`
            ).catch(() => {});
          } else if (normalizedStatus === 'in_progress' && taskBefore && taskBefore.status !== 'in_progress') {
-           broadcast('task_started', { unternehmenId, taskId: params.id, titel: taskBefore?.titel, agentName: expert.name });
+           broadcast('task_started', { companyId, taskId: params.id, titel: taskBefore?.title, agentName: expert.name });
          }
        }
     } else if (action === 'call_meeting') {
        // ── Multi-Agent Meeting (CEO koordiniert mehrere Agents) ──────────────
        const { frage, teilnehmer } = params;
        if (!frage || !Array.isArray(teilnehmer) || teilnehmer.length === 0) {
-         trace(expertId, unternehmenId, 'error', `call_meeting fehlgeschlagen`, 'frage und teilnehmer[] erforderlich');
+         trace(agentId, companyId, 'error', `call_meeting fehlgeschlagen`, 'frage und teilnehmer[] erforderlich');
          return;
        }
 
        // Validate participant IDs
        const validTeilnehmer = teilnehmer.filter((id: string) => {
-         const a = db.select({ id: experten.id }).from(experten).where(eq(experten.id, id)).get();
-         return !!a && id !== expertId;
+         const a = db.select({ id: agents.id }).from(agents).where(eq(agents.id, id)).get();
+         return !!a && id !== agentId;
        });
 
        if (validTeilnehmer.length === 0) {
-         trace(expertId, unternehmenId, 'error', `call_meeting fehlgeschlagen`, 'Keine gültigen Teilnehmer gefunden');
+         trace(agentId, companyId, 'error', `call_meeting fehlgeschlagen`, 'Keine gültigen Teilnehmer gefunden');
          return;
        }
 
        const meetingId = uuid();
        db.insert(agentMeetings).values({
          id: meetingId,
-         unternehmenId,
-         titel: frage,
-         veranstalterExpertId: expertId,
-         teilnehmerIds: JSON.stringify(validTeilnehmer),
-         antworten: '{}',
+         companyId,
+         title: frage,
+         organizerAgentId: agentId,
+         participantIds: JSON.stringify(validTeilnehmer),
+         replies: '{}',
          status: 'running',
          erstelltAm: now(),
        }).run();
 
-       trace(expertId, unternehmenId, 'action', `Meeting gestartet`, `"${frage}" · ${validTeilnehmer.length} Teilnehmer`);
-       broadcast('meeting_created', { unternehmenId, meetingId, titel: frage, veranstalterName: expert.name, teilnehmerIds: validTeilnehmer });
+       trace(agentId, companyId, 'action', `Meeting gestartet`, `"${frage}" · ${validTeilnehmer.length} Teilnehmer`);
+       broadcast('meeting_created', { companyId, meetingId, titel: frage, veranstalterName: expert.name, teilnehmerIds: validTeilnehmer });
 
        // Notify board
        const statusMsg = {
          id: uuid(),
-         unternehmenId,
-         expertId,
+         companyId,
+         agentId,
          absenderTyp: 'system' as const,
          nachricht: `📋 Meeting gestartet: "${frage}"\n${validTeilnehmer.length} Teilnehmer eingeladen.`,
          gelesen: false,
          erstelltAm: now(),
        };
-       db.insert(chatNachrichten).values(statusMsg).run();
+       db.insert(chatMessages).values(statusMsg).run();
        broadcast('chat_message', statusMsg);
 
        // Send question to each participant (staggered to avoid race)
        validTeilnehmer.forEach((teilnehmerId: string, idx: number) => {
          const frageMsg = {
            id: uuid(),
-           unternehmenId,
-           expertId: teilnehmerId,
-           vonExpertId: expertId,
+           companyId,
+           agentId: teilnehmerId,
+           vonExpertId: agentId,
            threadId: meetingId,
            absenderTyp: 'agent' as const,
            absenderName: expert.name,
@@ -1893,27 +1909,27 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
            gelesen: false,
            erstelltAm: now(),
          };
-         db.insert(chatNachrichten).values(frageMsg).run();
+         db.insert(chatMessages).values(frageMsg).run();
          broadcast('chat_message', frageMsg);
 
          setTimeout(() => {
-           this.triggerZyklus(teilnehmerId, unternehmenId, 'manual', expertId, meetingId).catch(e => {
+           this.triggerZyklus(teilnehmerId, companyId, 'manual', agentId, meetingId).catch(e => {
              console.error(`Meeting wakeup error for ${teilnehmerId}:`, e);
            });
          }, (idx + 1) * 600);
        });
 
     } else if (action === 'chat') {
-       const text = params.nachricht || params.message || params.inhalt || params.text;
+       const text = params.message || params.message || params.content || params.text;
        if (text) {
           // If empfaenger (recipient agent ID) is set, store as P2P message for that agent
           const empfaenger = params.empfaenger || params.recipient || null;
-          const targetExpertId = empfaenger || expertId;
+          const targetExpertId = empfaenger || agentId;
           const msg = {
              id: uuid(),
-             unternehmenId,
-             expertId: targetExpertId,
-             vonExpertId: empfaenger ? expertId : null,   // track sender for P2P routing
+             companyId,
+             agentId: targetExpertId,
+             vonExpertId: empfaenger ? agentId : null,   // track sender for P2P routing
              absenderTyp: 'agent' as const,
              absenderName: expert.name,
              nachricht: empfaenger
@@ -1922,66 +1938,66 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
              gelesen: false,
              erstelltAm: new Date().toISOString()
            };
-           db.insert(chatNachrichten).values(msg).run();
+           db.insert(chatMessages).values(msg).run();
            broadcast('chat_message', msg);
 
-           if (empfaenger && empfaenger !== expertId) {
+           if (empfaenger && empfaenger !== agentId) {
              // P2P: wake target agent
-             trace(expertId, unternehmenId, 'info', `P2P Nachricht an Kollege`, `→ ${empfaenger.slice(0,8)}: ${text.slice(0,50)}`);
+             trace(agentId, companyId, 'info', `P2P Nachricht an Kollege`, `→ ${empfaenger.slice(0,8)}: ${text.slice(0,50)}`);
              setTimeout(() => {
-               this.triggerZyklus(empfaenger, unternehmenId, 'manual', expertId).catch(e => {
+               this.triggerZyklus(empfaenger, companyId, 'manual', agentId).catch(e => {
                  console.error('P2P Wakeup Error:', e);
                });
              }, 100);
            } else {
              // Board message (no recipient) → also push to Telegram so user gets notified
              messagingService.sendTelegram(
-               unternehmenId,
+               companyId,
                `💬 *${expert.name}*:\n${text}`
              ).catch(() => {});
-             trace(expertId, unternehmenId, 'info', `Board-Nachricht`, text.slice(0, 80));
+             trace(agentId, companyId, 'info', `Board-Nachricht`, text.slice(0, 80));
            }
        }
     } else if (action === 'hire_agent') {
        // ─── Agent Spawning (Task-Manager-Vorbild) ──────────────────────────
        const { hireAgent } = await import('./services/agent-spawning.js');
        const hireResult = hireAgent({
-         unternehmenId,
-         requestedBy: expertId,
+         companyId,
+         requestedBy: agentId,
          name: params.name || 'Neuer Agent',
-         rolle: params.rolle || 'Assistent',
-         faehigkeiten: params.faehigkeiten,
-         verbindungsTyp: params.verbindungsTyp || 'openrouter',
+         role: params.role || 'Assistent',
+         skills: params.skills,
+         connectionType: params.connectionType || 'openrouter',
          budgetMonatCent: 0, // 0 = unlimited; agent-specific budgets set manually
          requireApproval: true, // Default: require board approval for agent hiring
        });
        if (hireResult.success) {
-         trace(expertId, unternehmenId, 'action', `Agent eingestellt: ${params.name}`,
-           hireResult.approvalId ? `Genehmigung ausstehend (${hireResult.approvalId})` : `ID: ${hireResult.expertId}`);
+         trace(agentId, companyId, 'action', `Agent eingestellt: ${params.name}`,
+           hireResult.approvalId ? `Genehmigung ausstehend (${hireResult.approvalId})` : `ID: ${hireResult.agentId}`);
        }
        const msg = {
-         id: uuid(), unternehmenId, expertId,
+         id: uuid(), companyId, agentId,
          absenderTyp: 'system' as const,
          nachricht: hireResult.success
-           ? (hireResult.approvalId ? `⏳ Hiring von "${params.name}" wartet auf Board-Genehmigung.` : `✅ "${params.name}" (${params.rolle}) erfolgreich eingestellt.`)
+           ? (hireResult.approvalId ? `⏳ Hiring von "${params.name}" wartet auf Board-Genehmigung.` : `✅ "${params.name}" (${params.role}) erfolgreich eingestellt.`)
            : `❌ Hiring fehlgeschlagen: ${hireResult.error}`,
          gelesen: false, erstelltAm: new Date().toISOString()
        };
-       db.insert(chatNachrichten).values(msg).run();
+       db.insert(chatMessages).values(msg).run();
        broadcast('chat_message', msg);
     } else if (action === 'add_dependency') {
        // ─── Issue Dependencies (Task-Manager-Vorbild) ──────────────────────
        const { erstelleAbhaengigkeit: addDep } = await import('./services/issue-dependencies.js');
-       const depResult = addDep(params.blockerId, params.blockedId, expertId);
+       const depResult = addDep(params.blockerId, params.blockedId, agentId);
        const msg = {
-         id: uuid(), unternehmenId, expertId,
+         id: uuid(), companyId, agentId,
          absenderTyp: 'system' as const,
          nachricht: depResult.success
            ? `🔗 Dependency erstellt: ${params.blockerId.slice(0,8)} blockiert ${params.blockedId.slice(0,8)}`
            : `❌ Dependency Fehler: ${depResult.error}`,
          gelesen: false, erstelltAm: new Date().toISOString()
        };
-       db.insert(chatNachrichten).values(msg).run();
+       db.insert(chatMessages).values(msg).run();
        broadcast('chat_message', msg);
     } else if (action.startsWith('canvas_') || action === 'camera_snap' || action === 'screen_record' || action === 'location_get' || action === 'clipboard_read') {
        // ─── Canvas + erweiterte Node Capabilities ─────────────────────
@@ -2026,15 +2042,15 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
            beschreibung = `Zwischenablage gelesen von ${nodeId}`;
          }
 
-         trace(expertId, unternehmenId, 'action', beschreibung);
+         trace(agentId, companyId, 'action', beschreibung);
          const resultText = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
          const msg = {
-           id: uuid(), unternehmenId, expertId,
+           id: uuid(), companyId, agentId,
            absenderTyp: 'system' as const,
            nachricht: `🖥️ ${beschreibung}:\n${resultText.slice(0, 1500)}`,
            gelesen: false, erstelltAm: new Date().toISOString()
          };
-         db.insert(chatNachrichten).values(msg).run();
+         db.insert(chatMessages).values(msg).run();
          broadcast('chat_message', msg);
        } catch (err: any) {
          let errorMsg = err.message;
@@ -2042,59 +2058,59 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
            errorMsg = `Zugriff verweigert: Das Betriebssystem hat den Zugriff auf '${action}' blockiert.`;
          }
          const msg = {
-           id: uuid(), unternehmenId, expertId,
+           id: uuid(), companyId, agentId,
            absenderTyp: 'system' as const,
            nachricht: `❌ ${action} fehlgeschlagen: ${errorMsg}`,
            gelesen: false, erstelltAm: new Date().toISOString()
          };
-         db.insert(chatNachrichten).values(msg).run();
+         db.insert(chatMessages).values(msg).run();
          broadcast('chat_message', msg);
        }
     } else if (action === 'session_search') {
        // ─── FTS5 Session Search (Learning Loop-Vorbild) ────────────────────────
        const query = params.query || '';
-       const searchResult = sessionSearch(query, expertId);
-       trace(expertId, unternehmenId, 'action', `Session Search: "${query}"`, `${searchResult.length} Zeichen Ergebnis`);
+       const searchResult = sessionSearch(query, agentId);
+       trace(agentId, companyId, 'action', `Session Search: "${query}"`, `${searchResult.length} Zeichen Ergebnis`);
        const msg = {
          id: uuid(),
-         unternehmenId,
-         expertId,
+         companyId,
+         agentId,
          absenderTyp: 'system' as const,
          nachricht: `🔍 ${searchResult.slice(0, 1500)}`,
          gelesen: false,
          erstelltAm: new Date().toISOString()
        };
-       db.insert(chatNachrichten).values(msg).run();
+       db.insert(chatMessages).values(msg).run();
        broadcast('chat_message', msg);
     } else if (action.startsWith('memory_')) {
        // ─── Memory Tools (via MCP) ────────────────────────────────────
        try {
-         trace(expertId, unternehmenId, 'action', `Memory: ${action}`, JSON.stringify(params).slice(0, 200));
+         trace(agentId, companyId, 'action', `Memory: ${action}`, JSON.stringify(params).slice(0, 200));
          const result = await mcpClient.callTool(action, params);
          const resultText = result?.content?.[0]?.text || JSON.stringify(result);
 
          const msg = {
            id: uuid(),
-           unternehmenId,
-           expertId,
+           companyId,
+           agentId,
            absenderTyp: 'system' as const,
            nachricht: `🧠 Memory (${action}):\n${resultText.slice(0, 1500)}`,
            gelesen: false,
            erstelltAm: new Date().toISOString()
          };
-         db.insert(chatNachrichten).values(msg).run();
+         db.insert(chatMessages).values(msg).run();
          broadcast('chat_message', msg);
        } catch (err: any) {
          const msg = {
            id: uuid(),
-           unternehmenId,
-           expertId,
+           companyId,
+           agentId,
            absenderTyp: 'system' as const,
            nachricht: `⚠️ Memory Fehler (${action}): ${err.message}`,
            gelesen: false,
            erstelltAm: new Date().toISOString()
          };
-         db.insert(chatNachrichten).values(msg).run();
+         db.insert(chatMessages).values(msg).run();
          broadcast('chat_message', msg);
        }
     } else if (action === 'create_routine') {
@@ -2102,9 +2118,9 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
        // params: { titel, beschreibung, cronExpression, assignToSelf?, timezone? }
        const { titel: rtitel, beschreibung: rbeschr, cronExpression, assignToSelf, timezone } = params;
        if (!rtitel || !cronExpression) {
-         const errMsg = { id: uuid(), unternehmenId, expertId, absenderTyp: 'system' as const,
+         const errMsg = { id: uuid(), companyId, agentId, absenderTyp: 'system' as const,
            nachricht: `❌ create_routine: titel und cronExpression sind erforderlich`, gelesen: false, erstelltAm: new Date().toISOString() };
-         db.insert(chatNachrichten).values(errMsg).run();
+         db.insert(chatMessages).values(errMsg).run();
          broadcast('chat_message', errMsg);
          return;
        }
@@ -2112,49 +2128,49 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
        const routineId = uuid();
        const triggerId = uuid();
        const ts = new Date().toISOString();
-       db.insert(routinen).values({
+       db.insert(routines).values({
          id: routineId,
-         unternehmenId,
-         titel: rtitel,
-         beschreibung: rbeschr || '',
-         zugewiesenAn: assignToSelf !== false ? expertId : null,
-         prioritaet: (params.prioritaet || 'medium') as any,
+         companyId,
+         title: rtitel,
+         description: rbeschr || '',
+         assignedTo: assignToSelf !== false ? agentId : null,
+         priority: (params.priority || 'medium') as any,
          status: 'active',
-         erstelltAm: ts,
-         aktualisiertAm: ts,
+         createdAt: ts,
+         updatedAt: ts,
        }).run();
 
        db.insert(routineTrigger).values({
          id: triggerId,
-         unternehmenId,
+         companyId,
          routineId,
          kind: 'schedule',
-         aktiv: true,
+         active: true,
          cronExpression,
          timezone: timezone || 'Europe/Berlin',
-         erstelltAm: ts,
+         createdAt: ts,
        }).run();
 
-       trace(expertId, unternehmenId, 'action', `Routine erstellt`, `"${rtitel}" (${cronExpression})`);
-       broadcast('routine_created', { unternehmenId, routineId, titel: rtitel, cronExpression });
+       trace(agentId, companyId, 'action', `Routine erstellt`, `"${rtitel}" (${cronExpression})`);
+       broadcast('routine_created', { companyId, routineId, titel: rtitel, cronExpression });
 
        const confirmMsg = {
-         id: uuid(), unternehmenId, expertId, absenderTyp: 'system' as const,
+         id: uuid(), companyId, agentId, absenderTyp: 'system' as const,
          nachricht: `✅ Routine eingerichtet: **${rtitel}**\n⏰ Zeitplan: \`${cronExpression}\` (${timezone || 'Europe/Berlin'})\nID: \`${routineId}\``,
          gelesen: false, erstelltAm: ts,
        };
-       db.insert(chatNachrichten).values(confirmMsg).run();
+       db.insert(chatMessages).values(confirmMsg).run();
        broadcast('chat_message', confirmMsg);
 
     } else if (action === 'store_secret') {
        // ─── Secrets/Credentials verschlüsselt speichern ─────────────────────
        // params: { name, value, description? }
-       // Gespeichert als "secret_<name>" in einstellungen — verschlüsselt mit AES-256-GCM
+       // Gespeichert als "secret_<name>" in settings — verschlüsselt mit AES-256-GCM
        const { name: secretName, value: secretValue, description: secretDesc } = params;
        if (!secretName || !secretValue) {
-         const errMsg = { id: uuid(), unternehmenId, expertId, absenderTyp: 'system' as const,
+         const errMsg = { id: uuid(), companyId, agentId, absenderTyp: 'system' as const,
            nachricht: `❌ store_secret: name und value sind erforderlich`, gelesen: false, erstelltAm: new Date().toISOString() };
-         db.insert(chatNachrichten).values(errMsg).run();
+         db.insert(chatMessages).values(errMsg).run();
          broadcast('chat_message', errMsg);
          return;
        }
@@ -2163,23 +2179,23 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
        const key = `secret_${secretName.toLowerCase().replace(/\s+/g, '_')}`;
        const encryptedValue = encryptValue(String(secretValue));
 
-       db.insert(einstellungen).values({ schluessel: key, wert: encryptedValue, unternehmenId })
-         .onConflictDoUpdate({ target: [einstellungen.schluessel, einstellungen.unternehmenId], set: { wert: encryptedValue } })
+       db.insert(settings).values({ key, value: encryptedValue, companyId, updatedAt: new Date().toISOString() })
+         .onConflictDoUpdate({ target: [settings.key, settings.companyId], set: { value: encryptedValue, updatedAt: new Date().toISOString() } })
          .run();
 
-       trace(expertId, unternehmenId, 'action', `Secret gespeichert`, `Schlüssel: ${key}`);
+       trace(agentId, companyId, 'action', `Secret gespeichert`, `Schlüssel: ${key}`);
 
        const confirmMsg = {
-         id: uuid(), unternehmenId, expertId, absenderTyp: 'system' as const,
+         id: uuid(), companyId, agentId, absenderTyp: 'system' as const,
          nachricht: `🔐 Credential gespeichert: **${secretName}**\nVerschlüsselt abgelegt — Agenten können es mit Schlüssel \`${key}\` abrufen.`,
          gelesen: false, erstelltAm: new Date().toISOString(),
        };
-       db.insert(chatNachrichten).values(confirmMsg).run();
+       db.insert(chatMessages).values(confirmMsg).run();
        broadcast('chat_message', confirmMsg);
 
     } else {
        // Alle anderen Aktionen werden als "Skills" behandelt — mit task-spezifischem Workspace
-       await executeSkill(expertId, unternehmenId, action, params, workspacePath);
+       await executeSkill(agentId, companyId, action, params, workspacePath);
     }
   }
 

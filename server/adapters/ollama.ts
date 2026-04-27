@@ -7,7 +7,7 @@ const MAX_ITERATIONS = 10;
 
 export class OllamaAdapter implements ExpertAdapter {
   name = 'ollama';
-  beschreibung = 'Ollama Lokal (Llama 3, Mistral, etc.)';
+  description = 'Ollama Lokal (Llama 3, Mistral, etc.)';
 
   async isAvailable(): Promise<boolean> {
     return true;
@@ -19,8 +19,8 @@ export class OllamaAdapter implements ExpertAdapter {
 
     let model = options.globalDefaultModel || 'mistral';
     try {
-      if (options.verbindungsConfig) {
-        const config = JSON.parse(options.verbindungsConfig);
+      if (options.connectionConfig) {
+        const config = JSON.parse(options.connectionConfig);
         if (config.model) model = config.model;
       }
     } catch {
@@ -84,9 +84,9 @@ export class OllamaAdapter implements ExpertAdapter {
       } catch (e: any) {
         return {
           success: false,
-          ausgabe: finalOutput,
-          fehler: `Verbindungsfehler zu Ollama (${baseUrl}): ${e.message}`,
-          dauer: Date.now() - startTime,
+          output: finalOutput,
+          error: `Verbindungsfehler zu Ollama (${baseUrl}): ${e.message}`,
+          duration: Date.now() - startTime,
         };
       }
 
@@ -123,9 +123,9 @@ export class OllamaAdapter implements ExpertAdapter {
 
     return {
       success: true,
-      ausgabe: finalOutput,
-      dauer: Date.now() - startTime,
-      tokenVerbrauch: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, kostenCent: 0 },
+      output: finalOutput,
+      duration: Date.now() - startTime,
+      tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, costCent: 0 },
     };
   }
 }

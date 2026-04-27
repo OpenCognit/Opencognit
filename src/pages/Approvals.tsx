@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Check, X, Clock, Loader2, Sparkles, ShieldCheck, Briefcase, MessageSquare, Terminal, ChevronDown } from 'lucide-react';
 import { PageHelp } from '../components/PageHelp';
 import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
@@ -40,12 +40,19 @@ export function Approvals() {
     () => apiExperten.liste(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
   );
 
+  // Auto-reload when approval status changes (e.g. via Telegram)
+  useEffect(() => {
+    const handler = () => reload();
+    window.addEventListener('opencognit:approval-changed', handler);
+    return () => window.removeEventListener('opencognit:approval-changed', handler);
+  }, [reload]);
+
   if (!aktivesUnternehmen) return null;
 
   if (loading || !alle) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' }}>
-        <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#23CDCB' }} />
+        <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#c5a059' }} />
       </div>
     );
   }
@@ -98,15 +105,15 @@ export function Approvals() {
           }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                <Sparkles size={20} style={{ color: '#23CDCB' }} />
-                <span style={{ fontSize: '12px', fontWeight: 600, color: '#23CDCB', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                <Sparkles size={20} style={{ color: '#c5a059' }} />
+                <span style={{ fontSize: '12px', fontWeight: 600, color: '#c5a059', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                   {aktivesUnternehmen.name}
                 </span>
               </div>
               <h1 style={{
                 fontSize: '2rem',
                 fontWeight: 700,
-                background: 'linear-gradient(to bottom right, #23CDCB 0%, #ffffff 100%)',
+                background: 'linear-gradient(to bottom right, #c5a059 0%, #ffffff 100%)',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
@@ -152,26 +159,26 @@ export function Approvals() {
                         fontSize: '0.75rem',
                         color: '#eab308',
                       }}>
-                        {typLabels[g.typ] || g.typ}
+                        {(() => { const t = g.type ?? g.typ; return t ? (typLabels[t] || t) : '—'; })()}
                       </span>
                       <span style={{ fontSize: '0.8125rem', color: '#71717a' }}>
-                        {i18n.t.genehmigungen.by} {findExpertName(g.angefordertVon)} · {zeitRelativ(g.erstelltAm, i18n.t)}
+                        {i18n.t.genehmigungen.by} {findExpertName(g.requestedBy ?? g.angefordertVon ?? null)} · {zeitRelativ(g.createdAt ?? g.erstelltAm ?? '', i18n.t)}
                       </span>
                     </div>
-                    <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff', marginBottom: '0.5rem' }}>{g.titel}</h3>
-                    <p style={{ fontSize: '0.875rem', color: '#71717a', marginBottom: '1rem' }}>{g.beschreibung}</p>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff', marginBottom: '0.5rem' }}>{g.title ?? g.titel}</h3>
+                    <p style={{ fontSize: '0.875rem', color: '#71717a', marginBottom: '1rem' }}>{g.description ?? g.beschreibung}</p>
 
                     {g.payload && Object.keys(g.payload).length > 0 && (
                       <div style={{
                         background: 'rgba(255, 255, 255, 0.03)',
                         border: '1px solid rgba(255, 255, 255, 0.06)',
-                        borderRadius: '16px',
+                        borderRadius: 0,
                         padding: '1rem',
                         marginBottom: '1rem',
                       }}>
                         {g.typ === 'agent_action' && g.payload.action === 'create_task' ? (
                           <>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '0.75rem', color: '#23CDCB' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '0.75rem', color: '#c5a059' }}>
                               <Briefcase size={16} />
                               <span style={{ fontSize: '0.8125rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                 {i18n.t.genehmigungen.createTask}
@@ -219,10 +226,10 @@ export function Approvals() {
                           alignItems: 'center',
                           gap: '0.5rem',
                           padding: '0.625rem 1rem',
-                          backgroundColor: 'rgba(35, 205, 202, 0.1)',
-                          border: '1px solid rgba(35, 205, 202, 0.2)',
-                          borderRadius: '12px',
-                          color: '#23CDCB',
+                          backgroundColor: 'rgba(197, 160, 89, 0.1)',
+                          border: '1px solid rgba(197, 160, 89, 0.2)',
+                          borderRadius: 0,
+                          color: '#c5a059',
                           fontWeight: 600,
                           fontSize: '0.875rem',
                           cursor: 'pointer',
@@ -240,7 +247,7 @@ export function Approvals() {
                           padding: '0.625rem 1rem',
                           backgroundColor: 'rgba(239, 68, 68, 0.1)',
                           border: '1px solid rgba(239, 68, 68, 0.2)',
-                          borderRadius: '12px',
+                          borderRadius: 0,
                           color: '#ef4444',
                           fontWeight: 600,
                           fontSize: '0.875rem',
@@ -284,7 +291,7 @@ export function Approvals() {
                     accent={g.status === 'approved' ? '#22c55e' : '#ef4444'}
                     style={{
                       padding: '1rem 1.25rem',
-                      borderRadius: '16px',
+                      borderRadius: 0,
                       borderLeft: `3px solid ${g.status === 'approved' ? '#22c55e' : '#ef4444'}`,
                       opacity: 0.7,
                     }}
@@ -295,8 +302,8 @@ export function Approvals() {
                       ) : (
                         <X size={14} style={{ color: '#ef4444' }} />
                       )}
-                      <span style={{ fontSize: '0.875rem', fontWeight: 500, color: '#ffffff' }}>{g.titel}</span>
-                      <span style={{ fontSize: '0.8125rem', color: '#71717a' }}>· {zeitRelativ(g.erstelltAm, i18n.t)}</span>
+                      <span style={{ fontSize: '0.875rem', fontWeight: 500, color: '#ffffff' }}>{g.title ?? g.titel ?? '—'}</span>
+                      <span style={{ fontSize: '0.8125rem', color: '#71717a' }}>· {zeitRelativ(g.createdAt ?? g.erstelltAm ?? '', i18n.t)}</span>
                     </div>
                   </GlassCard>
                 ))}
@@ -309,13 +316,13 @@ export function Approvals() {
               <div style={{
                 width: '64px',
                 height: '64px',
-                borderRadius: '16px',
+                borderRadius: 0,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 margin: '0 auto 1rem',
-                background: 'rgba(35, 205, 202, 0.1)',
-                color: '#23CDCB',
+                background: 'rgba(197, 160, 89, 0.1)',
+                color: '#c5a059',
               }}>
                 <ShieldCheck size={32} />
               </div>

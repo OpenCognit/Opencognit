@@ -41,7 +41,7 @@ function MobileNav() {
             flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
             justifyContent: 'center', gap: 3, padding: '0.5rem 0.25rem',
             textDecoration: 'none', transition: 'all 0.2s',
-            color: isActive ? '#23CDCB' : '#52525b',
+            color: isActive ? '#c5a059' : '#52525b',
             fontSize: '0.6rem', fontWeight: 600,
           })}>
             <item.icon size={20} />
@@ -68,7 +68,7 @@ function MobileNav() {
           <div style={{
             position: 'absolute', bottom: 0, left: 0, right: 0,
             background: 'rgba(10,10,12,0.98)', borderTop: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: '20px 20px 0 0', padding: '1rem 1rem calc(1rem + env(safe-area-inset-bottom))',
+            borderRadius: '0', padding: '1rem 1rem calc(1rem + env(safe-area-inset-bottom))',
           }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <span style={{ fontWeight: 700, color: '#fff', fontSize: '1rem' }}>Navigation</span>
@@ -78,7 +78,7 @@ function MobileNav() {
             </div>
             {[
               { to: '/focus', label: 'Focus Mode' },
-              { to: '/intelligence', label: 'Intelligence' },
+              { to: '/company-knowledge', label: 'Knowledge' },
               { to: '/goals', label: 'Goals' },
               { to: '/projects', label: 'Projects' },
               { to: '/meetings', label: 'Meetings' },
@@ -90,10 +90,10 @@ function MobileNav() {
               { to: '/activity', label: 'Activity' },
             ].map(item => (
               <NavLink key={item.to} to={item.to} onClick={() => setDrawerOpen(false)} style={({ isActive }) => ({
-                display: 'block', padding: '0.75rem 1rem', borderRadius: '10px',
+                display: 'block', padding: '0.75rem 1rem', borderRadius: 0,
                 textDecoration: 'none', marginBottom: '0.25rem',
-                background: isActive ? 'rgba(35,205,202,0.08)' : 'transparent',
-                color: isActive ? '#23CDCB' : '#a1a1aa',
+                background: isActive ? 'rgba(197,160,89,0.08)' : 'transparent',
+                color: isActive ? '#c5a059' : '#a1a1aa',
                 fontWeight: 600, fontSize: '0.875rem',
               })}>
                 {item.label}
@@ -130,7 +130,7 @@ function GlobalBackground() {
         <div key={i} style={{
           position: 'absolute',
           width: `${p.size}px`, height: `${p.size}px`,
-          background: 'rgba(35, 205, 202, 0.35)',
+          background: 'rgba(197, 160, 89, 0.35)',
           borderRadius: '50%',
           top: p.top, left: p.left,
           animation: `float ${p.duration}s ease-in-out infinite`,
@@ -153,7 +153,7 @@ function useAgentNotifications() {
     if (!aktivesUnternehmen) return;
     const token = localStorage.getItem('opencognit_token');
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${window.location.hostname}:3201/ws${token ? `?token=${token}` : ''}`);
+    const ws = new WebSocket(`${proto}//${window.location.host}/ws${token ? `?token=${token}` : ''}`);
     wsRef.current = ws;
 
     ws.onmessage = (ev) => {
@@ -165,8 +165,8 @@ function useAgentNotifications() {
           case 'task_completed':
             toast.agent(
               msg.agentName
-                ? (de ? `${msg.agentName} hat Aufgabe erledigt` : `${msg.agentName} completed a task`)
-                : (de ? 'Aufgabe abgeschlossen' : 'Task completed'),
+                ? (de ? `✅ ${msg.agentName} hat Aufgabe erledigt` : `✅ ${msg.agentName} completed a task`)
+                : (de ? '✅ Aufgabe abgeschlossen' : '✅ Task completed'),
               msg.taskTitel || undefined,
               () => navigate('/tasks'),
             );
@@ -182,25 +182,82 @@ function useAgentNotifications() {
               onClick: () => navigate('/war-room'),
             });
             break;
+          case 'task_updated': {
+            const statusLabels: Record<string, string> = {
+              done: de ? '✅ Erledigt' : '✅ Done',
+              in_progress: de ? '🔄 In Bearbeitung' : '🔄 In Progress',
+              todo: de ? '📋 Todo' : '📋 Todo',
+              blocked: de ? '🚫 Blockiert' : '🚫 Blocked',
+              cancelled: de ? '❌ Abgebrochen' : '❌ Cancelled',
+            };
+            const statusLabel = statusLabels[msg.status] || msg.status;
+            toast.info(
+              de ? `Task aktualisiert: ${statusLabel}` : `Task updated: ${statusLabel}`,
+              msg.taskTitel || undefined,
+              () => navigate('/tasks'),
+            );
+            break;
+          }
+          case 'task_deleted':
+            toast.info(
+              de ? '🗑️ Task gelöscht' : '🗑️ Task deleted',
+              msg.taskTitel || undefined,
+              () => navigate('/tasks'),
+            );
+            break;
           case 'approval_needed':
             toast.warning(
-              de ? 'Genehmigung erforderlich' : 'Approval required',
+              de ? '⚖️ Genehmigung erforderlich' : '⚖️ Approval required',
               msg.taskTitel || (de ? 'Ein Agent wartet auf Freigabe' : 'An agent is waiting for approval'),
               () => navigate('/approvals'),
             );
             break;
+          case 'approval_requested': {
+            const approvalTitel = msg.data?.titel || msg.titel;
+            const approvalTyp = msg.data?.typ || msg.typ;
+            const typeLabels: Record<string, string> = {
+              hire_expert: de ? '🧑‍💼 Neueinstellung' : '🧑‍💼 Hiring',
+              approve_strategy: de ? '🎯 Strategie' : '🎯 Strategy',
+              budget_change: de ? '💰 Budget' : '💰 Budget',
+              agent_action: de ? '🤖 Agent-Aktion' : '🤖 Agent Action',
+            };
+            toast.warning(
+              `${typeLabels[approvalTyp] || (de ? '⚖️ Genehmigung' : '⚖️ Approval')}: ${approvalTitel || (de ? 'Freigabe angefordert' : 'Approval requested')}`,
+              msg.data?.beschreibung || msg.beschreibung || (de ? 'Zum Genehmigen klicken' : 'Click to review'),
+              () => navigate('/approvals'),
+            );
+            break;
+          }
+          case 'approval_updated': {
+            const isApproved = msg.data?.status === 'approved' || msg.status === 'approved';
+            const approvalTitle = msg.data?.titel || msg.titel;
+            if (isApproved) {
+              toast.success(
+                de ? '✅ Genehmigt' : '✅ Approved',
+                approvalTitle || (de ? 'Die Freigabe wurde erteilt' : 'Approval has been granted'),
+                () => navigate('/approvals'),
+              );
+            } else {
+              toast.info(
+                de ? '❌ Abgelehnt' : '❌ Rejected',
+                approvalTitle || (de ? 'Die Freigabe wurde abgelehnt' : 'Approval was rejected'),
+                () => navigate('/approvals'),
+              );
+            }
+            break;
+          }
           case 'goal_achieved':
             toast.success(
               msg.zielTitel
-                ? (de ? `Ziel erreicht: ${msg.zielTitel}` : `Goal achieved: ${msg.zielTitel}`)
-                : (de ? 'Ziel erreicht!' : 'Goal achieved!'),
+                ? (de ? `🎯 Ziel erreicht: ${msg.zielTitel}` : `🎯 Goal achieved: ${msg.zielTitel}`)
+                : (de ? '🎯 Ziel erreicht!' : '🎯 Goal achieved!'),
               de ? 'Alle verknüpften Aufgaben wurden abgeschlossen.' : 'All linked tasks have been completed.',
               () => navigate('/goals'),
             );
             break;
           case 'budget_warning':
             toast.warning(
-              de ? 'Budget-Warnung' : 'Budget warning',
+              de ? '💰 Budget-Warnung' : '💰 Budget warning',
               msg.message || (de ? 'Ein Agent nähert sich dem Budget-Limit' : 'An agent is approaching the budget limit'),
               () => navigate('/costs'),
             );
@@ -208,16 +265,25 @@ function useAgentNotifications() {
           case 'expert_deleted':
             toast.info(
               msg.name
-                ? (de ? `${msg.name} entlassen` : `${msg.name} dismissed`)
-                : (de ? 'Agent entlassen' : 'Agent dismissed'),
+                ? (de ? `🗑️ ${msg.name} entlassen` : `🗑️ ${msg.name} dismissed`)
+                : (de ? '🗑️ Agent entlassen' : '🗑️ Agent dismissed'),
               undefined,
               () => navigate('/experts'),
             );
             break;
+          case 'expert_created': {
+            const expertName = msg.data?.name || msg.name;
+            toast.success(
+              de ? `🤖 Agent erstellt: ${expertName}` : `🤖 Agent created: ${expertName}`,
+              msg.data?.rolle || msg.rolle || undefined,
+              () => navigate('/experts'),
+            );
+            break;
+          }
           case 'tasks_unblocked': {
             const n = msg.taskIds?.length || 0;
             if (n > 0) toast.info(
-              de ? `${n} Aufgabe${n > 1 ? 'n' : ''} entsperrt` : `${n} task${n > 1 ? 's' : ''} unblocked`,
+              de ? `🔓 ${n} Aufgabe${n > 1 ? 'n' : ''} entsperrt` : `🔓 ${n} task${n > 1 ? 's' : ''} unblocked`,
               de ? 'Blockierte Aufgaben sind wieder verfügbar' : 'Blocked tasks are available again',
               () => navigate('/tasks'),
             );
@@ -225,7 +291,7 @@ function useAgentNotifications() {
           }
           case 'meeting_created':
             toast.agent(
-              de ? 'Meeting gestartet' : 'Meeting started',
+              de ? '💬 Meeting gestartet' : '💬 Meeting started',
               msg.titel || (de ? 'Agenten halten eine Besprechung' : 'Agents are holding a meeting'),
               () => navigate('/meetings'),
             );
@@ -233,26 +299,57 @@ function useAgentNotifications() {
           case 'meeting_updated':
             if (msg.status === 'completed') {
               toast.success(
-                de ? 'Meeting abgeschlossen' : 'Meeting completed',
+                de ? '💬 Meeting abgeschlossen' : '💬 Meeting completed',
+                msg.titel || undefined,
+                () => navigate('/meetings'),
+              );
+            } else if (msg.status === 'cancelled') {
+              toast.info(
+                de ? '💬 Meeting abgebrochen' : '💬 Meeting cancelled',
                 msg.titel || undefined,
                 () => navigate('/meetings'),
               );
             }
             break;
+          case 'meeting_deleted':
+            toast.info(
+              de ? '🗑️ Meeting gelöscht' : '🗑️ Meeting deleted',
+              msg.titel || undefined,
+              () => navigate('/meetings'),
+            );
+            break;
           case 'agents_imported': {
             const count = msg.agentsCreated || 0;
             if (count > 0) toast.success(
-              de ? `${count} Agent${count > 1 ? 'en' : ''} importiert` : `${count} agent${count > 1 ? 's' : ''} imported`,
+              de ? `📥 ${count} Agent${count > 1 ? 'en' : ''} importiert` : `📥 ${count} agent${count > 1 ? 's' : ''} imported`,
               msg.templateName || undefined,
+              () => navigate('/experts'),
+            );
+            break;
+          }
+          case 'company_imported': {
+            const imported = msg.agentsImported || 0;
+            toast.success(
+              de ? '📥 Import abgeschlossen' : '📥 Import completed',
+              imported > 0
+                ? (de ? `${imported} Agenten importiert` : `${imported} agents imported`)
+                : undefined,
               () => navigate('/experts'),
             );
             break;
           }
           case 'routine_executed':
             toast.info(
-              msg.routineTitel || (de ? 'Routine ausgeführt' : 'Routine executed'),
-              msg.result || undefined,
+              de ? '⏰ Routine ausgeführt' : '⏰ Routine executed',
+              msg.routineTitel || msg.result || undefined,
               () => navigate('/routines'),
+            );
+            break;
+          case 'memory_cleared':
+            toast.info(
+              de ? '🧠 Memory gelöscht' : '🧠 Memory cleared',
+              msg.expertName || (de ? 'Der Agent hat sein Kurzzeitgedächtnis zurückgesetzt' : 'The agent reset its short-term memory'),
+              () => navigate('/experts'),
             );
             break;
           case 'task_escalated':
@@ -270,7 +367,12 @@ function useAgentNotifications() {
       } catch {}
     };
 
-    return () => { ws.close(); wsRef.current = null; };
+    return () => {
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
+        ws.close();
+      }
+      wsRef.current = null;
+    };
   }, [aktivesUnternehmen?.id, de]);
 }
 

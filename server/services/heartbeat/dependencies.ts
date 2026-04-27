@@ -2,7 +2,7 @@
 
 import crypto from 'crypto';
 import { db } from '../../db/client.js';
-import { aufgaben, experten, chatNachrichten, workProducts, issueRelations } from '../../db/schema.js';
+import { tasks, agents, chatMessages, workProducts, issueRelations } from '../../db/schema.js';
 import { eq, and, inArray, sql } from 'drizzle-orm';
 import { listWorkspaceFiles } from '../workspace.js';
 import { isFocusModeActive } from './utils.js';
@@ -13,8 +13,8 @@ import { v4 as uuid } from 'uuid';
  */
 export async function recordWorkProducts(
   taskId: string,
-  expertId: string,
-  unternehmenId: string,
+  agentId: string,
+  companyId: string,
   runId: string,
   workspacePath: string | null
 ): Promise<void> {
@@ -29,16 +29,16 @@ export async function recordWorkProducts(
 
       await db.insert(workProducts).values({
         id: crypto.randomUUID(),
-        unternehmenId,
-        aufgabeId: taskId,
-        expertId,
+        companyId,
+        taskId: taskId,
+        agentId,
         runId,
-        typ: 'file',
+        type: 'file',
         name: file.name,
         pfad: file.path,
-        groeßeBytes: file.sizeBytes,
+        sizeBytes: file.sizeBytes,
         mimeTyp: file.mimeTyp,
-        erstelltAm: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
       });
     }
 
@@ -52,33 +52,33 @@ export async function recordWorkProducts(
  * Scan for tasks that are blocked or stuck in-progress too long.
  * Called at the start of each orchestrator heartbeat cycle.
  */
-export async function scanForBlockedTasks(unternehmenId: string, orchestratorId: string): Promise<void> {
+export async function scanForBlockedTasks(companyId: string, orchestratorId: string): Promise<void> {
   try {
     const STUCK_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours
 
     const stuckTasks = await db.select({
-      id: aufgaben.id,
-      titel: aufgaben.titel,
-      status: aufgaben.status,
-      zugewiesenAn: aufgaben.zugewiesenAn,
-      gestartetAm: aufgaben.gestartetAm,
+      id: tasks.id,
+      title: tasks.title,
+      status: tasks.status,
+      assignedTo: tasks.assignedTo,
+      gestartetAm: tasks.startedAt,
     })
-      .from(aufgaben)
+      .from(tasks)
       .where(and(
-        eq(aufgaben.unternehmenId, unternehmenId),
-        inArray(aufgaben.status, ['in_progress', 'blocked']),
+        eq(tasks.companyId, companyId),
+        inArray(tasks.status, ['in_progress', 'blocked']),
       )) as any[];
 
     const now = Date.now();
     for (const task of stuckTasks) {
-      if (!task.gestartetAm) continue;
-      const age = now - new Date(task.gestartetAm).getTime();
+      if (!task.startedAt) continue;
+      const age = now - new Date(task.startedAt).getTime();
       if (age < STUCK_THRESHOLD_MS) continue;
 
       // Find agent name
       let agentName = 'Unbekannt';
-      if (task.zugewiesenAn) {
-        const agent = await db.select({ name: experten.name }).from(experten).where(eq(experten.id, task.zugewiesenAn)).get() as any;
+      if (task.assignedTo) {
+        const agent = await db.select({ name: agents.name }).from(agents).where(eq(agents.id, task.assignedTo)).get() as any;
         agentName = agent?.name || agentName;
       }
 
@@ -86,36 +86,36 @@ export async function scanForBlockedTasks(unternehmenId: string, orchestratorId:
 
       // Check if we already sent a stuck-alert recently (last 4h)
       const recentAlert = await db.select()
-        .from(chatNachrichten)
+        .from(chatMessages)
         .where(and(
-          eq(chatNachrichten.unternehmenId, unternehmenId),
-          eq(chatNachrichten.expertId, orchestratorId),
+          eq(chatMessages.companyId, companyId),
+          eq(chatMessages.agentId, orchestratorId),
         ))
         .then((msgs: any[]) => msgs.some((m) =>
-          m.nachricht.includes(`feststeckt`) &&
-          m.nachricht.includes(task.titel.slice(0, 30)) &&
-          new Date(m.erstelltAm) > new Date(Date.now() - 4 * 60 * 60 * 1000)
+          m.message.includes(`feststeckt`) &&
+          m.message.includes(task.title.slice(0, 30)) &&
+          new Date(m.createdAt) > new Date(Date.now() - 4 * 60 * 60 * 1000)
         ));
 
       if (recentAlert) continue;
 
-      const alertMsg = `⚠️ **${agentName}** feststeckt seit ${hours}h bei Task: **${task.titel}**\n` +
+      const alertMsg = `⚠️ **${agentName}** feststeckt seit ${hours}h bei Task: **${task.title}**\n` +
         `Status: \`${task.status}\` — bitte manuell prüfen oder Task neu zuweisen.`;
 
       // Suppress non-critical alerts during focus mode
-      if (!isFocusModeActive(unternehmenId)) {
-        await db.insert(chatNachrichten).values({
+      if (!isFocusModeActive(companyId)) {
+        await db.insert(chatMessages).values({
           id: crypto.randomUUID(),
-          unternehmenId,
-          expertId: orchestratorId,
-          absenderTyp: 'agent',
-          nachricht: alertMsg,
-          gelesen: false,
-          erstelltAm: new Date().toISOString(),
+          companyId,
+          agentId: orchestratorId,
+          senderType: 'agent',
+          message: alertMsg,
+          read: false,
+          createdAt: new Date().toISOString(),
         });
-        console.log(`  🚨 Blocker-Alert: Task "${task.titel}" seit ${hours}h in ${task.status}`);
+        console.log(`  🚨 Blocker-Alert: Task "${task.title}" seit ${hours}h in ${task.status}`);
       } else {
-        console.log(`  🔇 Blocker-Alert unterdrückt (Focus Mode aktiv): Task "${task.titel}"`);
+        console.log(`  🔇 Blocker-Alert unterdrückt (Focus Mode aktiv): Task "${task.title}"`);
       }
     }
   } catch (err: any) {
@@ -130,37 +130,37 @@ export async function scanForBlockedTasks(unternehmenId: string, orchestratorId:
  * - moves them from backlog → todo
  * - wakes up their assigned agents immediately
  */
-export async function unlockDependentTasks(completedTaskId: string, unternehmenId: string): Promise<void> {
+export async function unlockDependentTasks(completedTaskId: string, companyId: string): Promise<void> {
   // Find tasks that were waiting on this completed task
-  const dependents = await db.select({ zielId: issueRelations.zielId })
+  const dependents = await db.select({ targetId: issueRelations.targetId })
     .from(issueRelations)
-    .where(eq(issueRelations.quellId, completedTaskId));
+    .where(eq(issueRelations.sourceId, completedTaskId));
 
   if (dependents.length === 0) return;
 
-  const agentsToWake: Array<{ agentId: string; unternehmenId: string }> = [];
+  const agentsToWake: Array<{ agentId: string; companyId: string }> = [];
 
-  for (const { zielId } of dependents) {
+  for (const { targetId } of dependents) {
     // Get the dependent task
     const depTask = await db.select({
-      id: aufgaben.id,
-      titel: aufgaben.titel,
-      status: aufgaben.status,
-      zugewiesenAn: aufgaben.zugewiesenAn,
-      unternehmenId: aufgaben.unternehmenId,
-    }).from(aufgaben).where(eq(aufgaben.id, zielId)).get();
+      id: tasks.id,
+      title: tasks.title,
+      status: tasks.status,
+      assignedTo: tasks.assignedTo,
+      companyId: tasks.companyId,
+    }).from(tasks).where(eq(tasks.id, targetId)).get();
 
-    if (!depTask || depTask.unternehmenId !== unternehmenId) continue;
+    if (!depTask || depTask.companyId !== companyId) continue;
     if (depTask.status !== 'backlog' && depTask.status !== 'blocked') continue;
 
     // Check if ALL blockers of this task are now done
-    const allBlockers = await db.select({ quellId: issueRelations.quellId })
+    const allBlockers = await db.select({ sourceId: issueRelations.sourceId })
       .from(issueRelations)
-      .where(eq(issueRelations.zielId, zielId));
+      .where(eq(issueRelations.targetId, targetId));
 
     const blockerStatuses = await Promise.all(
-      allBlockers.map(b => db.select({ status: aufgaben.status })
-        .from(aufgaben).where(eq(aufgaben.id, b.quellId)).get()),
+      allBlockers.map(b => db.select({ status: tasks.status })
+        .from(tasks).where(eq(tasks.id, b.sourceId)).get()),
     );
 
     const allDone = blockerStatuses.every(b => b?.status === 'done');
@@ -168,25 +168,25 @@ export async function unlockDependentTasks(completedTaskId: string, unternehmenI
 
     // All blockers done — unlock this task
     const now = new Date().toISOString();
-    await db.update(aufgaben)
-      .set({ status: 'todo', aktualisiertAm: now })
-      .where(eq(aufgaben.id, zielId));
+    await db.update(tasks)
+      .set({ status: 'todo', updatedAt: now })
+      .where(eq(tasks.id, targetId));
 
-    console.log(`  🔗 Task Chaining: "${depTask.titel}" ist jetzt entsperrt`);
+    console.log(`  🔗 Task Chaining: "${depTask.title}" ist jetzt entsperrt`);
 
     // Notify assigned agent via chat message
-    if (depTask.zugewiesenAn) {
-      await db.insert(chatNachrichten).values({
+    if (depTask.assignedTo) {
+      await db.insert(chatMessages).values({
         id: uuid(),
-        unternehmenId,
-        expertId: depTask.zugewiesenAn,
-        absenderTyp: 'system',
-        nachricht: `🔗 Dein Task "${depTask.titel}" ist jetzt bereit — alle Abhängigkeiten wurden abgeschlossen.`,
-        gelesen: false,
-        erstelltAm: now,
+        companyId,
+        agentId: depTask.assignedTo,
+        senderType: 'system',
+        message: `🔗 Dein Task "${depTask.title}" ist jetzt bereit — alle Abhängigkeiten wurden abgeschlossen.`,
+        read: false,
+        createdAt: now,
       }).run();
 
-      agentsToWake.push({ agentId: depTask.zugewiesenAn, unternehmenId });
+      agentsToWake.push({ agentId: depTask.assignedTo, companyId });
     }
   }
 
@@ -194,7 +194,7 @@ export async function unlockDependentTasks(completedTaskId: string, unternehmenI
   if (agentsToWake.length > 0) {
     console.log(`  🔗 Task Chaining: ${agentsToWake.length} Agent(en) werden geweckt`);
     const { scheduler } = await import('../../scheduler.js');
-    await Promise.all(agentsToWake.map(({ agentId, unternehmenId: uid }) =>
+    await Promise.all(agentsToWake.map(({ agentId, companyId: uid }) =>
       scheduler.triggerZyklus(agentId, uid, 'callback').catch(() => {}),
     ));
   }

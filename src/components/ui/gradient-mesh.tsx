@@ -128,7 +128,7 @@ const hexToRgb = (hex: string): [number, number, number] => {
 export function GradientMesh(props: GradientMeshProps) {
   const ctnDom = useRef<HTMLDivElement>(null);
   const {
-    colors = ["#2563eb", "#7c3aed", "#06b6d4"],
+    colors = ["#2563eb", "#9b87c8", "#06b6d4"],
     distortion = 5,
     swirl = 0.5,
     speed = 1.0,

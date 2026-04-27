@@ -7,7 +7,7 @@ const MAX_ITERATIONS = 15;
 
 export class OpenAIAdapter implements ExpertAdapter {
   name = 'openai';
-  beschreibung = 'OpenAI GPT (gpt-4o, gpt-4-turbo, gpt-3.5-turbo, etc.)';
+  description = 'OpenAI GPT (gpt-4o, gpt-4-turbo, gpt-3.5-turbo, etc.)';
 
   async isAvailable(): Promise<boolean> {
     return true;
@@ -21,8 +21,8 @@ export class OpenAIAdapter implements ExpertAdapter {
     let baseUrl = 'https://api.openai.com/v1';
 
     try {
-      if (options.verbindungsConfig) {
-        const config = JSON.parse(options.verbindungsConfig);
+      if (options.connectionConfig) {
+        const config = JSON.parse(options.connectionConfig);
         if (config.model) model = config.model;
         if (config.baseUrl) baseUrl = config.baseUrl;
       }
@@ -33,9 +33,9 @@ export class OpenAIAdapter implements ExpertAdapter {
     if (!options.apiKey) {
       return {
         success: false,
-        ausgabe: '',
-        fehler: 'Kein API Key für diesen Provider hinterlegt.',
-        dauer: Date.now() - startTime,
+        output: '',
+        error: 'Kein API Key für diesen Provider hinterlegt.',
+        duration: Date.now() - startTime,
       };
     }
 
@@ -95,9 +95,9 @@ export class OpenAIAdapter implements ExpertAdapter {
       } catch (e: any) {
         return {
           success: false,
-          ausgabe: finalOutput,
-          fehler: `Verbindungsfehler zu OpenAI: ${e.message}`,
-          dauer: Date.now() - startTime,
+          output: finalOutput,
+          error: `Verbindungsfehler zu OpenAI: ${e.message}`,
+          duration: Date.now() - startTime,
         };
       }
 
@@ -162,13 +162,13 @@ export class OpenAIAdapter implements ExpertAdapter {
     }
 
     // gpt-4o-mini: ~$0.15/1M input, $0.60/1M output
-    const kostenCent = Math.ceil((totalInputTokens * 0.00015 + totalOutputTokens * 0.0006) / 100);
+    const costCent = Math.ceil((totalInputTokens * 0.00015 + totalOutputTokens * 0.0006) / 100);
 
     return {
       success: true,
-      ausgabe: finalOutput,
-      dauer: Date.now() - startTime,
-      tokenVerbrauch: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, kostenCent },
+      output: finalOutput,
+      duration: Date.now() - startTime,
+      tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, costCent },
     };
   }
 }

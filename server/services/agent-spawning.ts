@@ -2,19 +2,19 @@
 // Task-Manager-Vorbild: hire_agent mit optionalem Board-Approval
 
 import { db } from '../db/client.js';
-import { experten, genehmigungen, expertenSkills, chatNachrichten } from '../db/schema.js';
+import { agents, approvals, agentSkills, chatMessages } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { v4 as uuid } from 'uuid';
 
 export interface HireRequest {
-  unternehmenId: string;
-  requestedBy: string; // expertId des einstellenden Agents
+  companyId: string;
+  requestedBy: string; // agentId des einstellenden Agents
   name: string;
-  rolle: string;
-  faehigkeiten?: string;
-  verbindungsTyp?: string;
+  role: string;
+  skills?: string;
+  connectionType?: string;
   budgetMonatCent?: number;
-  reportsTo?: string; // expertId des Vorgesetzten (default: requestedBy)
+  reportsTo?: string; // agentId des Vorgesetzten (default: requestedBy)
   skillIds?: string[]; // Skills die zugewiesen werden sollen
   systemPrompt?: string;
   requireApproval?: boolean; // Board-Genehmigung erforderlich?
@@ -22,7 +22,7 @@ export interface HireRequest {
 
 export interface HireResult {
   success: boolean;
-  expertId?: string;
+  agentId?: string;
   approvalId?: string; // Wenn Genehmigung nötig
   error?: string;
 }
@@ -33,85 +33,85 @@ export interface HireResult {
 export function hireAgent(request: HireRequest): HireResult {
   const now = new Date().toISOString();
   const {
-    unternehmenId, requestedBy, name, rolle,
-    faehigkeiten, verbindungsTyp, budgetMonatCent,
+    companyId, requestedBy, name, role,
+    skills, connectionType, budgetMonatCent,
     reportsTo, skillIds, systemPrompt, requireApproval
   } = request;
 
   // Prüfe ob der anfragende Agent existiert
-  const requester = db.select().from(experten).where(eq(experten.id, requestedBy)).get();
-  if (!requester) return { success: false, error: 'Anfragender Agent nicht gefunden' };
+  const requester = db.select().from(agents).where(eq(agents.id, requestedBy)).get();
+  if (!requester) return { success: false, error: 'Requesting agent not found' };
 
   // Wenn Board-Approval nötig: Genehmigung erstellen statt direkt einzustellen
   if (requireApproval) {
     const approvalId = uuid();
-    db.insert(genehmigungen).values({
+    db.insert(approvals).values({
       id: approvalId,
-      unternehmenId,
-      typ: 'hire_expert',
-      titel: `Agent einstellen: ${name}`,
-      beschreibung: `${requester.name} möchte einen neuen Agenten einstellen: ${name} (${rolle})`,
-      angefordertVon: requestedBy,
+      companyId,
+      type: 'hire_expert',
+      title: `Agent einstellen: ${name}`,
+      description: `${requester.name} möchte einen neuen Agenten einstellen: ${name} (${role})`,
+      requestedBy,
       status: 'pending',
       payload: JSON.stringify({
         action: 'hire_agent',
-        params: { name, rolle, faehigkeiten, verbindungsTyp, budgetMonatCent, reportsTo, skillIds, systemPrompt }
+        params: { name, role, skills, connectionType, budgetMonatCent, reportsTo, skillIds, systemPrompt }
       }),
-      erstelltAm: now,
-      aktualisiertAm: now,
+      createdAt: now,
+      updatedAt: now,
     }).run();
 
     return { success: true, approvalId };
   }
 
   // Direkte Einstellung (kein Approval nötig)
-  const expertId = uuid();
+  const agentId = uuid();
   const config = JSON.stringify({ autonomyLevel: 'copilot' });
 
-  db.insert(experten).values({
-    id: expertId,
-    unternehmenId,
+  db.insert(agents).values({
+    id: agentId,
+    companyId,
     name,
-    rolle,
-    faehigkeiten: faehigkeiten || null,
-    verbindungsTyp: verbindungsTyp || 'openrouter',
-    verbindungsConfig: config,
+    role,
+    skills: skills || null,
+    connectionType: connectionType || 'openrouter',
+    connectionConfig: config,
     avatar: null,
-    avatarFarbe: `#${Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0')}`,
-    budgetMonatCent: budgetMonatCent || 1000,
-    verbrauchtMonatCent: 0,
+    avatarColor: `#${Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0')}`,
+    monthlyBudgetCent: budgetMonatCent || 1000,
+    monthlySpendCent: 0,
     reportsTo: reportsTo || requestedBy,
     systemPrompt: systemPrompt || null,
     status: 'idle',
-    nachrichtenCount: 0,
-    erstelltAm: now,
-    aktualisiertAm: now,
+    messageCount: 0,
+    createdAt: now,
+    updatedAt: now,
   }).run();
 
   // Skills zuweisen
   if (skillIds && skillIds.length > 0) {
     for (const skillId of skillIds) {
-      db.insert(expertenSkills).values({
+      db.insert(agentSkills).values({
         id: uuid(),
-        expertId,
+        agentId,
         skillId,
-        erstelltAm: now,
+        createdAt: now,
       }).run();
     }
   }
 
   // Benachrichtigung an den anfragenden Agent
-  db.insert(chatNachrichten).values({
+  db.insert(chatMessages).values({
     id: uuid(),
-    unternehmenId,
-    expertId: requestedBy,
-    absenderTyp: 'system',
-    nachricht: `✅ Neuer Agent eingestellt: **${name}** (${rolle}). Reports to: ${requester.name}`,
-    gelesen: false,
-    erstelltAm: now,
+    companyId,
+    agentId: requestedBy,
+    senderType: 'system',
+    message: `✅ Neuer Agent eingestellt: **${name}** (${role}). Reports to: ${requester.name}`,
+    read: false,
+    createdAt: now,
   }).run();
 
-  console.log(`🤝 Agent Spawning: ${requester.name} hat ${name} (${rolle}) eingestellt`);
+  console.log(`🤝 Agent Spawning: ${requester.name} hat ${name} (${role}) eingestellt`);
 
-  return { success: true, expertId };
+  return { success: true, agentId };
 }

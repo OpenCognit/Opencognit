@@ -15,7 +15,7 @@ export function useSystemStatus() {
         if (!token) {
           // No token = not logged in, check if any users exist
           try {
-            const statusRes = await fetch('/api/system/status');
+            const statusRes = await fetch('/api/system/status', { credentials: 'include' });
             if (statusRes.ok) {
               const status = await statusRes.json();
               return {

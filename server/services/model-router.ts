@@ -8,7 +8,7 @@
 // reasonable defaults per adapter family.
 
 import { db } from '../db/client.js';
-import { einstellungen } from '../db/schema.js';
+import { settings } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 
 export type Tier = 'cheap' | 'balanced' | 'strong';
@@ -43,24 +43,24 @@ const DEFAULT_TIERS: TiersByFamily = {
   },
 };
 
-function getSetting(unternehmenId: string, key: string): string | null {
-  const row = db.select({ wert: einstellungen.wert }).from(einstellungen)
-    .where(and(eq(einstellungen.schluessel, key), eq(einstellungen.unternehmenId, unternehmenId))).get()
-    ?? db.select({ wert: einstellungen.wert }).from(einstellungen)
-    .where(and(eq(einstellungen.schluessel, key), eq(einstellungen.unternehmenId, ''))).get();
-  return row?.wert ?? null;
+function getSetting(companyId: string, key: string): string | null {
+  const row = db.select({ value: settings.value }).from(settings)
+    .where(and(eq(settings.key, key), eq(settings.companyId, companyId))).get()
+    ?? db.select({ value: settings.value }).from(settings)
+    .where(and(eq(settings.key, key), eq(settings.companyId, ''))).get();
+  return row?.value ?? null;
 }
 
-export function isRoutingEnabled(unternehmenId: string): boolean {
-  return getSetting(unternehmenId, 'model_routing_enabled') === 'true';
+export function isRoutingEnabled(companyId: string): boolean {
+  return getSetting(companyId, 'model_routing_enabled') === 'true';
 }
 
 /**
  * Score a task's complexity 0-100. Higher = needs stronger model.
  * Pure function — easy to unit-test.
  */
-export function scoreComplexity(task: { titel?: string | null; beschreibung?: string | null; prioritaet?: string | null }): number {
-  const text = `${task.titel || ''}\n${task.beschreibung || ''}`.toLowerCase();
+export function scoreComplexity(task: { title?: string | null; description?: string | null; priority?: string | null }): number {
+  const text = `${task.title || ''}\n${task.description || ''}`.toLowerCase();
   let score = 20; // baseline
 
   // Length signal
@@ -68,8 +68,8 @@ export function scoreComplexity(task: { titel?: string | null; beschreibung?: st
   else if (text.length > 500) score += 10;
 
   // Priority signal
-  if (task.prioritaet === 'critical') score += 20;
-  else if (task.prioritaet === 'high') score += 10;
+  if (task.priority === 'critical') score += 20;
+  else if (task.priority === 'high') score += 10;
 
   // Keyword signals — strong model needed
   const strongKw = [
@@ -95,16 +95,16 @@ export function scoreToTier(score: number): Tier {
   return 'cheap';
 }
 
-function detectFamily(currentModel: string, verbindungsTyp: string): keyof TiersByFamily {
-  if (verbindungsTyp === 'ollama') return 'ollama';
-  if (currentModel.startsWith('anthropic/') || verbindungsTyp === 'openrouter') return 'openrouter';
+function detectFamily(currentModel: string, connectionType: string): keyof TiersByFamily {
+  if (connectionType === 'ollama') return 'ollama';
+  if (currentModel.startsWith('anthropic/') || connectionType === 'openrouter') return 'openrouter';
   if (currentModel.startsWith('claude')) return 'anthropic';
   if (currentModel.startsWith('gpt') || currentModel.startsWith('o1') || currentModel.startsWith('o3')) return 'openai';
   return 'openrouter';
 }
 
-function loadTiers(unternehmenId: string): TiersByFamily {
-  const raw = getSetting(unternehmenId, 'model_routing_tiers');
+function loadTiers(companyId: string): TiersByFamily {
+  const raw = getSetting(companyId, 'model_routing_tiers');
   if (!raw) return DEFAULT_TIERS;
   try {
     const parsed = JSON.parse(raw);
@@ -124,26 +124,26 @@ export interface RouteDecision {
 }
 
 export function routeModel(
-  unternehmenId: string,
-  verbindungsTyp: string,
+  companyId: string,
+  connectionType: string,
   currentModel: string,
-  task: { titel?: string | null; beschreibung?: string | null; prioritaet?: string | null } | null,
+  task: { title?: string | null; description?: string | null; priority?: string | null } | null,
 ): RouteDecision {
   const originalModel = currentModel;
   if (!task) {
     return { model: currentModel, tier: 'balanced', score: 0, reason: 'no task context', routed: false, originalModel };
   }
-  if (!isRoutingEnabled(unternehmenId)) {
+  if (!isRoutingEnabled(companyId)) {
     return { model: currentModel, tier: 'balanced', score: 0, reason: 'routing disabled', routed: false, originalModel };
   }
-  if (!['openrouter', 'ollama'].includes(verbindungsTyp)) {
-    return { model: currentModel, tier: 'balanced', score: 0, reason: `routing not supported for ${verbindungsTyp}`, routed: false, originalModel };
+  if (!['openrouter', 'ollama'].includes(connectionType)) {
+    return { model: currentModel, tier: 'balanced', score: 0, reason: `routing not supported for ${connectionType}`, routed: false, originalModel };
   }
 
   const score = scoreComplexity(task);
   const tier = scoreToTier(score);
-  const family = detectFamily(currentModel, verbindungsTyp);
-  const tiers = loadTiers(unternehmenId);
+  const family = detectFamily(currentModel, connectionType);
+  const tiers = loadTiers(companyId);
   const picked = tiers[family]?.[tier];
   if (!picked) {
     return { model: currentModel, tier, score, reason: `no model for ${family}/${tier}`, routed: false, originalModel };

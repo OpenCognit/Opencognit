@@ -8,7 +8,7 @@
 import crypto from 'crypto';
 import { db } from '../db/client.js';
 import {
-  arbeitszyklen, aufgaben, experten, kostenbuchungen, palaceWings, palaceDiary,
+  workCycles, tasks, agents, costEntries, palaceWings, palaceDiary,
 } from '../db/schema.js';
 import { eq, and, gte, lt, sql, desc } from 'drizzle-orm';
 
@@ -55,11 +55,11 @@ function windowStart(daysAgo: number): string {
 function computeMetrics(expertId: string, name: string, from: string, to: string): AgentMetrics {
   const days = Math.max(1, (new Date(to).getTime() - new Date(from).getTime()) / (86400 * 1000));
 
-  const runs = db.select().from(arbeitszyklen)
+  const runs = db.select().from(workCycles)
     .where(and(
-      eq(arbeitszyklen.expertId, expertId),
-      gte(arbeitszyklen.erstelltAm, from),
-      lt(arbeitszyklen.erstelltAm, to),
+      eq(workCycles.agentId, expertId),
+      gte(workCycles.createdAt, from),
+      lt(workCycles.createdAt, to),
     )).all();
 
   const runsTotal = runs.length;
@@ -71,8 +71,8 @@ function computeMetrics(expertId: string, name: string, from: string, to: string
   let totalTokens = 0;
   let totalCostCent = 0;
   for (const r of runs) {
-    if (r.gestartetAm && r.beendetAm) {
-      const ms = new Date(r.beendetAm).getTime() - new Date(r.gestartetAm).getTime();
+    if (r.startedAt && r.endedAt) {
+      const ms = new Date(r.endedAt).getTime() - new Date(r.startedAt).getTime();
       if (ms > 0 && ms < 30 * 60 * 1000) { totalDurationMs += ms; durationSamples++; }
     }
     if (r.usageJson) {
@@ -84,12 +84,12 @@ function computeMetrics(expertId: string, name: string, from: string, to: string
     }
   }
 
-  const completed = db.select({ c: sql<number>`count(*)` }).from(aufgaben)
+  const completed = db.select({ c: sql<number>`count(*)` }).from(tasks)
     .where(and(
-      eq(aufgaben.zugewiesenAn, expertId),
-      eq(aufgaben.status, 'done'),
-      gte(aufgaben.abgeschlossenAm, from),
-      lt(aufgaben.abgeschlossenAm, to),
+      eq(tasks.assignedTo, expertId),
+      eq(tasks.status, 'done'),
+      gte(tasks.completedAt, from),
+      lt(tasks.completedAt, to),
     )).get()?.c ?? 0;
 
   return {
@@ -127,7 +127,7 @@ function makeVerdict(d: MetricsDelta['changes'], name: string): string {
 }
 
 export function getAgentPerformance(expertId: string, days = 30): MetricsDelta | null {
-  const expert = db.select().from(experten).where(eq(experten.id, expertId)).get();
+  const expert = db.select().from(agents).where(eq(agents.id, expertId)).get();
   if (!expert) return null;
 
   const currFrom = windowStart(days);
@@ -150,8 +150,8 @@ export function getAgentPerformance(expertId: string, days = 30): MetricsDelta |
 }
 
 export function getCompanyLeaderboard(unternehmenId: string, days = 30): MetricsDelta[] {
-  const agents = db.select().from(experten).where(eq(experten.unternehmenId, unternehmenId)).all();
-  return agents
+  const agentsRows = db.select().from(agents).where(eq(agents.companyId, unternehmenId)).all();
+  return agentsRows
     .map(a => getAgentPerformance(a.id, days))
     .filter((x): x is MetricsDelta => x !== null && x.current.runsTotal > 0);
 }
@@ -161,19 +161,19 @@ export function getCompanyLeaderboard(unternehmenId: string, days = 30): Metrics
 // past work quality. Lazy-creates the Wing if none exists.
 
 function ensureWingForExpert(expertId: string): string | null {
-  const expert = db.select().from(experten).where(eq(experten.id, expertId)).get();
+  const expert = db.select().from(agents).where(eq(agents.id, expertId)).get();
   if (!expert) return null;
 
   const wingName = expert.name.toLowerCase().replace(/\s+/g, '_');
   const existing = db.select().from(palaceWings)
-    .where(and(eq(palaceWings.expertId, expertId), eq(palaceWings.name, wingName))).get();
+    .where(and(eq(palaceWings.agentId, expertId), eq(palaceWings.name, wingName))).get();
   if (existing) return existing.id;
 
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   db.insert(palaceWings).values({
-    id, unternehmenId: expert.unternehmenId, expertId, name: wingName,
-    erstelltAm: now, aktualisiertAm: now,
+    id, companyId: expert.companyId, expertId, name: wingName,
+    createdAt: now, updatedAt: now,
   }).run();
   return id;
 }
@@ -192,7 +192,7 @@ export function recordLearning(
     const datum = now.toISOString().slice(0, 10);
     const existing = db.select().from(palaceDiary)
       .where(and(eq(palaceDiary.wingId, wingId), eq(palaceDiary.datum, datum)))
-      .orderBy(desc(palaceDiary.erstelltAm)).limit(1).get();
+      .orderBy(desc(palaceDiary.createdAt)).limit(1).get();
 
     const line = `[${outcome}] ${taskTitel}: ${insight.slice(0, 240)}`;
 
@@ -205,7 +205,7 @@ export function recordLearning(
       db.insert(palaceDiary).values({
         id: crypto.randomUUID(), wingId, datum,
         thought: null, action: null, knowledge: line,
-        erstelltAm: now.toISOString(),
+        createdAt: now.toISOString(),
       }).run();
     }
   } catch (e: any) {

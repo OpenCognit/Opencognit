@@ -1,7 +1,7 @@
 // Heartbeat Critic — LLM-based output reviewer + advisor plan/correction
 
 import { db } from '../../db/client.js';
-import { experten, einstellungen, kommentare } from '../../db/schema.js';
+import { agents, settings, comments } from '../../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { adapterRegistry } from '../../adapters/registry.js';
 import { decryptSetting } from '../../utils/crypto.js';
@@ -13,19 +13,19 @@ import { v4 as uuid } from 'uuid';
 export async function getAdvisorPlan(
   advisorId: string,
   executorId: string,
-  unternehmenId: string,
+  companyId: string,
   tasks: any[]
 ): Promise<string> {
   try {
     // Get advisor details
-    const advisor = db.select().from(experten).where(eq(experten.id, advisorId)).get();
-    const executor = db.select().from(experten).where(eq(experten.id, executorId)).get();
+    const advisor = db.select().from(agents).where(eq(agents.id, advisorId)).get();
+    const executor = db.select().from(agents).where(eq(agents.id, executorId)).get();
 
     if (!advisor || !executor) return "Gehe strukturiert vor.";
 
-    const taskSummary = tasks.map(t => `- ${t.titel} (${t.prioritaet})`).join('\n');
+    const taskSummary = tasks.map(t => `- ${t.title} (${t.priority})`).join('\n');
 
-    const prompt = `Du bist der ADVISOR (Architekt/Lead) für den Agenten ${executor.name} (${executor.rolle}).
+    const prompt = `Du bist der ADVISOR (Architekt/Lead) für den Agenten ${executor.name} (${executor.role}).
 Deine Aufgabe ist es, eine STRATEGIE für die folgenden anstehenden Aufgaben zu erstellen:
 
 ${taskSummary}
@@ -41,20 +41,20 @@ Antworte ausschließlich mit dem Plan.`;
     // Für den Moment nutzen wir den standard adapter call mechanismus
     const result = await adapterRegistry.executeTask({
         id: 'advisor-call',
-        titel: 'Strategic Planning',
-        beschreibung: prompt,
+        title: 'Strategic Planning',
+        description: prompt,
         status: 'todo',
-        prioritaet: 'high'
+        priority: 'high'
     }, {
-        task: { id: 'advisor-call', titel: 'Strategic Planning', beschreibung: null, status: 'todo', prioritaet: 'high' },
+        task: { id: 'advisor-call', title: 'Strategic Planning', description: null, status: 'todo', priority: 'high' },
         previousComments: [],
-        companyContext: { name: 'Advisor Session', ziel: null },
-        agentContext: { name: advisor.name, rolle: advisor.rolle, faehigkeiten: advisor.faehigkeiten }
+        companyContext: { name: 'Advisor Session', goal: null },
+        agentContext: { name: advisor.name, role: advisor.role, skills: advisor.skills }
     }, {
-        expertId: advisorId,
-        unternehmenId,
+        agentId: advisorId,
+        companyId,
         runId: 'advisor-' + uuid(),
-        verbindungsTyp: advisor.verbindungsTyp,
+        connectionType: advisor.connectionType,
         systemPrompt: "Du bist ein Lead-Architekt. Erstelle Pläne, führe keine Aktionen aus."
     });
 
@@ -71,14 +71,14 @@ Antworte ausschließlich mit dem Plan.`;
 export async function getAdvisorCorrection(
   advisorId: string,
   executorId: string,
-  unternehmenId: string,
+  companyId: string,
   taskTitel: string,
   output: string,
   error?: string | null
 ): Promise<string> {
   try {
-    const advisor = db.select().from(experten).where(eq(experten.id, advisorId)).get();
-    const executor = db.select().from(experten).where(eq(experten.id, executorId)).get();
+    const advisor = db.select().from(agents).where(eq(agents.id, advisorId)).get();
+    const executor = db.select().from(agents).where(eq(agents.id, executorId)).get();
 
     if (!advisor || !executor) return "Versuche es erneut mit einem anderen Ansatz.";
 
@@ -94,20 +94,20 @@ Was soll der Agent als nächstes versuchen?`;
 
     const result = await adapterRegistry.executeTask({
         id: 'advisor-correction',
-        titel: 'Error Analysis',
-        beschreibung: prompt,
+        title: 'Error Analysis',
+        description: prompt,
         status: 'todo',
-        prioritaet: 'high'
+        priority: 'high'
     }, {
-        task: { id: 'advisor-correction', titel: 'Error Analysis', beschreibung: null, status: 'todo', prioritaet: 'high' },
+        task: { id: 'advisor-correction', title: 'Error Analysis', description: null, status: 'todo', priority: 'high' },
         previousComments: [],
-        companyContext: { name: 'Advisor Session', ziel: null },
-        agentContext: { name: advisor.name, rolle: advisor.rolle, faehigkeiten: advisor.faehigkeiten }
+        companyContext: { name: 'Advisor Session', goal: null },
+        agentContext: { name: advisor.name, role: advisor.role, skills: advisor.skills }
     }, {
-        expertId: advisorId,
-        unternehmenId,
+        agentId: advisorId,
+        companyId,
         runId: 'advisor-corr-' + uuid(),
-        verbindungsTyp: advisor.verbindungsTyp,
+        connectionType: advisor.connectionType,
         systemPrompt: "Du bist ein Problemlöser. Analysiere Fehler und gib präzise neue Anweisungen."
     });
 
@@ -127,15 +127,15 @@ export async function runCriticReview(
   taskTitel: string,
   taskBeschreibung: string,
   output: string,
-  expertId: string,
-  unternehmenId: string,
+  agentId: string,
+  companyId: string,
 ): Promise<{ approved: boolean; feedback: string; escalate?: boolean }> {
   // Check existing critic feedback count
-  const existingCriticFeedback = await db.select({ inhalt: kommentare.inhalt })
-    .from(kommentare)
-    .where(eq(kommentare.aufgabeId, taskId));
+  const existingCriticFeedback = await db.select({ content: comments.content })
+    .from(comments)
+    .where(eq(comments.taskId, taskId));
   const criticCount = existingCriticFeedback.filter((c: any) =>
-    c.inhalt?.includes('Critic Review')
+    c.content?.includes('Critic Review')
   ).length;
 
   if (criticCount >= 2) {
@@ -166,26 +166,29 @@ Sei nicht zu streng — wenn die Arbeit grundsätzlich passt, approve.`;
   // 3. Anthropic direct
   // 4. OpenRouter
   // 5. auto-approve (fail open, never block the system)
-  const agentConn = db.select({ verbindungsTyp: experten.verbindungsTyp })
-    .from(experten).where(eq(experten.id, expertId)).get() as any;
+  const agentConn = db.select({ connectionType: agents.connectionType })
+    .from(agents).where(eq(agents.id, agentId)).get() as any;
 
-  const customKey  = db.select({ wert: einstellungen.wert }).from(einstellungen).where(eq(einstellungen.schluessel, 'custom_api_key')).get();
-  const customBase = db.select({ wert: einstellungen.wert }).from(einstellungen).where(eq(einstellungen.schluessel, 'custom_api_base_url')).get();
-  const anthropicKey = db.select({ wert: einstellungen.wert }).from(einstellungen).where(eq(einstellungen.schluessel, 'anthropic_api_key')).get();
-  const orKey      = db.select({ wert: einstellungen.wert }).from(einstellungen).where(eq(einstellungen.schluessel, 'openrouter_api_key')).get();
+  const customKey  = db.select({ value: settings.value }).from(settings).where(eq(settings.key, 'custom_api_key')).get();
+  const customBase = db.select({ value: settings.value }).from(settings).where(eq(settings.key, 'custom_api_base_url')).get();
+  const anthropicKey = db.select({ value: settings.value }).from(settings).where(eq(settings.key, 'anthropic_api_key')).get();
+  const orKey      = db.select({ value: settings.value }).from(settings).where(eq(settings.key, 'openrouter_api_key')).get();
+  const poeKey     = db.select({ value: settings.value }).from(settings).where(eq(settings.key, 'poe_api_key')).get();
+  const moonshotKey = db.select({ value: settings.value }).from(settings).where(eq(settings.key, 'moonshot_api_key')).get();
+  const googleKey  = db.select({ value: settings.value }).from(settings).where(eq(settings.key, 'google_api_key')).get();
 
   try {
     let responseText = '';
 
     // Option 1: Custom API (Poe / any OpenAI-compatible endpoint) — primary for most setups
-    if (!responseText && customKey?.wert && customBase?.wert) {
+    if (!responseText && customKey?.value && customBase?.value) {
       try {
-        const apiBase = customBase.wert.replace(/\/$/, '');
+        const apiBase = customBase.value.replace(/\/$/, '');
         // Use a fast/cheap model if available, fall back to gpt-4o-mini
         const criticModel = 'gpt-4o-mini';
         const res = await fetch(`${apiBase}/chat/completions`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${customKey.wert}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${customKey.value}` },
           body: JSON.stringify({
             model: criticModel,
             max_tokens: 300,
@@ -200,16 +203,16 @@ Sei nicht zu streng — wenn die Arbeit grundsätzlich passt, approve.`;
     }
 
     // Option 2: claude-code CLI (free, if agent uses it)
-    if (!responseText && agentConn?.verbindungsTyp === 'claude-code') {
+    if (!responseText && agentConn?.connectionType === 'claude-code') {
       try {
         const { runClaudeDirectChat } = await import('../../adapters/claude-code.js');
-        responseText = await runClaudeDirectChat(criticPrompt, expertId);
+        responseText = await runClaudeDirectChat(criticPrompt, agentId);
       } catch { responseText = ''; }
     }
 
     // Option 3: Anthropic direct
-    if (!responseText && anthropicKey?.wert) {
-      const key = decryptSetting('anthropic_api_key', anthropicKey.wert);
+    if (!responseText && anthropicKey?.value) {
+      const key = decryptSetting('anthropic_api_key', anthropicKey.value);
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
@@ -222,8 +225,8 @@ Sei nicht zu streng — wenn die Arbeit grundsätzlich passt, approve.`;
     }
 
     // Option 4: OpenRouter
-    if (!responseText && orKey?.wert) {
-      const key = decryptSetting('openrouter_api_key', orKey.wert);
+    if (!responseText && orKey?.value) {
+      const key = decryptSetting('openrouter_api_key', orKey.value);
       const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}`, 'HTTP-Referer': 'http://localhost:3200' },
@@ -233,6 +236,54 @@ Sei nicht zu streng — wenn die Arbeit grundsätzlich passt, approve.`;
         const data = await res.json() as any;
         responseText = data.choices?.[0]?.message?.content || '';
       }
+    }
+
+    // Option 5: Poe API
+    if (!responseText && poeKey?.value) {
+      try {
+        const key = decryptSetting('poe_api_key', poeKey.value);
+        const res = await fetch('https://api.poe.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+          body: JSON.stringify({ model: 'Claude-Haiku-4-5', max_tokens: 300, messages: [{ role: 'user', content: criticPrompt }] }),
+        });
+        if (res.ok) {
+          const data = await res.json() as any;
+          responseText = data.choices?.[0]?.message?.content || '';
+        }
+      } catch { responseText = ''; }
+    }
+
+    // Option 6: Moonshot API
+    if (!responseText && moonshotKey?.value) {
+      try {
+        const key = decryptSetting('moonshot_api_key', moonshotKey.value);
+        const res = await fetch('https://api.moonshot.cn/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+          body: JSON.stringify({ model: 'moonshot-v1-8k', max_tokens: 300, messages: [{ role: 'user', content: criticPrompt }] }),
+        });
+        if (res.ok) {
+          const data = await res.json() as any;
+          responseText = data.choices?.[0]?.message?.content || '';
+        }
+      } catch { responseText = ''; }
+    }
+
+    // Option 7: Google Gemini API
+    if (!responseText && googleKey?.value) {
+      try {
+        const key = decryptSetting('google_api_key', googleKey.value);
+        const res = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+          body: JSON.stringify({ model: 'gemini-1.5-flash', max_tokens: 300, messages: [{ role: 'user', content: criticPrompt }] }),
+        });
+        if (res.ok) {
+          const data = await res.json() as any;
+          responseText = data.choices?.[0]?.message?.content || '';
+        }
+      } catch { responseText = ''; }
     }
 
     if (!responseText) {

@@ -18,7 +18,7 @@ const MAX_ITERATIONS = 15;
  */
 export class CustomAdapter implements ExpertAdapter {
   name = 'custom';
-  beschreibung = 'Custom API (OpenAI-kompatibel) — Groq, Mistral, Together.ai, LM Studio, …';
+  description = 'Custom API (OpenAI-kompatibel) — Groq, Mistral, Together.ai, LM Studio, …';
 
   async isAvailable(): Promise<boolean> {
     return true;
@@ -32,8 +32,8 @@ export class CustomAdapter implements ExpertAdapter {
     let baseUrl = options.apiBaseUrl || 'https://api.openai.com/v1';
 
     try {
-      if (options.verbindungsConfig) {
-        const config = JSON.parse(options.verbindungsConfig);
+      if (options.connectionConfig) {
+        const config = JSON.parse(options.connectionConfig);
         if (config.model) model = config.model;
         if (config.baseUrl) baseUrl = config.baseUrl;
       }
@@ -44,9 +44,9 @@ export class CustomAdapter implements ExpertAdapter {
     if (!options.apiKey) {
       return {
         success: false,
-        ausgabe: '',
-        fehler: 'Kein API Key hinterlegt. Bitte in den Einstellungen unter "Custom API Key" eintragen.',
-        dauer: Date.now() - startTime,
+        output: '',
+        error: 'Kein API Key hinterlegt. Bitte in den Einstellungen unter "Custom API Key" eintragen.',
+        duration: Date.now() - startTime,
       };
     }
 
@@ -123,9 +123,9 @@ export class CustomAdapter implements ExpertAdapter {
       } catch (e: any) {
         return {
           success: false,
-          ausgabe: finalOutput,
-          fehler: `Verbindungsfehler zu Custom API (${apiBase}): ${e.message}`,
-          dauer: Date.now() - startTime,
+          output: finalOutput,
+          error: `Verbindungsfehler zu Custom API (${apiBase}): ${e.message}`,
+          duration: Date.now() - startTime,
         };
       }
 
@@ -203,7 +203,7 @@ export class CustomAdapter implements ExpertAdapter {
       if (taskDone) break;
     }
 
-    // Append bash execution log so kommentare show exactly what ran
+    // Append bash execution log so comments show exactly what ran
     if (bashLog.length > 0) {
       const logSection = bashLog.map(({ cmd, output }) =>
         `$ ${cmd}\n${output.slice(0, 2000)}`,
@@ -213,9 +213,9 @@ export class CustomAdapter implements ExpertAdapter {
 
     return {
       success: true,
-      ausgabe: finalOutput,
-      dauer: Date.now() - startTime,
-      tokenVerbrauch: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, kostenCent: 0 },
+      output: finalOutput,
+      duration: Date.now() - startTime,
+      tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, costCent: 0 },
     };
   }
 }

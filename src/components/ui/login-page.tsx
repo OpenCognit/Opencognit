@@ -56,7 +56,7 @@ export function LoginPage({ erstesKonto = false }: { erstesKonto?: boolean }) {
     padding: "0.8rem 1rem 0.8rem 2.75rem",
     backgroundColor: "rgba(255, 255, 255, 0.03)",
     border: "1px solid rgba(255, 255, 255, 0.08)",
-    borderRadius: "12px",
+    borderRadius: 0,
     color: "#ffffff",
     fontSize: "0.9rem",
     outline: "none",
@@ -95,11 +95,11 @@ export function LoginPage({ erstesKonto = false }: { erstesKonto?: boolean }) {
           <div key={p.id} style={{
             position: "absolute",
             width: p.size, height: p.size,
-            background: `rgba(35, 205, 202, ${p.opacity})`,
+            background: `rgba(197, 160, 89, ${p.opacity})`,
             borderRadius: "50%",
             top: `${p.top}%`,
             left: `${p.left}%`,
-            boxShadow: `0 0 ${p.glow}px rgba(35, 205, 202, ${p.opacity * 0.6})`,
+            boxShadow: `0 0 ${p.glow}px rgba(197, 160, 89, ${p.opacity * 0.6})`,
             animation: `float ${p.duration}s ease-in-out infinite`,
             animationDelay: `${p.delay}s`,
           }} />
@@ -111,13 +111,13 @@ export function LoginPage({ erstesKonto = false }: { erstesKonto?: boolean }) {
         onClick={() => setLanguage(language === 'de' ? 'en' : 'de')}
         style={{
           position: "fixed", top: "1.5rem", right: "1.5rem", zIndex: 100,
-          padding: "0.4rem 0.85rem", borderRadius: "10px",
+          padding: "0.4rem 0.85rem", borderRadius: 0,
           background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
           color: "#71717a", cursor: "pointer", fontSize: "0.8125rem", fontWeight: 600,
           display: "flex", alignItems: "center", gap: "0.375rem", transition: "all 0.2s",
           backdropFilter: "blur(10px)",
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(35,205,202,0.4)"; e.currentTarget.style.color = "#23CDCB"; }}
+        onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(197,160,89,0.4)"; e.currentTarget.style.color = "#c5a059"; }}
         onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "#71717a"; }}
       >
         {language === 'de' ? '🇺🇸 EN' : '🇩🇪 DE'}
@@ -137,16 +137,16 @@ export function LoginPage({ erstesKonto = false }: { erstesKonto?: boolean }) {
         {/* Logo + Title */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
           <img
-            src="/opencognit.png"
+            src="/opencognit.svg"
             alt="OpenCognit"
             style={{
               width: "140px", height: "140px", objectFit: "contain",
-              filter: "drop-shadow(0 0 30px rgba(35,205,202,0.25))",
+              filter: "drop-shadow(0 0 30px rgba(197,160,89,0.25))",
             }}
           />
           <h1 style={{
             fontSize: "1.75rem", fontWeight: 700, letterSpacing: "-0.02em",
-            background: "linear-gradient(135deg, #ffffff 0%, #23CDCB 100%)",
+            background: "linear-gradient(135deg, #ffffff 0%, #c5a059 100%)",
             WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
             margin: "0.25rem 0 0",
           }}>
@@ -164,7 +164,7 @@ export function LoginPage({ erstesKonto = false }: { erstesKonto?: boolean }) {
           width: "100%", padding: "2rem",
           background: "rgba(255,255,255,0.02)",
           backdropFilter: "blur(24px)",
-          borderRadius: "20px",
+          borderRadius: 0,
           border: "1px solid rgba(255,255,255,0.06)",
           boxShadow: "0 20px 50px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)",
         }}>
@@ -172,7 +172,7 @@ export function LoginPage({ erstesKonto = false }: { erstesKonto?: boolean }) {
           <div style={{
             display: "flex",
             background: "rgba(255,255,255,0.03)",
-            padding: "3px", borderRadius: "12px",
+            padding: "3px", borderRadius: 0,
             marginBottom: "1.75rem",
             border: "1px solid rgba(255,255,255,0.04)",
           }}>
@@ -195,9 +195,9 @@ export function LoginPage({ erstesKonto = false }: { erstesKonto?: boolean }) {
                     layoutId="auth-tab"
                     style={{
                       position: "absolute", inset: 0,
-                      background: "rgba(35,205,202,0.12)",
-                      border: "1px solid rgba(35,205,202,0.2)",
-                      borderRadius: "9px", zIndex: -1,
+                      background: "rgba(197,160,89,0.12)",
+                      border: "1px solid rgba(197,160,89,0.2)",
+                      borderRadius: 0, zIndex: -1,
                     }}
                     transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
                   />
@@ -214,7 +214,7 @@ export function LoginPage({ erstesKonto = false }: { erstesKonto?: boolean }) {
             {fehler && (
               <div style={{
                 display: "flex", alignItems: "center", gap: "0.5rem",
-                padding: "0.75rem 1rem", borderRadius: "10px",
+                padding: "0.75rem 1rem", borderRadius: 0,
                 background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)",
               }}>
                 <div style={{
@@ -234,7 +234,7 @@ export function LoginPage({ erstesKonto = false }: { erstesKonto?: boolean }) {
                     <Icon d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" />
                   </div>
                   <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder={t.login.namePlaceholder} required style={inputStyle}
-                    onFocus={(e) => { e.target.style.borderColor = "rgba(35,205,202,0.5)"; e.target.style.boxShadow = "0 0 0 3px rgba(35,205,202,0.08)"; }}
+                    onFocus={(e) => { e.target.style.borderColor = "rgba(197,160,89,0.5)"; e.target.style.boxShadow = "0 0 0 3px rgba(197,160,89,0.08)"; }}
                     onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.08)"; e.target.style.boxShadow = "none"; }}
                   />
                 </div>
@@ -249,7 +249,7 @@ export function LoginPage({ erstesKonto = false }: { erstesKonto?: boolean }) {
                   <Icon d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zM22 6l-10 7L2 6" />
                 </div>
                 <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t.login.emailPlaceholder} required style={inputStyle}
-                  onFocus={(e) => { e.target.style.borderColor = "rgba(35,205,202,0.5)"; e.target.style.boxShadow = "0 0 0 3px rgba(35,205,202,0.08)"; }}
+                  onFocus={(e) => { e.target.style.borderColor = "rgba(197,160,89,0.5)"; e.target.style.boxShadow = "0 0 0 3px rgba(197,160,89,0.08)"; }}
                   onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.08)"; e.target.style.boxShadow = "none"; }}
                 />
               </div>
@@ -267,7 +267,7 @@ export function LoginPage({ erstesKonto = false }: { erstesKonto?: boolean }) {
                   onChange={(e) => setPasswort(e.target.value)}
                   placeholder={modus === "anmelden" ? t.login.passwordPlaceholder : t.login.passwordMinLength}
                   required style={inputStyle}
-                  onFocus={(e) => { e.target.style.borderColor = "rgba(35,205,202,0.5)"; e.target.style.boxShadow = "0 0 0 3px rgba(35,205,202,0.08)"; }}
+                  onFocus={(e) => { e.target.style.borderColor = "rgba(197,160,89,0.5)"; e.target.style.boxShadow = "0 0 0 3px rgba(197,160,89,0.08)"; }}
                   onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.08)"; e.target.style.boxShadow = "none"; }}
                 />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} style={{
@@ -295,16 +295,16 @@ export function LoginPage({ erstesKonto = false }: { erstesKonto?: boolean }) {
             {/* Submit */}
             <button type="submit" disabled={laden} style={{
               marginTop: "0.5rem", width: "100%", padding: "0.85rem",
-              background: laden ? "rgba(35,205,202,0.3)" : "linear-gradient(135deg, #23CDCB 0%, #0ea5e9 100%)",
+              background: laden ? "rgba(197,160,89,0.3)" : "linear-gradient(135deg, #c5a059 0%, #c5a059 100%)",
               color: "#fff", fontWeight: 700, fontSize: "0.9rem",
-              borderRadius: "12px", border: "none",
+              borderRadius: 0, border: "none",
               cursor: laden ? "not-allowed" : "pointer",
               transition: "all 0.25s ease",
-              boxShadow: laden ? "none" : "0 4px 20px rgba(35,205,202,0.3)",
+              boxShadow: laden ? "none" : "0 4px 20px rgba(197,160,89,0.3)",
               letterSpacing: "0.01em",
             }}
-              onMouseEnter={(e) => { if (!laden) { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 8px 30px rgba(35,205,202,0.4)"; } }}
-              onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 4px 20px rgba(35,205,202,0.3)"; }}
+              onMouseEnter={(e) => { if (!laden) { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 8px 30px rgba(197,160,89,0.4)"; } }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 4px 20px rgba(197,160,89,0.3)"; }}
             >
               {laden ? (
                 <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
@@ -333,16 +333,16 @@ export function LoginPage({ erstesKonto = false }: { erstesKonto?: boolean }) {
                 padding: "1rem 0.75rem",
                 background: "rgba(255,255,255,0.02)",
                 border: "1px solid rgba(255,255,255,0.05)",
-                borderRadius: "14px", textAlign: "center",
+                borderRadius: 0, textAlign: "center",
               }}
             >
               <div style={{
-                width: 36, height: 36, borderRadius: "10px",
-                background: "rgba(35,205,202,0.08)",
+                width: 36, height: 36, borderRadius: 0,
+                background: "rgba(197,160,89,0.08)",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 margin: "0 auto 0.5rem",
               }}>
-                <f.icon size={18} style={{ color: "#23CDCB" }} />
+                <f.icon size={18} style={{ color: "#c5a059" }} />
               </div>
               <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#d4d4d8", marginBottom: "0.2rem" }}>{f.label}</div>
               <div style={{ fontSize: "0.625rem", color: "#52525b", lineHeight: 1.4 }}>{f.desc}</div>

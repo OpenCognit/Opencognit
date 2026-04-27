@@ -5,20 +5,21 @@
 // handlers in messaging.ts (ap:/rj: prefixes) already action the buttons.
 
 import { db } from '../db/client.js';
-import { genehmigungen, einstellungen } from '../db/schema.js';
+import { approvals, settings } from '../db/schema.js';
 import { and, eq, isNull } from 'drizzle-orm';
 import { decryptSetting } from '../utils/crypto.js';
+import { appEvents } from '../events.js';
 
 const POLL_INTERVAL_MS = 20_000;
 
 function getBotConfig(unternehmenId: string): { token: string; chatId: string } | null {
-  const all = db.select().from(einstellungen).all();
-  const tokenRow = all.find(s => s.schluessel === 'telegram_bot_token' && s.unternehmenId === unternehmenId);
-  const chatRow  = all.find(s => s.schluessel === 'telegram_chat_id'   && s.unternehmenId === unternehmenId);
-  if (!tokenRow?.wert || !chatRow?.wert) return null;
-  const token = decryptSetting('telegram_bot_token', tokenRow.wert);
+  const all = db.select().from(settings).all();
+  const tokenRow = all.find(s => s.key === 'telegram_bot_token' && s.companyId === unternehmenId);
+  const chatRow  = all.find(s => s.key === 'telegram_chat_id'   && s.companyId === unternehmenId);
+  if (!tokenRow?.value || !chatRow?.value) return null;
+  const token = decryptSetting('telegram_bot_token', tokenRow.value);
   if (!token) return null;
-  return { token, chatId: chatRow.wert };
+  return { token, chatId: chatRow.value };
 }
 
 async function sendApprovalMessage(cfg: { token: string; chatId: string }, approval: any): Promise<number | null> {
@@ -30,11 +31,11 @@ async function sendApprovalMessage(cfg: { token: string; chatId: string }, appro
     agent_action: '🤖 Agent Action',
   };
   const lines = [
-    `*${typeLabel[approval.typ] || 'Approval'}*`,
+    `*${typeLabel[approval.type] || 'Approval'}*`,
     ``,
-    `📋 ${approval.titel}`,
+    `📋 ${approval.title}`,
   ];
-  if (approval.beschreibung) lines.push('', `_${String(approval.beschreibung).slice(0, 400)}_`);
+  if (approval.description) lines.push('', `_${String(approval.description).slice(0, 400)}_`);
   lines.push('', `ID: \`${short}\``);
 
   const body = {
@@ -78,43 +79,59 @@ async function sendApprovalMessage(cfg: { token: string; chatId: string }, appro
 async function tick() {
   let pending: any[] = [];
   try {
-    pending = db.select().from(genehmigungen)
-      .where(and(eq(genehmigungen.status, 'pending'), isNull(genehmigungen.notifiedAt)))
+    pending = db.select().from(approvals)
+      .where(and(eq(approvals.status, 'pending'), isNull(approvals.notifiedAt)))
       .limit(25).all();
   } catch {
     return; // table/columns may not exist in very old DBs
   }
   if (pending.length === 0) return;
 
-  // group by unternehmen to share bot config
+  // group by companies to share bot config
   const byCompany = new Map<string, any[]>();
   for (const p of pending) {
-    const arr = byCompany.get(p.unternehmenId) || [];
+    const arr = byCompany.get(p.companyId) || [];
     arr.push(p);
-    byCompany.set(p.unternehmenId, arr);
+    byCompany.set(p.companyId, arr);
   }
 
-  for (const [companyId, approvals] of byCompany) {
+  for (const [companyId, approvalList] of byCompany) {
+    // ── Broadcast to WebSocket clients (UI toasts) ──
+    // This happens BEFORE Telegram so UI always gets notified
+    for (const a of approvalList) {
+      appEvents.emit('broadcast', {
+        type: 'approval_requested',
+        data: {
+          unternehmenId: companyId,
+          id: a.id,
+          titel: a.title,
+          beschreibung: a.description,
+          typ: a.type,
+          angefordertVon: a.requestedBy,
+        },
+      });
+    }
+
     const cfg = getBotConfig(companyId);
     if (!cfg) {
       // No Telegram configured — mark as notified so we don't re-poll forever
       const now = new Date().toISOString();
-      for (const a of approvals) {
-        db.update(genehmigungen)
+      for (const a of approvalList) {
+        db.update(approvals)
           .set({ notifiedAt: now })
-          .where(eq(genehmigungen.id, a.id)).run();
+          .where(eq(approvals.id, a.id)).run();
       }
       continue;
     }
 
-    for (const a of approvals) {
+    for (const a of approvalList) {
       const msgId = await sendApprovalMessage(cfg, a);
       const now = new Date().toISOString();
-      db.update(genehmigungen).set({
+      db.update(approvals).set({
         notifiedAt: now,
         telegramChatId: msgId ? cfg.chatId : null,
         telegramMessageId: msgId,
-      }).where(eq(genehmigungen.id, a.id)).run();
+      }).where(eq(approvals.id, a.id)).run();
     }
   }
 }

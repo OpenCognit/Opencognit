@@ -98,9 +98,9 @@ function AnimatedPath({ fromX, fromY, toX, toY, isRunning, glowId, gradId }: { f
       />
       <motion.circle
         r="2"
-        fill="#23CDCB"
+        fill="#c5a059"
         style={{
-          filter: 'drop-shadow(0 0 4px #23CDCB)',
+          filter: 'drop-shadow(0 0 4px #c5a059)',
         }}
         initial={{ offsetDistance: "0%", opacity: 0 }}
         animate={{ 
@@ -158,7 +158,7 @@ function ConnectorLines({ childWidths, isRunning }: { childWidths: number[], isR
         </filter>
         <linearGradient id={`pathGrad-${uid}`} x1="0%" y1="0%" x2="0%" y2="100%">
           <stop offset="0%" stopColor="rgba(255,255,255,0.1)" />
-          <stop offset="100%" stopColor="#23CDCB" />
+          <stop offset="100%" stopColor="#c5a059" />
         </linearGradient>
       </defs>
 
@@ -206,12 +206,12 @@ function OrgNodeCard({ node, onSelect, onEdit, onHover }: { node: OrgNodeData, o
           padding: '16px 20px',
           backgroundColor: isCEO ? 'rgba(255, 215, 0, 0.05)' : 'rgba(255, 255, 255, 0.03)',
           backdropFilter: 'blur(30px)',
-          borderRadius: '20px',
-          border: isCEO ? '2px solid #FFD700' : isRunning ? '2px solid #23CDCB' : '1px solid rgba(255, 255, 255, 0.1)',
+          borderRadius: 0,
+          border: isCEO ? '2px solid #FFD700' : isRunning ? '2px solid #c5a059' : '1px solid rgba(255, 255, 255, 0.1)',
           boxShadow: isCEO 
             ? '0 0 40px rgba(255, 215, 0, 0.2), inset 0 0 20px rgba(255, 215, 0, 0.1)' 
             : isRunning 
-              ? '0 0 30px rgba(35, 205, 202, 0.25), inset 0 0 10px rgba(35, 205, 202, 0.1)' 
+              ? '0 0 30px rgba(197, 160, 89, 0.25), inset 0 0 10px rgba(197, 160, 89, 0.1)' 
               : '0 10px 30px rgba(0,0,0,0.2)',
           position: 'relative',
           zIndex: 2,
@@ -223,8 +223,8 @@ function OrgNodeCard({ node, onSelect, onEdit, onHover }: { node: OrgNodeData, o
           <div style={{
             position: 'absolute',
             inset: -4,
-            border: `2px solid ${isCEO ? '#FFD700' : '#23CDCB'}`,
-            borderRadius: '22px',
+            border: `2px solid ${isCEO ? '#FFD700' : '#c5a059'}`,
+            borderRadius: 0,
             animation: 'aura 3s ease-in-out infinite',
             opacity: isCEO ? 0.8 : 0.6
           }} />
@@ -238,7 +238,7 @@ function OrgNodeCard({ node, onSelect, onEdit, onHover }: { node: OrgNodeData, o
             transform: 'translateX(-50%)',
             background: 'linear-gradient(135deg, #FFD700, #FFA500)',
             padding: '4px 10px',
-            borderRadius: '8px',
+            borderRadius: 0,
             display: 'flex',
             alignItems: 'center',
             gap: 6,
@@ -254,7 +254,7 @@ function OrgNodeCard({ node, onSelect, onEdit, onHover }: { node: OrgNodeData, o
           <div style={{
             width: '44px',
             height: '44px',
-            borderRadius: '12px',
+            borderRadius: 0,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -280,7 +280,7 @@ function OrgNodeCard({ node, onSelect, onEdit, onHover }: { node: OrgNodeData, o
                 <Settings size={14} />
               </button>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#23CDCB', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#c5a059', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               <Icon size={10} strokeWidth={3} />
               {m.rolle}
             </div>
@@ -297,7 +297,7 @@ function OrgNodeCard({ node, onSelect, onEdit, onHover }: { node: OrgNodeData, o
 
       {node.kinder.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <div style={{ width: 2.5, height: 20, background: 'linear-gradient(to bottom, rgba(35,205,202,0.4), rgba(35,205,202,1))', borderRadius: '1.25px' }} />
+          <div style={{ width: 2.5, height: 20, background: 'linear-gradient(to bottom, rgba(197,160,89,0.4), rgba(197,160,89,1))', borderRadius: 0 }} />
           <ConnectorLines
             childWidths={node.kinder.map(k => subtreeWidth(k))}
             isRunning={isRunning || node.kinder.some(k => k.experte.status === 'running')}
@@ -335,17 +335,17 @@ function AuditCard({ expert, i18n }: { expert: Experte, i18n: any }) {
     >
       <div style={{
         padding: '24px',
-        borderRadius: '24px',
+        borderRadius: 0,
         background: 'rgba(8, 8, 18, 0.9)',
         backdropFilter: 'blur(40px)',
-        border: '1px solid rgba(35, 205, 202, 0.3)',
+        border: '1px solid rgba(197, 160, 89, 0.3)',
         boxShadow: '0 20px 50px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05)',
       }}>
         <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
           <div style={{
             width: '64px',
             height: '64px',
-            borderRadius: '16px',
+            borderRadius: 0,
             background: expert.avatarFarbe + '15',
             border: `1px solid ${expert.avatarFarbe}33`,
             display: 'flex',
@@ -361,7 +361,7 @@ function AuditCard({ expert, i18n }: { expert: Experte, i18n: any }) {
               background: '#0a0a0f', border: '1px solid rgba(255,255,255,0.1)', 
               display: 'flex', alignItems: 'center', justifyContent: 'center' 
             }}>
-              <Icon size={12} color="#23CDCB" />
+              <Icon size={12} color="#c5a059" />
             </div>
           </div>
 
@@ -369,9 +369,9 @@ function AuditCard({ expert, i18n }: { expert: Experte, i18n: any }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
               <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>{expert.name}</h3>
               <span style={{ 
-                padding: '2px 8px', borderRadius: '6px', 
-                background: 'rgba(35, 205, 202, 0.1)', border: '1px solid rgba(35, 205, 202, 0.2)',
-                fontSize: '10px', color: '#23CDCB', fontWeight: 700, textTransform: 'uppercase'
+                padding: '2px 8px', borderRadius: 0, 
+                background: 'rgba(197, 160, 89, 0.1)', border: '1px solid rgba(197, 160, 89, 0.2)',
+                fontSize: '10px', color: '#c5a059', fontWeight: 700, textTransform: 'uppercase'
               }}>{expert.rolle}</span>
             </div>
             <p style={{ fontSize: '0.85rem', color: '#94a3b8', lineHeight: 1.5, marginBottom: '16px' }}>
@@ -405,7 +405,7 @@ function AuditCard({ expert, i18n }: { expert: Experte, i18n: any }) {
             <History size={12} />
             <span>ID: {expert.id.slice(0, 18)}...</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '10px', fontWeight: 700, color: '#23CDCB' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '10px', fontWeight: 700, color: '#c5a059' }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: expert.status === 'running' ? '#22c55e' : '#64748b' }} />
             {expert.status.toUpperCase()}
           </div>
@@ -516,7 +516,7 @@ export function OrgChart() {
   if (loading || !experts) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' }}>
-        <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#23CDCB' }} />
+        <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#c5a059' }} />
       </div>
     );
   }
@@ -530,7 +530,7 @@ export function OrgChart() {
     rolle: 'Enterprise Headquarters',
     titel: 'Enterprise Headquarters',
     avatar: '🏢',
-    avatarFarbe: '#23CDCB',
+    avatarFarbe: '#c5a059',
     status: 'active',
     verbindungsTyp: 'ceo',
     verbindungsConfig: null,
@@ -575,15 +575,15 @@ export function OrgChart() {
           }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                <Sparkles size={20} style={{ color: '#23CDCB' }} />
-                <span style={{ fontSize: '12px', fontWeight: 600, color: '#23CDCB', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                <Sparkles size={20} style={{ color: '#c5a059' }} />
+                <span style={{ fontSize: '12px', fontWeight: 600, color: '#c5a059', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                   {aktivesUnternehmen.name}
                 </span>
               </div>
               <h1 style={{
                 fontSize: '2rem',
                 fontWeight: 700,
-                background: 'linear-gradient(to bottom right, #23CDCB 0%, #ffffff 100%)',
+                background: 'linear-gradient(to bottom right, #c5a059 0%, #ffffff 100%)',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
@@ -597,12 +597,12 @@ export function OrgChart() {
                 display: 'flex', alignItems: 'center', gap: 4,
                 background: 'rgba(255,255,255,0.05)',
                 border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: 10, padding: '4px 8px',
+                borderRadius: 0, padding: '4px 8px',
               }}>
                 <button
                   onClick={() => { const nz = clampZoom(zoom - ZOOM_STEP); const r = nz/zoom; const cx = (canvasEl?.clientWidth||600)/2; const cy = (canvasEl?.clientHeight||400)/2; setPan(p => ({x: cx-(cx-p.x)*r, y: cy-(cy-p.y)*r})); setZoom(nz); }}
                   title="Rauszoomen (–)"
-                  style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', padding: 4, borderRadius: 6 }}
+                  style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', padding: 4, borderRadius: 0 }}
                   onMouseEnter={e => (e.currentTarget.style.color = '#fff')}
                   onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}
                 >
@@ -611,14 +611,14 @@ export function OrgChart() {
                 <button
                   onClick={() => { setZoom(1); setPan({ x: 60, y: 60 }); }}
                   title={i18n.t.tooltips.resetZoom}
-                  style={{ background: 'none', border: 'none', color: '#23CDCB', cursor: 'pointer', fontSize: '11px', fontWeight: 700, padding: '0 6px', fontFamily: 'monospace', minWidth: 36, textAlign: 'center' }}
+                  style={{ background: 'none', border: 'none', color: '#c5a059', cursor: 'pointer', fontSize: '11px', fontWeight: 700, padding: '0 6px', fontFamily: 'monospace', minWidth: 36, textAlign: 'center' }}
                 >
                   {Math.round(zoom * 100)}%
                 </button>
                 <button
                   onClick={() => { const nz = clampZoom(zoom + ZOOM_STEP); const r = nz/zoom; const cx = (canvasEl?.clientWidth||600)/2; const cy = (canvasEl?.clientHeight||400)/2; setPan(p => ({x: cx-(cx-p.x)*r, y: cy-(cy-p.y)*r})); setZoom(nz); }}
                   title="Reinzoomen (+)"
-                  style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', padding: 4, borderRadius: 6 }}
+                  style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', padding: 4, borderRadius: 0 }}
                   onMouseEnter={e => (e.currentTarget.style.color = '#fff')}
                   onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}
                 >
@@ -628,7 +628,7 @@ export function OrgChart() {
                 <button
                   onClick={() => { setZoom(ZOOM_MIN + 0.1); setPan({ x: 40, y: 40 }); }}
                   title="Alles anzeigen"
-                  style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', padding: 4, borderRadius: 6 }}
+                  style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', padding: 4, borderRadius: 0 }}
                   onMouseEnter={e => (e.currentTarget.style.color = '#fff')}
                   onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}
                 >
@@ -657,7 +657,7 @@ export function OrgChart() {
               overflow: 'hidden',
               backgroundColor: 'rgba(255, 255, 255, 0.01)',
               backdropFilter: 'blur(20px)',
-              borderRadius: '20px',
+              borderRadius: 0,
               border: '1px solid rgba(255, 255, 255, 0.06)',
               animation: 'fadeInUp 0.5s ease-out',
               position: 'relative',
@@ -707,11 +707,11 @@ export function OrgChart() {
             {['Org Chart', 'Hierarchie', 'Team Struktur', 'Live Status'].map((feature, i) => (
               <div key={i} style={{
                 padding: '0.4rem 0.8rem',
-                backgroundColor: 'rgba(35, 205, 202, 0.08)',
-                border: '1px solid rgba(35, 205, 202, 0.2)',
+                backgroundColor: 'rgba(197, 160, 89, 0.08)',
+                border: '1px solid rgba(197, 160, 89, 0.2)',
                 borderRadius: '9999px',
                 fontSize: '0.7rem',
-                color: '#23CDCB',
+                color: '#c5a059',
                 fontWeight: 500,
               }}>{feature}</div>
             ))}

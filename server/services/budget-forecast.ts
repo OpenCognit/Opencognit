@@ -4,7 +4,7 @@
 // Pure read side — no side effects, safe to call from any route.
 
 import { db } from '../db/client.js';
-import { budgetPolicies, kostenbuchungen, experten } from '../db/schema.js';
+import { budgetPolicies, costEntries, agents } from '../db/schema.js';
 import { eq, and, gte, sql } from 'drizzle-orm';
 
 export interface PolicyForecast {
@@ -49,7 +49,7 @@ function daysSince(iso: string): number {
 
 export function getForecasts(unternehmenId: string): PolicyForecast[] {
   const policies = db.select().from(budgetPolicies)
-    .where(and(eq(budgetPolicies.unternehmenId, unternehmenId), eq(budgetPolicies.aktiv, 1)))
+    .where(and(eq(budgetPolicies.companyId, unternehmenId), eq(budgetPolicies.active, true)))
     .all();
 
   if (policies.length === 0) return [];
@@ -58,21 +58,21 @@ export function getForecasts(unternehmenId: string): PolicyForecast[] {
   const monthEndMs = new Date(endOfMonthIso()).getTime();
 
   const expertMap = new Map<string, string>();
-  db.select({ id: experten.id, name: experten.name })
-    .from(experten).where(eq(experten.unternehmenId, unternehmenId)).all()
+  db.select({ id: agents.id, name: agents.name })
+    .from(agents).where(eq(agents.companyId, unternehmenId)).all()
     .forEach(e => expertMap.set(e.id, e.name));
 
   return policies.map(policy => {
-    const spendRow = db.select({ total: sql<number>`COALESCE(SUM(${kostenbuchungen.kostenCent}), 0)` })
-      .from(kostenbuchungen)
+    const spendRow = db.select({ total: sql<number>`COALESCE(SUM(${costEntries.costCent}), 0)` })
+      .from(costEntries)
       .where(and(
-        eq(kostenbuchungen.unternehmenId, unternehmenId),
-        ...(policy.scope === 'agent' ? [eq(kostenbuchungen.expertId, policy.scopeId)] : []),
-        ...(policy.fenster === 'monatlich' ? [gte(kostenbuchungen.zeitpunkt, sinceIso)] : []),
+        eq(costEntries.companyId, unternehmenId),
+        ...(policy.scope === 'agent' ? [eq(costEntries.agentId, policy.scopeId)] : []),
+        ...(policy.fenster === 'monatlich' ? [gte(costEntries.timestamp, sinceIso)] : []),
       )).all();
     const spent = (spendRow[0]?.total ?? 0) as number;
 
-    const daysObserved = policy.fenster === 'monatlich' ? daysSince(sinceIso) : daysSince(policy.erstelltAm);
+    const daysObserved = policy.fenster === 'monatlich' ? daysSince(sinceIso) : daysSince(policy.createdAt);
     const burnRate = spent / daysObserved;
 
     const remaining = policy.limitCent - spent;

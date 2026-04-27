@@ -30,7 +30,11 @@ export function useApprovalNotifier() {
 
   useEffect(() => {
     if (!aktivesUnternehmen) return;
+    let destroyed = false;
     fetchCount();
+
+    // Fallback polling — re-fetch every 30s even if WS fails
+    const pollId = setInterval(fetchCount, 30_000);
 
     const _tok = localStorage.getItem('opencognit_token') || '';
     const wsUrl = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws' + (_tok ? `?token=${_tok}` : '');
@@ -38,23 +42,29 @@ export function useApprovalNotifier() {
     wsRef.current = ws;
 
     ws.onmessage = (event) => {
+      if (destroyed) return;
       try {
         const msg = JSON.parse(event.data);
         if (msg.data?.unternehmenId && msg.data.unternehmenId !== aktivesUnternehmen.id) return;
 
         if (msg.type === 'approval_updated') {
-          // Re-fetch the real count after an approve/reject decision
           fetchCount();
+          window.dispatchEvent(new CustomEvent('opencognit:approval-changed', {
+            detail: { unternehmenId: msg.data?.unternehmenId || msg.unternehmenId, status: msg.data?.status || msg.status },
+          }));
         }
 
-        else if (msg.type === 'approval_created') {
+        else if (msg.type === 'approval_created' || msg.type === 'approval_requested') {
           setGlobalCount(globalCount + 1);
           const agentName = msg.data?.agentName || 'Ein Agent';
-          const actionName = msg.data?.action || 'eine Aktion';
+          const actionName = msg.data?.action || msg.data?.titel || 'eine Aktion';
           toast.warning(
             'Genehmigung erforderlich',
             `${agentName} möchte "${actionName}" ausführen`
           );
+          window.dispatchEvent(new CustomEvent('opencognit:approval-changed', {
+            detail: { unternehmenId: msg.data?.unternehmenId || msg.unternehmenId, status: 'pending' },
+          }));
         }
 
         else if (msg.type === 'task_completed') {
@@ -102,7 +112,19 @@ export function useApprovalNotifier() {
       } catch {}
     };
 
-    return () => { ws.close(); wsRef.current = null; };
+    ws.onerror = () => { if (!destroyed) console.warn('[ApprovalNotifier] WS error'); };
+    ws.onclose = () => { if (!destroyed) console.debug('[ApprovalNotifier] WS closed'); };
+
+    return () => {
+      destroyed = true;
+      clearInterval(pollId);
+      ws.onerror = null;
+      ws.onclose = null;
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
+        ws.close();
+      }
+      wsRef.current = null;
+    };
   }, [aktivesUnternehmen?.id]);
 
   return { fetchCount };

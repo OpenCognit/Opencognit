@@ -1,0 +1,2 @@
+-- Add kimi-cli connection type
+-- PostgreSQL text column has no enum constraint in this schema
