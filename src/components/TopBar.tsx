@@ -223,14 +223,11 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
     <header className="app-topbar">
       <div className="topbar-left">
         {displayCrumbs && displayCrumbs.length > 0 && (
-          <div className="topbar-breadcrumb" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#71717a', fontSize: '0.8125rem' }}>
+          <div className="topbar-breadcrumb">
             {displayCrumbs.map((item, i) => (
               <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                {i > 0 && <span style={{ opacity: 0.3 }}>/</span>}
-                <span style={{
-                  color: i === displayCrumbs.length - 1 ? '#e4e4e7' : 'inherit',
-                  fontWeight: i === displayCrumbs.length - 1 ? 500 : 400
-                }}>
+                {i > 0 && <span className="topbar-breadcrumb-sep">/</span>}
+                <span className={i === displayCrumbs.length - 1 ? 'topbar-breadcrumb-current' : undefined}>
                   {item}
                 </span>
               </span>

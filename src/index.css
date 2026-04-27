@@ -39,6 +39,7 @@
     --color-amber: #d4a373;
     --color-violet: #9b87c8;
     --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    --font-serif: 'Merriweather', Georgia, 'Times New Roman', serif;
     /* ── Elevation overlay alphas ────────────────────────────── */
     --elev-0: rgba(6, 4, 3, 0.0);
     --elev-1: rgba(6, 4, 3, 0.5);
@@ -176,6 +177,13 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+}
+
+/* ── Global heading typography — editorial serif ─────────────────────────── */
+h1, h2, h3 {
+  font-family: var(--font-serif);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
 
 html {
@@ -361,16 +369,33 @@ ul, ol { list-style: none; }
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-border-hover); }
 
-/* ── Noise texture overlay on body ──────────────────────────────────────── */
+/* ── Film grain texture ──────────────────────────────────────────────────── */
 body::after {
   content: '';
   position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 0;
-  opacity: 0.055;
+  z-index: 2;
+  opacity: 0.08;
   background-image: url('/noise.svg');
-  background-size: 128px 128px;
+  background-size: 200px 200px;
+  mix-blend-mode: overlay;
+}
+
+/* ── Horizontal scan-lines — very subtle CRT/vintage depth ───────────────── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px,
+    transparent 2px,
+    rgba(0, 0, 0, 0.022) 2px,
+    rgba(0, 0, 0, 0.022) 3px
+  );
 }
 
 /* ── Gradient text utility ───────────────────────────────────────────────── */
@@ -395,12 +420,15 @@ body::after {
 
 /* ─── Glass Card Utility Class ────────────────────────────────────────────── */
 .glass-card {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(10, 8, 6, 0.70);
+  border: 1px solid rgba(197, 160, 89, 0.12);
   border-radius: 0;
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 4px 16px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(24px) saturate(130%);
+  -webkit-backdrop-filter: blur(24px) saturate(130%);
+  box-shadow:
+    inset 0 1px 0 rgba(197, 160, 89, 0.10),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+    0 4px 24px rgba(0, 0, 0, 0.45);
 }
 
 .app-sidebar {
@@ -761,15 +789,22 @@ body::after {
 }
 
 .page-title {
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-bold);
-  letter-spacing: -0.02em;
+  font-family: var(--font-serif);
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  background: linear-gradient(135deg, #ede5d8 0%, #c5a059 45%, #e0d0b8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .page-subtitle {
   font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
+  color: var(--color-text-tertiary);
   margin-top: var(--space-1);
+  letter-spacing: 0.01em;
 }
 
 /* ---------- Grid ---------- */
@@ -1191,14 +1226,19 @@ body::after {
   align-items: center;
   gap: var(--space-2);
   font-size: var(--font-size-sm);
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.01em;
 }
 
-.topbar-breadcrumb-sep { opacity: 0.4; }
+.topbar-breadcrumb-sep { opacity: 0.3; }
 
 .topbar-breadcrumb-current {
+  font-family: var(--font-serif);
+  font-size: var(--font-size-base);
+  font-weight: 700;
   color: var(--color-text-primary);
-  font-weight: var(--font-weight-medium);
+  letter-spacing: -0.01em;
 }
 
 .topbar-right {
@@ -1606,3 +1646,177 @@ body::after {
 .mb-6 { margin-bottom: var(--space-6); }
 .w-full { width: 100%; }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   VINTAGE PROFESSIONAL DESIGN SYSTEM
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Typography hierarchy ─────────────────────────────────────────────────── */
+
+/* Serif headings for editorial weight */
+.serif { font-family: var(--font-serif); }
+
+.serif-display {
+  font-family: var(--font-serif);
+  font-size: var(--font-size-3xl);
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+}
+
+.serif-heading {
+  font-family: var(--font-serif);
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--color-text-primary);
+}
+
+.serif-subheading {
+  font-family: var(--font-serif);
+  font-size: var(--font-size-lg);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  color: var(--color-text-secondary);
+}
+
+/* Uppercase mono labels — stamp/engraved feel */
+.label-caps {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+.label-caps-gold {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-gold);
+  text-shadow: 0 0 12px rgba(197, 160, 89, 0.4);
+}
+
+/* ── Ambient panel lighting ───────────────────────────────────────────────── */
+/* Usage: <div class="vintage-panel panel-ambient-gold"> */
+
+.vintage-panel {
+  position: relative;
+  background: rgba(10, 8, 6, 0.75);
+  border: 1px solid rgba(197, 160, 89, 0.12);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  overflow: hidden;
+}
+
+/* Top-edge accent line — the "stamp edge" */
+.vintage-panel::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--panel-accent-color, rgba(197, 160, 89, 0.5)) 30%,
+    var(--panel-accent-color, rgba(197, 160, 89, 0.5)) 70%,
+    transparent 100%
+  );
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Ambient top glow */
+.vintage-panel::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 60px;
+  background: linear-gradient(
+    180deg,
+    var(--panel-ambient-color, rgba(197, 160, 89, 0.04)) 0%,
+    transparent 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+.panel-ambient-gold  { --panel-accent-color: rgba(197, 160, 89, 0.55); --panel-ambient-color: rgba(197, 160, 89, 0.05); }
+.panel-ambient-green { --panel-accent-color: rgba(124, 185, 122, 0.50); --panel-ambient-color: rgba(124, 185, 122, 0.04); }
+.panel-ambient-red   { --panel-accent-color: rgba(201, 123, 123, 0.55); --panel-ambient-color: rgba(201, 123, 123, 0.05); }
+.panel-ambient-amber { --panel-accent-color: rgba(212, 163, 115, 0.50); --panel-ambient-color: rgba(212, 163, 115, 0.04); }
+.panel-ambient-violet{ --panel-accent-color: rgba(155, 135, 200, 0.50); --panel-ambient-color: rgba(155, 135, 200, 0.04); }
+.panel-ambient-none  { --panel-accent-color: rgba(197, 160, 89, 0.14); --panel-ambient-color: transparent; }
+
+/* ── Vintage divider ──────────────────────────────────────────────────────── */
+.vintage-divider {
+  height: 1px;
+  border: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(197, 160, 89, 0.28) 25%,
+    rgba(197, 160, 89, 0.28) 75%,
+    transparent 100%
+  );
+  margin: 0;
+}
+
+/* ── Gold gradient text ───────────────────────────────────────────────────── */
+.gold-text {
+  background: linear-gradient(135deg, #c5a059 0%, #e8d4a8 50%, #c5a059 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Inset / engraved text ────────────────────────────────────────────────── */
+.text-engraved {
+  color: var(--color-text-tertiary);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* ── Status indicator dot ─────────────────────────────────────────────────── */
+.status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-dot-gold   { background: #c5a059; box-shadow: 0 0 6px rgba(197,160,89,0.6); }
+.status-dot-green  { background: #7cb97a; box-shadow: 0 0 6px rgba(124,185,122,0.5); }
+.status-dot-red    { background: #c97b7b; box-shadow: 0 0 6px rgba(201,123,123,0.5); }
+.status-dot-amber  { background: #d4a373; box-shadow: 0 0 6px rgba(212,163,115,0.5); }
+.status-dot-muted  { background: #4a3e30; box-shadow: none; }
+
+/* ── Monospaced data value display ───────────────────────────────────────── */
+.data-value {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  letter-spacing: 0.02em;
+}
+.data-value-lg {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  letter-spacing: -0.02em;
+}
+
+/* ── Sidebar section headings ─────────────────────────────────────────────── */
+.sidebar-section-heading {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+}
+
+

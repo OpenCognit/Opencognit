@@ -50,7 +50,14 @@ export function GlobalBackground() {
       {/* Warm dark background — matches WarRoom palette */}
       <div style={{
         position: 'absolute', inset: 0,
-        background: 'linear-gradient(135deg, #080604 0%, #060403 50%, #0a0806 100%)',
+        background: 'linear-gradient(160deg, #0a0806 0%, #060403 45%, #080604 100%)',
+      }} />
+
+      {/* Vignette — darker edges, lighter center (vintage photo feel) */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        background: 'radial-gradient(ellipse at 50% 40%, transparent 40%, rgba(0,0,0,0.45) 100%)',
+        pointerEvents: 'none',
       }} />
 
       {/* Subtle warm-gold grid — replaces cold cyan grid */}

@@ -456,22 +456,26 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
             borderRadius: 0,
             textDecoration: 'none',
             transition: 'all 0.2s',
-            background: isActive ? 'rgba(197, 160, 89, 0.12)' : 'rgba(255, 255, 255, 0.02)',
-            border: isActive ? '1px solid rgba(197, 160, 89, 0.3)' : '1px solid rgba(255, 255, 255, 0.06)',
-            color: isActive ? '#c5a059' : '#a1a1aa',
+            background: isActive ? 'rgba(197, 160, 89, 0.10)' : 'transparent',
+            border: isActive ? '1px solid rgba(197, 160, 89, 0.22)' : '1px solid transparent',
+            borderLeft: isActive ? '2px solid #c5a059' : '2px solid transparent',
+            color: isActive ? '#c5a059' : 'var(--color-text-tertiary)',
             backdropFilter: 'blur(10px)',
             width: collapsed ? '40px' : '100%',
           })}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)';
-            (e.currentTarget as HTMLElement).style.borderColor = 'rgba(197,160,89,0.2)';
-            (e.currentTarget as HTMLElement).style.color = '#c5a059';
+            const active = (e.currentTarget as HTMLElement).style.borderLeftColor === 'rgb(197, 160, 89)';
+            if (!active) {
+              (e.currentTarget as HTMLElement).style.background = 'rgba(197,160,89,0.05)';
+              (e.currentTarget as HTMLElement).style.color = 'var(--color-text-secondary)';
+            }
           }}
           onMouseLeave={(e) => {
-            const active = e.currentTarget.classList.contains('active');
-            (e.currentTarget as HTMLElement).style.background = active ? 'rgba(197,160,89,0.12)' : 'rgba(255,255,255,0.02)';
-            (e.currentTarget as HTMLElement).style.borderColor = active ? 'rgba(197,160,89,0.3)' : 'rgba(255,255,255,0.06)';
-            (e.currentTarget as HTMLElement).style.color = active ? '#c5a059' : '#a1a1aa';
+            const isActive2 = (e.currentTarget as HTMLElement).style.borderLeftColor === 'rgb(197, 160, 89)';
+            if (!isActive2) {
+              (e.currentTarget as HTMLElement).style.background = 'transparent';
+              (e.currentTarget as HTMLElement).style.color = 'var(--color-text-tertiary)';
+            }
           }}
         >
           <Settings size={18} />
