@@ -260,7 +260,7 @@ npm start
 | Auth | JWT + bcrypt + HMAC agent auth |
 | Real-time | WebSocket + SSE |
 | Language | TypeScript (strict, full-stack) |
-| Testing | Vitest (64 tests) |
+| Testing | Vitest (70 unit tests) + Playwright (9 E2E tests) |
 | Runtimes | Claude Code CLI · Gemini CLI · Codex CLI · Anthropic · OpenRouter · Ollama · OpenAI |
 
 ---
