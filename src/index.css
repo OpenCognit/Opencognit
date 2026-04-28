@@ -116,9 +116,9 @@
     --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.6);
     --shadow-glow: 0 0 20px var(--color-accent-glow);
     --shadow-glow-lg: 0 0 40px var(--color-accent-glow);
-    --glass-bg: rgba(10, 8, 6, 0.88);
+    --glass-bg: rgba(6, 4, 3, 0.94);
     --glass-border: rgba(197, 160, 89, 0.10);
-    --glass-blur: blur(20px);
+    --glass-blur: blur(0px);
     --sidebar-width: 260px;
     --sidebar-collapsed-width: 64px;
     --topbar-height: 56px;
@@ -310,9 +310,8 @@ body {
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-normal);
   line-height: var(--line-height-normal);
-  color: var(--foreground);
-  background: linear-gradient(160deg, #0e0c09 0%, #100e0b 50%, #0c0b08 100%);
-  background-attachment: fixed;
+  color: var(--color-text-primary);
+  background: #060403;
   overflow-x: hidden;
   margin: 0;
 }
@@ -369,19 +368,6 @@ ul, ol { list-style: none; }
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-border-hover); }
 
-/* ── Film grain texture ──────────────────────────────────────────────────── */
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 2;
-  opacity: 0.08;
-  background-image: url('/noise.svg');
-  background-size: 200px 200px;
-  mix-blend-mode: overlay;
-}
-
 /* ── Horizontal scan-lines — very subtle CRT/vintage depth ───────────────── */
 body::before {
   content: '';
@@ -392,9 +378,9 @@ body::before {
   background: repeating-linear-gradient(
     0deg,
     transparent 0px,
-    transparent 2px,
-    rgba(0, 0, 0, 0.022) 2px,
-    rgba(0, 0, 0, 0.022) 3px
+    transparent 3px,
+    rgba(0, 0, 0, 0.015) 3px,
+    rgba(0, 0, 0, 0.015) 4px
   );
 }
 
@@ -420,15 +406,15 @@ body::before {
 
 /* ─── Glass Card Utility Class ────────────────────────────────────────────── */
 .glass-card {
-  background: rgba(10, 8, 6, 0.70);
+  background: rgba(8, 6, 4, 0.82);
   border: 1px solid rgba(197, 160, 89, 0.12);
   border-radius: 0;
-  backdrop-filter: blur(24px) saturate(130%);
-  -webkit-backdrop-filter: blur(24px) saturate(130%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   box-shadow:
-    inset 0 1px 0 rgba(197, 160, 89, 0.10),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.3),
-    0 4px 24px rgba(0, 0, 0, 0.45);
+    inset 0 1px 0 rgba(197, 160, 89, 0.08),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.4),
+    0 4px 24px rgba(0, 0, 0, 0.5);
 }
 
 .app-sidebar {
@@ -1707,10 +1693,8 @@ body::before {
 
 .vintage-panel {
   position: relative;
-  background: rgba(10, 8, 6, 0.75);
+  background: rgba(8, 6, 4, 0.88);
   border: 1px solid rgba(197, 160, 89, 0.12);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   overflow: hidden;
 }
 

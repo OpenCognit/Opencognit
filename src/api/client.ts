@@ -47,7 +47,7 @@ export interface Benutzer {
   id: string;
   name: string;
   email: string;
-  rolle: 'admin' | 'mitglied';
+  rolle: string;
 }
 
 export interface AuthAntwort {
@@ -418,6 +418,32 @@ export const apiDependencies = {
     request<{ success: boolean }>(`/aufgaben/${aufgabeId}/blocker`, { method: 'POST', body: JSON.stringify({ blockerId }) }),
   entfernen: (aufgabeId: string, blockerId: string) =>
     request<{ ok: boolean }>(`/aufgaben/${aufgabeId}/blocker/${blockerId}`, { method: 'DELETE' }),
+};
+
+// Memberships & Invites
+export interface Mitgliedschaft {
+  companyId: string;
+  role: string;
+  joinedAt: string | null;
+  companyName: string | null;
+  companyStatus: string | null;
+}
+export interface Mitglied {
+  userId: string;
+  name: string | null;
+  email: string | null;
+  role: string;
+  joinedAt: string | null;
+}
+export const apiMemberships = {
+  meine: () => request<Mitgliedschaft[]>('/user/memberships'),
+  mitglieder: (companyId: string) => request<Mitglied[]>(`/companies/${companyId}/members`),
+  einladen: (companyId: string, email: string, role?: string) =>
+    request<{ token: string; email: string; role: string; message: string }>(`/companies/${companyId}/invites`, { method: 'POST', body: JSON.stringify({ email, role: role || 'member' }) }),
+  akzeptieren: (token: string) =>
+    request<{ ok: boolean; companyId: string; role: string }>(`/invites/${token}/accept`, { method: 'POST' }),
+  entfernen: (companyId: string, userId: string) =>
+    request<{ ok: boolean }>(`/companies/${companyId}/members/${userId}`, { method: 'DELETE' }),
 };
 
 // Channels

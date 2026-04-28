@@ -180,6 +180,7 @@ export function LoginPage({ erstesKonto = false }: { erstesKonto?: boolean }) {
               <button
                 key={tab}
                 type="button"
+                data-testid={tab === "anmelden" ? "tab-signin" : "tab-signup"}
                 onClick={() => { setModus(tab); setFehler(""); setName(""); }}
                 style={{
                   position: "relative", flex: 1,
@@ -233,7 +234,7 @@ export function LoginPage({ erstesKonto = false }: { erstesKonto?: boolean }) {
                   <div style={{ position: "absolute", left: "0.85rem", top: "50%", transform: "translateY(-50%)", color: "#3f3f46", pointerEvents: "none" }}>
                     <Icon d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" />
                   </div>
-                  <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder={t.login.namePlaceholder} required style={inputStyle}
+                  <input type="text" data-testid="register-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={t.login.namePlaceholder} required style={inputStyle}
                     onFocus={(e) => { e.target.style.borderColor = "rgba(197,160,89,0.5)"; e.target.style.boxShadow = "0 0 0 3px rgba(197,160,89,0.08)"; }}
                     onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.08)"; e.target.style.boxShadow = "none"; }}
                   />
@@ -248,7 +249,7 @@ export function LoginPage({ erstesKonto = false }: { erstesKonto?: boolean }) {
                 <div style={{ position: "absolute", left: "0.85rem", top: "50%", transform: "translateY(-50%)", color: "#3f3f46", pointerEvents: "none" }}>
                   <Icon d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zM22 6l-10 7L2 6" />
                 </div>
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t.login.emailPlaceholder} required style={inputStyle}
+                <input type="email" data-testid="login-email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t.login.emailPlaceholder} required style={inputStyle}
                   onFocus={(e) => { e.target.style.borderColor = "rgba(197,160,89,0.5)"; e.target.style.boxShadow = "0 0 0 3px rgba(197,160,89,0.08)"; }}
                   onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.08)"; e.target.style.boxShadow = "none"; }}
                 />
@@ -263,7 +264,7 @@ export function LoginPage({ erstesKonto = false }: { erstesKonto?: boolean }) {
                   <Icon d="M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2zM7 11V7a5 5 0 0 1 10 0v4" />
                 </div>
                 <input
-                  type={showPassword ? "text" : "password"} value={passwort}
+                  type={showPassword ? "text" : "password"} data-testid="login-password" value={passwort}
                   onChange={(e) => setPasswort(e.target.value)}
                   placeholder={modus === "anmelden" ? t.login.passwordPlaceholder : t.login.passwordMinLength}
                   required style={inputStyle}
@@ -293,7 +294,7 @@ export function LoginPage({ erstesKonto = false }: { erstesKonto?: boolean }) {
             </div>
 
             {/* Submit */}
-            <button type="submit" disabled={laden} style={{
+            <button type="submit" data-testid="login-submit" disabled={laden} style={{
               marginTop: "0.5rem", width: "100%", padding: "0.85rem",
               background: laden ? "rgba(197,160,89,0.3)" : "linear-gradient(135deg, #c5a059 0%, #c5a059 100%)",
               color: "#fff", fontWeight: 700, fontSize: "0.9rem",

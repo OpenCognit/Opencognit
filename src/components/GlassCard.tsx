@@ -73,10 +73,10 @@ export function GlassCard({
         position: 'relative',
         overflow: 'hidden',
         background: on
-          ? `linear-gradient(160deg, rgba(20,16,10,0.92) 0%, rgba(12,9,6,0.95) 100%)`
-          : `rgba(10,8,6,0.72)`,
-        backdropFilter: 'blur(24px) saturate(130%)',
-        WebkitBackdropFilter: 'blur(24px) saturate(130%)',
+          ? `linear-gradient(160deg, rgba(18,14,9,0.96) 0%, rgba(10,7,4,0.98) 100%)`
+          : `rgba(8,6,4,0.88)`,
+        backdropFilter: 'none',
+        WebkitBackdropFilter: 'none',
         borderRadius: 0,
         boxShadow: on
           ? `inset 0 0 0 1px ${accent}30, inset 0 1px 0 ${accent}22, 0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px ${accent}12`

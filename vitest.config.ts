@@ -4,12 +4,21 @@ export default defineConfig({
   test: {
     // Run server tests in Node environment
     environment: 'node',
+    globals: true,
     // Include server-side test files
     include: ['server/**/*.test.ts'],
     // Exclude node_modules and dist
     exclude: ['node_modules', 'dist', '.git'],
     // Timeout for long-running tests
-    testTimeout: 10000,
+    testTimeout: 30000,
+    // Fork-based isolation for DB safety
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
+    setupFiles: ['./server/__tests__/setup.ts'],
     // Coverage config
     coverage: {
       provider: 'v8',

@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             id: session.user.id,
             name: session.user.name || session.user.email,
             email: session.user.email,
-            rolle: (session.user as any).role || 'mitglied',
+            rolle: (session.user as any).role || 'user',
           });
           setLaden(false);
           return;
@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: data.user.id,
         name: data.user.name || data.user.email,
         email: data.user.email,
-        rolle: (data.user as any).role || 'mitglied',
+        rolle: (data.user as any).role || 'user',
       };
       setBenutzer(u);
       queryClient.invalidateQueries({ queryKey: queryKeys.system.status });
@@ -91,7 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: data.user.id,
         name: data.user.name || data.user.email,
         email: data.user.email,
-        rolle: (data.user as any).role || 'mitglied',
+        rolle: (data.user as any).role || 'user',
       };
       setBenutzer(u);
       queryClient.invalidateQueries({ queryKey: queryKeys.system.status });

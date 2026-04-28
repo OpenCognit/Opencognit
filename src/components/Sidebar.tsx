@@ -14,6 +14,7 @@ import { useApprovalCount } from '../hooks/useApprovalCount';
 export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boolean; onToggle: () => void; onSearchClick: () => void }) {
   useCompany();
   const { benutzer, abmelden } = useAuth();
+  const { unternehmen, aktivesUnternehmen, wechselUnternehmen, aktiveRolle } = useCompany();
   const { t, language, setLanguage } = useI18n();
   const de = language === 'de';
   const approvalCount = useApprovalCount();
@@ -72,32 +73,32 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
     { section: de ? 'Betrieb' : 'Operations', items: [
       { to: '/chat',          icon: MessageSquare,   label: 'Chat',               tourStep: 'chat' },
       { to: '/',              icon: LayoutDashboard, label: t.nav.dashboard,      tourStep: 'dashboard' },
-      { to: '/companies',     icon: Building2,       label: t.nav.unternehmen },
+      { to: '/companies',     icon: Building2,       label: t.nav.unternehmen,    tourStep: 'companies' },
       { to: '/experts',       icon: Users,           label: t.nav.experten,       tourStep: 'experts' },
-      { to: '/skill-library', icon: BookOpen,        label: t.nav.skillLibrary },
-      { to: '/approvals',     icon: ShieldCheck,     label: t.nav.genehmigungen },
-      { to: '/costs',         icon: Wallet,          label: t.nav.kosten },
-      { to: '/org-chart',     icon: GitBranch,       label: t.nav.organigramm },
-      { to: '/company-knowledge', icon: Brain,       label: de ? 'Wissensbasis' : 'Knowledge' },
-      { to: '/memory',        icon: Database,        label: de ? 'Semantic Memory' : 'Semantic Memory' },
+      { to: '/skill-library', icon: BookOpen,        label: t.nav.skillLibrary,   tourStep: 'skill-library' },
+      { to: '/approvals',     icon: ShieldCheck,     label: t.nav.genehmigungen,  tourStep: 'approvals' },
+      { to: '/costs',         icon: Wallet,          label: t.nav.kosten,         tourStep: 'costs' },
+      { to: '/org-chart',     icon: GitBranch,       label: t.nav.organigramm,    tourStep: 'org-chart' },
+      { to: '/company-knowledge', icon: Brain,       label: de ? 'Wissensbasis' : 'Knowledge', tourStep: 'knowledge' },
+      { to: '/memory',        icon: Database,        label: de ? 'Semantic Memory' : 'Semantic Memory', tourStep: 'semantic-memory' },
     ]},
     // ── Setup-Reihenfolge: was zuerst gemacht werden muss ──
     { section: de ? 'Einrichten' : 'Setup', items: [
-      { to: '/settings',     icon: Settings,       label: de ? '1. API Keys & Einstellungen' : '1. API Keys & Settings' },
+      { to: '/settings',     icon: Settings,       label: de ? '1. API Keys & Einstellungen' : '1. API Keys & Settings', tourStep: 'settings' },
       { to: '/experts',      icon: Users,          label: de ? '2. Agenten anlegen' : '2. Create Agents' },
-      { to: '/projects',     icon: FolderOpen,     label: de ? '3. Projekte anlegen' : '3. Create Projects' },
-      { to: '/tasks',        icon: ListTodo,       label: de ? '4. Aufgaben erstellen' : '4. Create Tasks', tourStep: 'tasks' },
-      { to: '/routines',     icon: Clock,          label: de ? '5. Routinen einrichten' : '5. Set up Routines' },
+      { to: '/projects',     icon: FolderOpen,     label: de ? '3. Projekte anlegen' : '3. Create Projects',  tourStep: 'projects' },
+      { to: '/tasks',        icon: ListTodo,       label: de ? '4. Aufgaben erstellen' : '4. Create Tasks',   tourStep: 'tasks' },
+      { to: '/routines',     icon: Clock,          label: de ? '5. Routinen einrichten' : '5. Set up Routines', tourStep: 'routines' },
     ]},
     // ── Alles weitere ──
     { section: de ? 'Mehr' : 'More', items: [
-      { to: '/goals',        icon: Target,         label: t.nav.ziele },
-      { to: '/meetings',     icon: MessagesSquare, label: t.nav.meetings },
-      { to: '/activity',     icon: Activity,       label: t.nav.aktivitaet },
-      { to: '/weekly-report',icon: BarChart3,      label: t.nav.weeklyReport },
-      { to: '/clipmart',     icon: Package,        label: 'CognitHub' },
-      { to: '/plugins',      icon: Package,        label: de ? 'Plugins' : 'Plugins' },
-      { to: '/workers',      icon: GitBranch,      label: de ? 'Worker-Nodes' : 'Worker Nodes' },
+      { to: '/goals',        icon: Target,         label: t.nav.ziele,          tourStep: 'goals' },
+      { to: '/meetings',     icon: MessagesSquare, label: t.nav.meetings,       tourStep: 'meetings' },
+      { to: '/activity',     icon: Activity,       label: t.nav.aktivitaet,     tourStep: 'activity' },
+      { to: '/weekly-report',icon: BarChart3,      label: t.nav.weeklyReport,   tourStep: 'weekly-report' },
+      { to: '/clipmart',     icon: Package,        label: 'CognitHub',          tourStep: 'cognithub' },
+      { to: '/plugins',      icon: Package,        label: de ? 'Plugins' : 'Plugins', tourStep: 'plugins' },
+      { to: '/workers',      icon: GitBranch,      label: de ? 'Worker-Nodes' : 'Worker Nodes', tourStep: 'workers' },
     ]},
   ];
 
@@ -364,6 +365,40 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
         position: 'relative',
         zIndex: 1,
       }}>
+        {/* Company Switcher */}
+        {unternehmen.length > 1 && !collapsed && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <label style={{ fontSize: '0.625rem', color: '#71717a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              {de ? 'Unternehmen' : 'Company'}
+            </label>
+            <select
+              value={aktivesUnternehmen?.id || ''}
+              onChange={(e) => wechselUnternehmen(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '0.5rem 0.75rem',
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid rgba(197, 160, 89, 0.2)',
+                borderRadius: 0,
+                color: '#e4e4e7',
+                fontSize: '0.8125rem',
+                fontWeight: 500,
+                cursor: 'pointer',
+                outline: 'none',
+                appearance: 'none',
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 0.75rem center',
+                paddingRight: '2rem',
+              }}
+            >
+              {unternehmen.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* User Profile */}
         {benutzer && (
           <div
@@ -409,8 +444,19 @@ export function Sidebar({ collapsed, onToggle, onSearchClick }: { collapsed: boo
               <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {benutzer.name}
               </div>
-              <div style={{ fontSize: '0.625rem', color: '#71717a', fontWeight: 500 }}>
-                {benutzer.rolle === 'admin' ? 'Administrator' : 'Mitglied'}
+              <div style={{ fontSize: '0.625rem', color: '#71717a', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                <span>{aktiveRolle ? (aktiveRolle === 'owner' ? 'Owner' : aktiveRolle === 'admin' ? 'Admin' : 'Member') : (benutzer.rolle === 'admin' ? 'Admin' : 'User')}</span>
+                {aktiveRolle && (
+                  <span style={{
+                    fontSize: '9px',
+                    padding: '1px 4px',
+                    background: aktiveRolle === 'owner' ? 'rgba(197, 160, 89, 0.2)' : 'rgba(255,255,255,0.06)',
+                    color: aktiveRolle === 'owner' ? '#c5a059' : '#a1a1aa',
+                    border: `1px solid ${aktiveRolle === 'owner' ? 'rgba(197, 160, 89, 0.3)' : 'rgba(255,255,255,0.1)'}`,
+                  }}>
+                    {aktiveRolle}
+                  </span>
+                )}
               </div>
             </div>
             <button

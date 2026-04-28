@@ -1,4 +1,4 @@
-import { useState, Fragment as Frag } from 'react';
+import { useState, useRef, Fragment as Frag } from 'react';
 import {
   Sparkles, FolderOpen, ChevronRight, ChevronLeft,
   Loader2, CheckCircle2, AlertCircle, Bot, Folder,
@@ -100,6 +100,7 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
   const de = language === 'de';
 
   const [step, setStep] = useState(1);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [description, setDescription] = useState('');
   const [workDir, setWorkDir] = useState('');
   const [dirValid, setDirValid] = useState<boolean | null>(null);
@@ -162,9 +163,18 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
       });
       if (!resp.ok) throw new Error(await resp.text());
       const data = await resp.json();
-      setPlan(data.plan);
+      // Normalize EN → DE keys (backend may return English keys from LLM or fallback)
+      const raw = data.plan || {};
+      const normalized: BootstrapPlan = {
+        companyGoal: raw.companyGoal || '',
+        projekte: raw.projekte || raw.projects || [],
+        agenten: raw.agenten || raw.agents || [],
+        tasks: raw.tasks || [],
+        routinen: raw.routinen || raw.routines || [],
+      };
+      setPlan(normalized);
       setPlanSource(data.source);
-      const ordered = [...(data.plan.projekte || [])];
+      const ordered = [...(normalized.projekte || [])];
       setProjektOrder(ordered);
       // Default start project = the one with startFirst: true
       const starter = ordered.find((p: PlanProject) => p.startFirst);
@@ -318,13 +328,81 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
                 <FolderOpen size={12} />
                 {de ? 'Arbeitsverzeichnis für Projekte' : 'Working directory for projects'}
               </label>
-              <input
-                style={inputStyle}
-                placeholder={de ? '/home/deinname/projekte/mein-startup' : '/home/yourname/projects/my-startup'}
-                value={workDir}
-                onChange={e => { setWorkDir(e.target.value); setDirValid(null); }}
-                onBlur={validateDir}
-              />
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input
+                  style={{ ...inputStyle, flex: 1 }}
+                  placeholder={de ? '/home/deinname/projekte/mein-startup' : '/home/yourname/projects/my-startup'}
+                  value={workDir}
+                  onChange={e => { setWorkDir(e.target.value); setDirValid(null); }}
+                  onBlur={validateDir}
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    // Try modern File System Access API first (Chromium/Edge)
+                    if ('showDirectoryPicker' in window) {
+                      try {
+                        const handle = await (window as any).showDirectoryPicker();
+                        const folderName = handle.name;
+                        // Suggest path based on existing workDir or a sensible default
+                        let suggested: string;
+                        if (workDir.trim().startsWith('/')) {
+                          // Use parent of current workDir + new folder name
+                          const parent = workDir.replace(/\/+$/, '').replace(/\/[^/]+$/, '');
+                          suggested = `${parent}/${folderName}`;
+                        } else {
+                          suggested = `/home/user/Projects/${folderName}`;
+                        }
+                        setWorkDir(suggested);
+                        setDirValid(null);
+                        return;
+                      } catch {
+                        // User cancelled or API failed — fall through to file input
+                      }
+                    }
+                    // Fallback: hidden file input with webkitdirectory
+                    fileInputRef.current?.click();
+                  }}
+                  title={de ? 'Ordner auswählen' : 'Select folder'}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '0 0.875rem',
+                    background: 'rgba(197,160,89,0.1)',
+                    border: '1px solid rgba(197,160,89,0.25)',
+                    borderRadius: 0,
+                    color: '#c5a059',
+                    fontSize: '0.8125rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <FolderOpen size={14} /> {de ? 'Ordner…' : 'Folder…'}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  {...{ webkitdirectory: '', directory: '' } as any}
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const files = e.target.files;
+                    if (!files || files.length === 0) return;
+                    // Extract folder name from webkitRelativePath
+                    const folderName = files[0].webkitRelativePath.split('/')[0];
+                    let suggested: string;
+                    if (workDir.trim().startsWith('/')) {
+                      const parent = workDir.replace(/\/+$/, '').replace(/\/[^/]+$/, '');
+                      suggested = `${parent}/${folderName}`;
+                    } else {
+                      suggested = `/home/user/Projects/${folderName}`;
+                    }
+                    setWorkDir(suggested);
+                    setDirValid(null);
+                    // Reset input so same folder can be selected again
+                    e.target.value = '';
+                  }}
+                />
+              </div>
               {dirValid === false && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#ef4444', fontSize: '0.75rem', marginTop: 4 }}>
                   <AlertCircle size={12} /> {de ? 'Absoluter Pfad erforderlich (beginnt mit /)' : 'Absolute path required (starts with /)'}
@@ -443,7 +521,7 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#fff', marginBottom: 2 }}>{p.name}</div>
                       <div style={{ fontSize: '0.7rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        📁 {workDir}/{p.subDir}
+                        📁 {workDir.replace(/\/$/, '')}/{p.subDir}
                       </div>
                     </div>
                     {/* Start selector */}
@@ -473,10 +551,10 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
             {/* Agents summary */}
             <div>
               <div style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#475569', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Bot size={11} /> {de ? `${plan.agenten.length} Agenten werden erstellt` : `${plan.agenten.length} agents will be created`}
+                <Bot size={11} /> {de ? `${plan.agenten?.length ?? 0} Agenten werden erstellt` : `${plan.agenten?.length ?? 0} agents will be created`}
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {plan.agenten.map(a => (
+                {(plan.agenten || []).map(a => (
                   <div key={a.name} style={{
                     padding: '4px 10px', borderRadius: 0, fontSize: '0.75rem',
                     background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
@@ -491,9 +569,9 @@ export function SetupWizard({ onClose, onDone }: { onClose: () => void; onDone: 
             {/* Stats row */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
               {[
-                { icon: <ListTodo size={14} />, value: plan.tasks.length, label: de ? 'Start-Tasks' : 'Start Tasks' },
-                { icon: <Zap size={14} />, value: plan.routinen.length, label: de ? 'Routinen' : 'Routines' },
-                { icon: <Folder size={14} />, value: plan.projekte.length, label: de ? 'Projektordner' : 'Project folders' },
+                { icon: <ListTodo size={14} />, value: plan.tasks?.length ?? 0, label: de ? 'Start-Tasks' : 'Start Tasks' },
+                { icon: <Zap size={14} />, value: plan.routinen?.length ?? 0, label: de ? 'Routinen' : 'Routines' },
+                { icon: <Folder size={14} />, value: plan.projekte?.length ?? 0, label: de ? 'Projektordner' : 'Project folders' },
               ].map(({ icon, value, label }) => (
                 <div key={label} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 0, padding: '0.625rem', textAlign: 'center' }}>
                   <div style={{ color: '#c5a059', marginBottom: 2 }}>{icon}</div>

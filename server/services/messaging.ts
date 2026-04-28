@@ -176,6 +176,27 @@ export function executeConfigAction(action: any, companyId: string): string | nu
   const _lang = getUiLanguage(companyId);
   const isEn = _lang === 'en';
 
+  // ── Normalize German action keys → English (prompt examples use DE, handlers expect EN)
+  const deToEn: Record<string, string> = {
+    rolle: 'role',
+    faehigkeiten: 'skills',
+    verbindungsTyp: 'connectionType',
+    titel: 'title',
+    beschreibung: 'description',
+    prioritaet: 'priority',
+    ebene: 'level',
+    teilnehmerIds: 'participantIds',
+    veranstalterId: 'organizerId',
+    cronAusdruck: 'cronExpression',
+    notiz: 'note',
+    genehmigungId: 'approvalId',
+  };
+  for (const [de, en] of Object.entries(deToEn)) {
+    if (action[de] !== undefined && action[en] === undefined) {
+      action[en] = action[de];
+    }
+  }
+
   // ── configure_agent ───────────────────────────────────────────────────────
   if (action.type === 'configure_agent') {
     const agent = findAgent(companyId, action.agentId);
@@ -282,8 +303,9 @@ export function executeConfigAction(action: any, companyId: string): string | nu
       id: newId, companyId,
       name: action.name, role: action.role,
       title: action.title || action.role,
-      skills: action.skills || action.skills || null,
-      verbindungsTyp, connectionConfig: JSON.stringify(cfg),
+      skills: action.skills || null,
+      connectionType: verbindungsTyp,
+      connectionConfig: JSON.stringify(cfg),
       status: 'idle',
       autoCycleActive: action.autoCycleActive !== false,
       autoCycleIntervalSec: action.autoCycleIntervalSec || 300,
@@ -1887,6 +1909,27 @@ ${isEn ? 'ACTIONS (execute immediately when user requests, at end of response):'
     for (const match of matches) {
       try {
         const action = JSON.parse(match[1]);
+
+        // Normalize German keys → English (prompts use DE keys, handlers expect EN)
+        const deToEn: Record<string, string> = {
+          rolle: 'role',
+          faehigkeiten: 'skills',
+          verbindungsTyp: 'connectionType',
+          titel: 'title',
+          beschreibung: 'description',
+          prioritaet: 'priority',
+          ebene: 'level',
+          teilnehmerIds: 'participantIds',
+          veranstalterId: 'organizerId',
+          cronAusdruck: 'cronExpression',
+          notiz: 'note',
+          genehmigungId: 'approvalId',
+        };
+        for (const [de, en] of Object.entries(deToEn)) {
+          if (action[de] !== undefined && action[en] === undefined) {
+            action[en] = action[de];
+          }
+        }
 
         if (action.type === 'create_task') {
           if (isCopilot || !canCreateTask) {

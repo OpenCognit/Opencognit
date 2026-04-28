@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { admin } from "better-auth/plugins";
 import { db } from "./db/client.js";
 import * as schema from "./db/schema.js";
 
@@ -28,5 +29,11 @@ export const auth = betterAuth({
   trustedOrigins: [
     "http://localhost:3200",
     "http://localhost:3201",
+  ],
+  plugins: [
+    admin({
+      defaultRole: 'user',
+      adminRoles: ['admin'],
+    }),
   ],
 });

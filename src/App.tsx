@@ -88,6 +88,7 @@ function ProtectedRoutes() {
       <CompanyProvider>
       <OnboardingTour />
       <Routes>
+        <Route path="/war-room" element={<Page><WarRoom /></Page>} />
         <Route element={<Layout />}>
           <Route path="/" element={<ErrorBoundary fallback={<PageErrorFallback />}><Dashboard /></ErrorBoundary>} />
           <Route path="/companies" element={<Page><Companies /></Page>} />
@@ -105,7 +106,6 @@ function ProtectedRoutes() {
           <Route path="/intelligence" element={<Page><CompanyKnowledge /></Page>} />
           <Route path="/goals" element={<Page><Goals /></Page>} />
           <Route path="/performance" element={<Page><Performance /></Page>} />
-          <Route path="/war-room" element={<Page><WarRoom /></Page>} />
           <Route path="/focus" element={<Page><Focus /></Page>} />
           <Route path="/weekly-report" element={<Page><WeeklyReport /></Page>} />
           <Route path="/clipmart" element={<Page><Clipmart /></Page>} />

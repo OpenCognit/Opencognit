@@ -8,6 +8,11 @@ export const user = sqliteTable('user', {
   email: text('email').notNull().unique(),
   emailVerified: integer('email_verified', { mode: 'boolean' }).default(false).notNull(),
   image: text('image'),
+  // Admin plugin fields (better-auth/plugins/admin)
+  role: text('role').notNull().default('user'),
+  banned: integer('banned', { mode: 'boolean' }).default(false),
+  banReason: text('ban_reason'),
+  banExpires: integer('ban_expires', { mode: 'timestamp_ms' }),
   createdAt: integer('created_at', { mode: 'timestamp_ms' })
     .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
     .notNull(),
@@ -69,6 +74,28 @@ export const verification = sqliteTable('verification', {
     .$onUpdate(() => new Date())
     .notNull(),
 }, (table) => [index('verification_identifier_idx').on(table.identifier)]);
+
+// ===== Company Memberships (multi-user authorization) =====
+export const companyMemberships = sqliteTable('company_memberships', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  companyId: text('company_id')
+    .notNull()
+    .references(() => companies.id, { onDelete: 'cascade' }),
+  role: text('role', { enum: ['owner', 'admin', 'member'] })
+    .notNull()
+    .default('member'),
+  invitedAt: text('invited_at'),
+  joinedAt: text('joined_at')
+    .default(sql`(datetime('now'))`),
+  inviteToken: text('invite_token').unique(),
+}, (table) => [
+  index('membership_user_idx').on(table.userId),
+  index('membership_company_idx').on(table.companyId),
+  index('membership_token_idx').on(table.inviteToken),
+]);
 
 // ===== Benutzer (legacy — will be migrated to auth_users) =====
 export const users = sqliteTable('benutzer', {

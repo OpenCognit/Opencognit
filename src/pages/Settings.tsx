@@ -611,6 +611,31 @@ export function Settings() {
                     style={{ maxWidth: 300 }}
                   />
                 </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, color: '#d4d4d8', marginBottom: '0.5rem' }}>
+                    {i18n.language === 'de' ? 'Onboarding' : 'Onboarding'}
+                  </label>
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem('oc_onboarding_tour_done');
+                      window.location.href = '/';
+                    }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.5rem',
+                      padding: '0.5rem 1rem', background: 'rgba(197,160,89,0.08)',
+                      border: '1px solid rgba(197,160,89,0.25)', color: '#c5a059',
+                      fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer',
+                    }}
+                  >
+                    <Sparkles size={14} />
+                    {i18n.language === 'de' ? 'Onboarding-Tour wiederholen' : 'Restart onboarding tour'}
+                  </button>
+                  <p style={{ fontSize: '0.75rem', color: '#52525b', marginTop: '0.375rem' }}>
+                    {i18n.language === 'de'
+                      ? 'Zeigt die interaktive Interface-Tour erneut an.'
+                      : 'Shows the interactive interface tour again.'}
+                  </p>
+                </div>
               </div>}
             </div>
 
@@ -1486,6 +1511,9 @@ export function Settings() {
                 ['anthropic_api_key', anthropicKey],
                 ['openai_api_key', openaiKey],
                 ['openrouter_api_key', openrouterKey],
+                ['google_api_key', googleKey],
+                ['moonshot_api_key', moonshotKey],
+                ['poe_api_key', poeKey],
                 ['openrouter_default_model', defaultModel],
                 ['ollama_base_url', ollamaUrl],
                 ['ollama_default_model', ollamaDefaultModel],

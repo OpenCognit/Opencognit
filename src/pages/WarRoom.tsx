@@ -283,14 +283,14 @@ function AgentLogPanel({
     }}>
       {/* Backdrop */}
       <div
-        style={{ flex: 1, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+        style={{ flex: 1, background: 'rgba(0,0,0,0.75)' }}
         onClick={onClose}
       />
 
       {/* Panel */}
       <div style={{
         width: 520, display: 'flex', flexDirection: 'column',
-        background: 'rgba(8,10,20,0.98)',
+        background: '#080604',
         borderLeft: `1px solid ${cfg.color}30`,
         boxShadow: `-20px 0 60px ${cfg.color}10`,
       }}>
@@ -906,7 +906,7 @@ export function WarRoom() {
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 99999,
-      background: 'linear-gradient(135deg, #0e0c09 0%, #100e0b 50%, #0c0b08 100%)',
+      background: '#060403',
       display: 'flex', flexDirection: 'column',
       fontFamily: "'Inter', -apple-system, sans-serif",
     }}>
@@ -926,7 +926,7 @@ export function WarRoom() {
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '12px 24px', borderBottom: '1px solid rgba(197,160,89,0.18)',
-        background: 'rgba(10,8,6,0.6)', backdropFilter: 'blur(20px)',
+        background: 'rgba(6,4,3,0.95)',
         flexShrink: 0, position: 'relative', zIndex: 1,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
@@ -1165,7 +1165,7 @@ export function WarRoom() {
       {/* Bottom bar */}
       <div style={{
         padding: '6px 22px', borderTop: '1px solid rgba(197,160,89,0.1)',
-        background: 'rgba(10,8,6,0.5)', backdropFilter: 'blur(10px)',
+        background: 'rgba(6,4,3,0.95)',
         display: 'flex', alignItems: 'center', flexShrink: 0, position: 'relative', zIndex: 1,
       }}>
         <span style={{ fontSize: 8, color: '#1e293b', letterSpacing: '0.1em', textTransform: 'uppercase' }}>

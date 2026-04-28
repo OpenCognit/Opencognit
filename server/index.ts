@@ -9,7 +9,7 @@ import bcrypt from 'bcryptjs';
 import { toNodeHandler, fromNodeHeaders } from 'better-auth/node';
 import { auth as betterAuth } from './auth.js';
 import { db, initializeDatabase, sqlite } from './db/client.js';
-import { companies, agents, tasks, comments, approvals, activityLog, costEntries, workCycles, workCyclesArchive, goals, settings, chatMessages, users, routines, routineTrigger, routineRuns, workProducts, projects, agentPermissions, traceEvents, skillsLibrary, agentSkills, agentWakeupRequests, palaceWings, palaceDrawers, palaceDiary, palaceKg, palaceSummaries, budgetPolicies, budgetIncidents, executionWorkspaces, issueRelations, agentMeetings, openclawTokens, agentConfigHistory, ceoDecisionLog, agentTrustScores, agentVotes, agentCapabilities, contractNetBids } from './db/schema.js';
+import { companies, agents, tasks, comments, approvals, activityLog, costEntries, workCycles, workCyclesArchive, goals, settings, chatMessages, users, user, routines, routineTrigger, routineRuns, workProducts, projects, agentPermissions, traceEvents, skillsLibrary, agentSkills, agentWakeupRequests, palaceWings, palaceDrawers, palaceDiary, palaceKg, palaceSummaries, budgetPolicies, budgetIncidents, executionWorkspaces, issueRelations, agentMeetings, openclawTokens, agentConfigHistory, ceoDecisionLog, agentTrustScores, agentVotes, agentCapabilities, contractNetBids, companyMemberships } from './db/schema.js';
 import { getWorkspaceInfo, readWorkspaceFile } from './services/workspace.js';
 import { encryptSetting, decryptSetting } from './utils/crypto.js';
 import { eq, desc, asc, and, sql, count, sum, inArray, isNotNull, isNull, or } from 'drizzle-orm';
@@ -65,12 +65,12 @@ const zCompany = z.object({
 const zAgent = z.object({
   name: z.string().min(1).max(100),
   rolle: z.string().min(1).max(100),
-  titel: z.string().max(100).optional(),
-  faehigkeiten: z.string().max(2000).optional(),
-  verbindungsTyp: z.string().max(50).optional(),
-  budgetMonatCent: z.number().int().min(0).max(10_000_000).optional(),
-  systemPrompt: z.string().max(10_000).optional(),
-}).passthrough(); // allow extra fields (verbindungsConfig etc.)
+  titel: z.string().max(100).nullish(),
+  faehigkeiten: z.string().max(2000).nullish(),
+  verbindungsTyp: z.string().max(50).nullish(),
+  budgetMonatCent: z.number().int().min(0).max(10_000_000).nullish(),
+  systemPrompt: z.string().max(10_000).nullish(),
+}).passthrough(); // allow extra fields (verbindungsConfig, reportsTo, advisorId etc.)
 
 const zTask = z.object({
   title: z.string().min(1).max(300).optional(),
@@ -502,6 +502,136 @@ export async function authMiddleware(req: express.Request, res: express.Response
   }
 }
 
+// ===== Company Access Middleware =====
+/**
+ * Requires that the authenticated user has a membership in the requested company.
+ * Must be used AFTER authMiddleware (which sets req.users).
+ *
+ * @param allowedRoles - optional array of roles (e.g. ['owner','admin']). If omitted, any membership works.
+ */
+export function requireCompanyAccess(allowedRoles?: string[]) {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const userId = (req as any).users?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Not authenticated.' });
+    }
+
+    // Extract companyId from various param names used across the API
+    const companyId =
+      req.params.unternehmenId ||
+      req.params.companyId ||
+      req.params.id ||
+      (req.body as any)?.companyId;
+
+    if (!companyId) {
+      // Some endpoints don't have a company context (e.g. /api/plugin-registry)
+      return next();
+    }
+
+    const membership = db.select()
+      .from(companyMemberships)
+      .where(
+        and(
+          eq(companyMemberships.userId, userId),
+          eq(companyMemberships.companyId, companyId as string)
+        )
+      )
+      .get();
+
+    if (!membership) {
+      return res.status(403).json({ error: 'You do not have access to this company.' });
+    }
+
+    if (allowedRoles && !allowedRoles.includes(membership.role)) {
+      return res.status(403).json({ error: 'Insufficient permissions.' });
+    }
+
+    // Attach membership to request for downstream use
+    (req as any).companyMembership = membership;
+    next();
+  };
+}
+
+// ===== Resource Access Middleware =====
+/**
+ * Resolves a resource by id from the URL param, looks up its companyId,
+ * then enforces membership like requireCompanyAccess.
+ *
+ * resourceType maps to a table whose row has either a direct `companyId` field
+ * or (for palace drawers/diary) a wingId that joins to palaceWings.companyId.
+ */
+type ResourceType =
+  | 'agent' | 'task' | 'project' | 'approval' | 'routine' | 'trigger'
+  | 'meeting' | 'skillsLibrary' | 'workspace' | 'workProduct' | 'comment'
+  | 'palaceWing' | 'palaceDrawer' | 'palaceDiary' | 'palaceKgFact'
+  | 'budgetPolicy' | 'budgetIncident' | 'goal' | 'costEntry';
+
+function resolveCompanyIdForResource(type: ResourceType, id: string): string | null {
+  switch (type) {
+    case 'agent':         return db.select({ c: agents.companyId }).from(agents).where(eq(agents.id, id)).get()?.c ?? null;
+    case 'task':          return db.select({ c: tasks.companyId }).from(tasks).where(eq(tasks.id, id)).get()?.c ?? null;
+    case 'project':       return db.select({ c: projects.companyId }).from(projects).where(eq(projects.id, id)).get()?.c ?? null;
+    case 'approval':      return db.select({ c: approvals.companyId }).from(approvals).where(eq(approvals.id, id)).get()?.c ?? null;
+    case 'routine':       return db.select({ c: routines.companyId }).from(routines).where(eq(routines.id, id)).get()?.c ?? null;
+    case 'trigger':       return db.select({ c: routineTrigger.companyId }).from(routineTrigger).where(eq(routineTrigger.id, id)).get()?.c ?? null;
+    case 'meeting':       return db.select({ c: agentMeetings.companyId }).from(agentMeetings).where(eq(agentMeetings.id, id)).get()?.c ?? null;
+    case 'skillsLibrary': return db.select({ c: skillsLibrary.companyId }).from(skillsLibrary).where(eq(skillsLibrary.id, id)).get()?.c ?? null;
+    case 'workspace':     return db.select({ c: executionWorkspaces.companyId }).from(executionWorkspaces).where(eq(executionWorkspaces.id, id)).get()?.c ?? null;
+    case 'workProduct':   return db.select({ c: workProducts.companyId }).from(workProducts).where(eq(workProducts.id, id)).get()?.c ?? null;
+    case 'comment':       return db.select({ c: comments.companyId }).from(comments).where(eq(comments.id, id)).get()?.c ?? null;
+    case 'goal':          return db.select({ c: goals.companyId }).from(goals).where(eq(goals.id, id)).get()?.c ?? null;
+    case 'costEntry':     return db.select({ c: costEntries.companyId }).from(costEntries).where(eq(costEntries.id, id)).get()?.c ?? null;
+    case 'budgetPolicy':  return db.select({ c: budgetPolicies.companyId }).from(budgetPolicies).where(eq(budgetPolicies.id, id)).get()?.c ?? null;
+    case 'budgetIncident':return db.select({ c: budgetIncidents.companyId }).from(budgetIncidents).where(eq(budgetIncidents.id, id)).get()?.c ?? null;
+    case 'palaceWing':    return db.select({ c: palaceWings.companyId }).from(palaceWings).where(eq(palaceWings.id, id)).get()?.c ?? null;
+    case 'palaceKgFact':  return db.select({ c: palaceKg.companyId }).from(palaceKg).where(eq(palaceKg.id, id)).get()?.c ?? null;
+    case 'palaceDrawer': {
+      const row = db.select({ wid: palaceDrawers.wingId }).from(palaceDrawers).where(eq(palaceDrawers.id, id)).get();
+      if (!row) return null;
+      return db.select({ c: palaceWings.companyId }).from(palaceWings).where(eq(palaceWings.id, row.wid)).get()?.c ?? null;
+    }
+    case 'palaceDiary': {
+      const row = db.select({ wid: palaceDiary.wingId }).from(palaceDiary).where(eq(palaceDiary.id, id)).get();
+      if (!row) return null;
+      return db.select({ c: palaceWings.companyId }).from(palaceWings).where(eq(palaceWings.id, row.wid)).get()?.c ?? null;
+    }
+  }
+}
+
+export function requireResourceAccess(
+  resourceType: ResourceType,
+  paramName: string = 'id',
+  allowedRoles?: string[],
+) {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const userId = (req as any).users?.userId;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated.' });
+
+    const resourceId = req.params[paramName] as string | undefined;
+    if (!resourceId) return res.status(400).json({ error: `Missing :${paramName} param` });
+
+    const companyId = resolveCompanyIdForResource(resourceType, resourceId);
+    if (!companyId) return res.status(404).json({ error: `${resourceType} not found` });
+
+    const membership = db.select()
+      .from(companyMemberships)
+      .where(and(
+        eq(companyMemberships.userId, userId),
+        eq(companyMemberships.companyId, companyId),
+      ))
+      .get();
+
+    if (!membership) return res.status(403).json({ error: 'You do not have access to this company.' });
+    if (allowedRoles && !allowedRoles.includes(membership.role)) {
+      return res.status(403).json({ error: 'Insufficient permissions.' });
+    }
+
+    (req as any).companyMembership = membership;
+    (req as any).resolvedCompanyId = companyId;
+    next();
+  };
+}
+
 // ===== Helper: Aktivität loggen =====
 function logAktivitaet(unternehmenId: string, akteurTyp: 'agent' | 'board' | 'system', akteurId: string, akteurName: string, aktion: string, entitaetTyp: string, entitaetId: string, details?: any) {
   const activity = {
@@ -535,8 +665,23 @@ app.use('/api', (req: express.Request, res: express.Response, next: express.Next
 // =============================================
 // UNTERNEHMEN
 // =============================================
-app.get('/api/companies', (_req, res) => {
-  const result = db.select().from(companies).orderBy(desc(companies.createdAt)).all();
+app.get('/api/companies', (req, res) => {
+  const userId = (req as any).users?.userId;
+  if (!userId) {
+    const result = db.select().from(companies).orderBy(desc(companies.createdAt)).all();
+    return res.json(result);
+  }
+  // Multi-user: return only companies the user is a member of
+  const memberships = db.select({ companyId: companyMemberships.companyId })
+    .from(companyMemberships)
+    .where(eq(companyMemberships.userId, userId))
+    .all();
+  const companyIds = memberships.map(m => m.companyId);
+  if (companyIds.length === 0) return res.json([]);
+  const result = db.select().from(companies)
+    .where(inArray(companies.id, companyIds))
+    .orderBy(desc(companies.createdAt))
+    .all();
   res.json(result);
 });
 
@@ -544,6 +689,7 @@ app.post('/api/companies', (req, res) => {
   const body = validate(zCompany, req, res);
   if (!body) return;
   const { name, beschreibung, ziel } = body;
+  const userId = (req as any).users?.userId;
 
   const id = uuid();
   db.insert(companies).values({
@@ -553,18 +699,29 @@ app.post('/api/companies', (req, res) => {
     updatedAt: now(),
   }).run();
 
+  // Auto-assign owner membership to the creating user
+  if (userId) {
+    db.insert(companyMemberships).values({
+      id: uuid(),
+      userId,
+      companyId: id,
+      role: 'owner',
+      joinedAt: now(),
+    }).run();
+  }
+
   const data = db.select().from(companies).where(eq(companies.id, id)).get();
   logAktivitaet(id, 'board', 'board', 'Board', `hat Unternehmen „${name}" erstellt`, 'companies', id);
   res.status(201).json(data);
 });
 
-app.get('/api/companies/:id', (req, res) => {
+app.get('/api/companies/:id', requireCompanyAccess(), (req, res) => {
   const data = db.select().from(companies).where(eq(companies.id, req.params.id as string)).get();
   if (!data) return res.status(404).json({ error: 'Company not found' });
   res.json(data);
 });
 
-app.patch('/api/companies/:id', (req, res) => {
+app.patch('/api/companies/:id', requireCompanyAccess(), (req, res) => {
   const { name, beschreibung, ziel, status, workDir } = req.body;
   const updates: any = { updatedAt: now() };
   if (name !== undefined) updates.name = name;
@@ -579,7 +736,7 @@ app.patch('/api/companies/:id', (req, res) => {
 });
 
 // Workspace directory check
-app.get('/api/companies/:id/workspace/check', (req, res) => {
+app.get('/api/companies/:id/workspace/check', requireCompanyAccess(), (req, res) => {
   const company = db.select().from(companies).where(eq(companies.id, req.params.id as string)).get() as any;
   const dir = (req.query.path as string) || company?.workDir;
   if (!dir) return res.json({ exists: false, writable: false, error: 'No directory specified' });
@@ -651,7 +808,7 @@ app.post('/api/fs/mkdir', (req: any, res) => {
 });
 
 // Open company work directory in system file manager
-app.post('/api/companies/:id/open-folder', (req, res) => {
+app.post('/api/companies/:id/open-folder', requireCompanyAccess(), (req, res) => {
   // Accept path from body (current input value) or fall back to saved DB value
   const company = db.select().from(companies).where(eq(companies.id, req.params.id as string)).get() as any;
   const dir = (req.body?.path as string) || company?.workDir;
@@ -666,7 +823,7 @@ app.post('/api/companies/:id/open-folder', (req, res) => {
 // =============================================
 // MITARBEITER
 // =============================================
-app.get('/api/companies/:unternehmenId/agents', (req, res) => {
+app.get('/api/companies/:unternehmenId/agents', requireCompanyAccess(), (req, res) => {
   const limit = Math.min(parseInt(req.query.limit as string) || 200, 500);
   const offset = parseInt(req.query.offset as string) || 0;
   const rows = db.select().from(agents)
@@ -715,7 +872,7 @@ function checkFreeModel(verbindungsConfig: any): string | null {
   return null;
 }
 
-app.post('/api/companies/:unternehmenId/agents', (req, res) => {
+app.post('/api/companies/:unternehmenId/agents', requireCompanyAccess(), (req, res) => {
   const body = validate(zAgent, req, res);
   if (!body) return;
   const { name, rolle, titel, faehigkeiten, verbindungsTyp, verbindungsConfig, reportsTo, avatar, avatarFarbe, budgetMonatCent, zyklusIntervallSek, zyklusAktiv, advisorId, advisorStrategy, advisorConfig, systemPrompt, isOrchestrator } = body as any;
@@ -759,7 +916,7 @@ app.post('/api/companies/:unternehmenId/agents', (req, res) => {
   res.status(201).json(agent);
 });
 
-app.get('/api/agents/:id', (req, res) => {
+app.get('/api/agents/:id', requireResourceAccess("agent"), (req, res) => {
   const agent = db.select().from(agents).where(eq(agents.id, req.params.id as string)).get();
   if (!agent) return res.status(404).json({ error: 'Agent not found' });
   res.json(agent);
@@ -767,13 +924,13 @@ app.get('/api/agents/:id', (req, res) => {
 
 // GET /api/agents/:id/token — returns the HMAC-derived API key for this agent
 // Protected by user session so only the logged-in user can retrieve it
-app.get('/api/agents/:id/token', authMiddleware, (req, res) => {
+app.get('/api/agents/:id/token', authMiddleware, requireResourceAccess("agent"), (req, res) => {
   const agent = db.select().from(agents).where(eq(agents.id, req.params.id as string)).get();
   if (!agent) return res.status(404).json({ error: 'Agent not found' });
   res.json({ token: deriveAgentToken(agent.id, agent.companyId) });
 });
 
-app.patch('/api/agents/:id', (req, res) => {
+app.patch('/api/agents/:id', requireResourceAccess("agent"), (req, res) => {
   if (req.body.connectionConfig !== undefined) {
     const freeModel = checkFreeModel(req.body.connectionConfig);
     if (freeModel) return res.status(400).json({ error: `Free model "${freeModel}" not allowed. Use a paid model.` });
@@ -803,7 +960,7 @@ app.patch('/api/agents/:id', (req, res) => {
 });
 
 // Alias: ExpertChatDrawer uses /api/agents/:id for PATCH (e.g. soul editor)
-app.patch('/api/agents/:id', (req, res) => {
+app.patch('/api/agents/:id', requireResourceAccess("agent"), (req, res) => {
   if (req.body.connectionConfig !== undefined) {
     const freeModel = checkFreeModel(req.body.connectionConfig);
     if (freeModel) return res.status(400).json({ error: `Free model "${freeModel}" not allowed.` });
@@ -858,7 +1015,7 @@ app.patch('/api/agents/:id', (req, res) => {
 });
 
 // GET /api/agents/:id/config-history — last N snapshots (default 20)
-app.get('/api/agents/:id/config-history', authMiddleware, (req, res) => {
+app.get('/api/agents/:id/config-history', authMiddleware, requireResourceAccess("agent"), (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 20, 100);
   const rows = db.select().from(agentConfigHistory)
     .where(eq(agentConfigHistory.agentId, req.params.id as string))
@@ -869,7 +1026,7 @@ app.get('/api/agents/:id/config-history', authMiddleware, (req, res) => {
 });
 
 // POST /api/agents/:id/config-history/:historyId/restore — restore a snapshot
-app.post('/api/agents/:id/config-history/:historyId/restore', authMiddleware, (req, res) => {
+app.post('/api/agents/:id/config-history/:historyId/restore', authMiddleware, requireResourceAccess("agent"), (req, res) => {
   const snap = db.select().from(agentConfigHistory)
     .where(and(eq(agentConfigHistory.id, req.params.historyId as string), eq(agentConfigHistory.agentId, req.params.id as string)))
     .get() as any;
@@ -909,7 +1066,7 @@ app.post('/api/agents/:id/config-history/:historyId/restore', authMiddleware, (r
   res.json({ ok: true, agent });
 });
 
-app.post('/api/agents/:id/pause', (req, res) => {
+app.post('/api/agents/:id/pause', requireResourceAccess("agent"), (req, res) => {
   const agent = db.select().from(agents).where(eq(agents.id, req.params.id as string)).get();
   if (!agent) return res.status(404).json({ error: 'Not found' });
 
@@ -918,7 +1075,7 @@ app.post('/api/agents/:id/pause', (req, res) => {
   res.json({ success: true });
 });
 
-app.post('/api/agents/:id/resume', (req, res) => {
+app.post('/api/agents/:id/resume', requireResourceAccess("agent"), (req, res) => {
   const agent = db.select().from(agents).where(eq(agents.id, req.params.id as string)).get();
   if (!agent) return res.status(404).json({ error: 'Not found' });
 
@@ -927,7 +1084,7 @@ app.post('/api/agents/:id/resume', (req, res) => {
   res.json({ success: true });
 });
 
-app.delete('/api/agents/:id', (req, res) => {
+app.delete('/api/agents/:id', requireResourceAccess("agent"), (req, res) => {
   const agentId = req.params.id;
   const agent = db.select().from(agents).where(eq(agents.id, agentId)).get();
   if (!agent) return res.status(404).json({ error: 'Not found' });
@@ -1046,7 +1203,7 @@ app.delete('/api/agents/:id', (req, res) => {
   }
 });
 
-app.get('/api/agents/:id/activity', (req, res) => {
+app.get('/api/agents/:id/activity', requireResourceAccess("agent"), (req, res) => {
   const limit = parseInt(req.query.limit as string) || 50;
   const rows = db.select().from(activityLog)
     .where(eq(activityLog.actorId, req.params.id as string))
@@ -1070,7 +1227,7 @@ app.get('/api/agents/:id/activity', (req, res) => {
 // =============================================
 // AUFGABEN
 // =============================================
-app.get('/api/companies/:unternehmenId/tasks', (req, res) => {
+app.get('/api/companies/:unternehmenId/tasks', requireCompanyAccess(), (req, res) => {
   const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
   const offset = parseInt(req.query.offset as string) || 0;
   const status = req.query.status as string | undefined;
@@ -1090,7 +1247,7 @@ app.get('/api/companies/:unternehmenId/tasks', (req, res) => {
   res.json(result);
 });
 
-app.post('/api/companies/:unternehmenId/tasks', (req, res) => {
+app.post('/api/companies/:unternehmenId/tasks', requireCompanyAccess(), (req, res) => {
   const body = validate(zTask.refine(d => d.titel || d.title, { message: 'Title required', path: ['titel'] }), req, res);
   if (!body) return;
   const b = body as any;
@@ -1138,13 +1295,13 @@ app.post('/api/companies/:unternehmenId/tasks', (req, res) => {
   res.status(201).json(aufgabe);
 });
 
-app.get('/api/tasks/:id', (req, res) => {
+app.get('/api/tasks/:id', requireResourceAccess("task"), (req, res) => {
   const aufgabe = db.select().from(tasks).where(eq(tasks.id, req.params.id as string)).get();
   if (!aufgabe) return res.status(404).json({ error: 'Task not found' });
   res.json(aufgabe);
 });
 
-app.patch('/api/tasks/:id', (req, res) => {
+app.patch('/api/tasks/:id', requireResourceAccess("task"), (req, res) => {
   const existing = db.select().from(tasks).where(eq(tasks.id, req.params.id as string)).get();
   if (!existing) return res.status(404).json({ error: 'Task not found' });
 
@@ -1240,7 +1397,7 @@ app.patch('/api/tasks/:id', (req, res) => {
 });
 
 // Delete a task (removes comments + issue relations too)
-app.delete('/api/tasks/:id', authMiddleware, (req, res) => {
+app.delete('/api/tasks/:id', authMiddleware, requireResourceAccess("task"), requireResourceAccess("task"), (req, res) => {
   const existing = db.select().from(tasks).where(eq(tasks.id, req.params.id as string)).get();
   if (!existing) return res.status(404).json({ error: 'Task not found' });
 
@@ -1256,7 +1413,7 @@ app.delete('/api/tasks/:id', authMiddleware, (req, res) => {
 });
 
 // Atomic Task Checkout (with execution locking)
-app.post('/api/tasks/:id/checkout', (req, res) => {
+app.post('/api/tasks/:id/checkout', requireResourceAccess("task"), (req, res) => {
   const { expertId, runId } = req.body;
   if (!expertId) return res.status(400).json({ error: 'expertId ist erforderlich' });
 
@@ -1310,7 +1467,7 @@ app.post('/api/tasks/:id/checkout', (req, res) => {
 });
 
 // Release task lock (when task is completed or agent releases it)
-app.post('/api/tasks/:id/release', (req, res) => {
+app.post('/api/tasks/:id/release', requireResourceAccess("task"), (req, res) => {
   const { expertId, runId, status, abgebrochenAm } = req.body;
 
   if (!expertId || !runId) {
@@ -1342,12 +1499,12 @@ app.post('/api/tasks/:id/release', (req, res) => {
 });
 
 // ===== Kommentare =====
-app.get('/api/tasks/:id/comments', (req, res) => {
+app.get('/api/tasks/:id/comments', requireResourceAccess("task"), (req, res) => {
   const result = db.select().from(comments).where(eq(comments.taskId, req.params.id as string)).orderBy(comments.createdAt).all();
   res.json(result);
 });
 
-app.post('/api/tasks/:id/comments', (req, res) => {
+app.post('/api/tasks/:id/comments', requireResourceAccess("task"), (req, res) => {
   const inhalt = req.body.inhalt || req.body.content;
   const { authorAgentId, authorType } = req.body;
   if (!inhalt) return res.status(400).json({ error: 'Content required' });
@@ -1371,7 +1528,7 @@ app.post('/api/tasks/:id/comments', (req, res) => {
 });
 
 // ===== Work Products =====
-app.get('/api/tasks/:id/work-products', (req, res) => {
+app.get('/api/tasks/:id/work-products', requireResourceAccess("task"), (req, res) => {
   const products = db.select().from(workProducts)
     .where(eq(workProducts.taskId, req.params.id as string))
     .orderBy(workProducts.createdAt)
@@ -1382,7 +1539,7 @@ app.get('/api/tasks/:id/work-products', (req, res) => {
 // ===== Timeline (Time-Travel-View) =====
 // Unified chronological timeline for a task: creation, status changes, comments,
 // workCycles (work cycles), trace events, approvals, cost bookings, activity log.
-app.get('/api/tasks/:id/timeline', (req, res) => {
+app.get('/api/tasks/:id/timeline', requireResourceAccess("task"), (req, res) => {
   const taskId = req.params.id;
   const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get();
   if (!task) return res.status(404).json({ error: 'Task not found' });
@@ -1559,7 +1716,7 @@ app.get('/api/tasks/:id/timeline', (req, res) => {
 function safeParse(s: string) { try { return JSON.parse(s); } catch { return s; } }
 
 // Company-level work products gallery
-app.get('/api/companies/:id/work-products', authMiddleware, (req, res) => {
+app.get('/api/companies/:id/work-products', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
   const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
   const offset = parseInt(req.query.offset as string) || 0;
   const typ = req.query.type as string | undefined;
@@ -1576,13 +1733,13 @@ app.get('/api/companies/:id/work-products', authMiddleware, (req, res) => {
 });
 
 // Workspace info (file listing)
-app.get('/api/tasks/:id/workspace', (req, res) => {
+app.get('/api/tasks/:id/workspace', requireResourceAccess("task"), (req, res) => {
   const info = getWorkspaceInfo(req.params.id as string);
   res.json(info);
 });
 
 // Read single workspace file (for preview in UI)
-app.get('/api/tasks/:id/workspace/file', (req, res) => {
+app.get('/api/tasks/:id/workspace/file', requireResourceAccess("task"), (req, res) => {
   const filename = req.query.path as string;
   if (!filename) return res.status(400).json({ error: 'path query parameter required' });
 
@@ -1635,7 +1792,7 @@ app.get('/api/files/read', (req, res) => {
 // =============================================
 // GENEHMIGUNGEN
 // =============================================
-app.get('/api/companies/:unternehmenId/approvals', (req, res) => {
+app.get('/api/companies/:unternehmenId/approvals', requireCompanyAccess(), (req, res) => {
   const result = db.select().from(approvals).where(eq(approvals.companyId, req.params.unternehmenId)).orderBy(desc(approvals.createdAt)).all();
   // Parse payload JSON
   res.json(result.map((g: any) => ({
@@ -1644,7 +1801,7 @@ app.get('/api/companies/:unternehmenId/approvals', (req, res) => {
   })));
 });
 
-app.post('/api/approvals/:id/approve', async (req, res) => {
+app.post('/api/approvals/:id/approve', requireResourceAccess("approval"), async (req, res) => {
   const { notiz } = req.body;
   const genehm = db.select().from(approvals).where(eq(approvals.id, req.params.id as string)).get();
   if (!genehm) return res.status(404).json({ error: 'Approval not found' });
@@ -1679,7 +1836,7 @@ app.post('/api/approvals/:id/approve', async (req, res) => {
   res.json(updated);
 });
 
-app.post('/api/approvals/:id/reject', (req, res) => {
+app.post('/api/approvals/:id/reject', requireResourceAccess("approval"), (req, res) => {
   const { notiz } = req.body;
   const genehm = db.select().from(approvals).where(eq(approvals.id, req.params.id as string)).get();
   if (!genehm) return res.status(404).json({ error: 'Approval not found' });
@@ -1702,7 +1859,7 @@ app.post('/api/approvals/:id/reject', (req, res) => {
 // =============================================
 
 // Budget forecast — projected spend trajectory per active policy
-app.get('/api/companies/:unternehmenId/budget/forecast', async (req, res) => {
+app.get('/api/companies/:unternehmenId/budget/forecast', requireCompanyAccess(), async (req, res) => {
   try {
     const { getForecasts } = await import('./services/budget-forecast.js');
     res.json({ forecasts: getForecasts(req.params.unternehmenId) });
@@ -1711,7 +1868,7 @@ app.get('/api/companies/:unternehmenId/budget/forecast', async (req, res) => {
   }
 });
 
-app.get('/api/companies/:unternehmenId/costs/summary', (req, res) => {
+app.get('/api/companies/:unternehmenId/costs/summary', requireCompanyAccess(), (req, res) => {
   const agenten = db.select().from(agents).where(eq(agents.companyId, req.params.unternehmenId)).all();
 
   const gesamtVerbraucht = agenten.reduce((s: number, a: any) => s + a.monthlySpendCent, 0);
@@ -1738,7 +1895,7 @@ app.get('/api/companies/:unternehmenId/costs/summary', (req, res) => {
 });
 
 // Kosten nach Provider aggregiert
-app.get('/api/companies/:unternehmenId/costs/by-provider', (req, res) => {
+app.get('/api/companies/:unternehmenId/costs/by-provider', requireCompanyAccess(), (req, res) => {
   const buchungen = db.select().from(costEntries)
     .where(eq(costEntries.companyId, req.params.unternehmenId as string)).all();
 
@@ -1760,7 +1917,7 @@ app.get('/api/companies/:unternehmenId/costs/by-provider', (req, res) => {
 });
 
 // Kosten Timeline (letzte 14 Tage, pro Tag aggregiert)
-app.get('/api/companies/:unternehmenId/costs/timeline', (req, res) => {
+app.get('/api/companies/:unternehmenId/costs/timeline', requireCompanyAccess(), (req, res) => {
   const tage = parseInt(req.query.tage as string) || 14;
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - tage);
@@ -1790,7 +1947,7 @@ app.get('/api/companies/:unternehmenId/costs/timeline', (req, res) => {
   res.json(result);
 });
 
-app.post('/api/companies/:unternehmenId/costEntries', (req, res) => {
+app.post('/api/companies/:unternehmenId/costEntries', requireCompanyAccess(), (req, res) => {
   const { expertId, aufgabeId, anbieter, modell, inputTokens, outputTokens, kostenCent } = req.body;
   if (!expertId || !anbieter || !modell || kostenCent === undefined) {
     return res.status(400).json({ error: 'Required: agentId, provider, model, costCent' });
@@ -1833,7 +1990,7 @@ app.post('/api/companies/:unternehmenId/costEntries', (req, res) => {
 // =============================================
 // PROJEKTE
 // =============================================
-app.get('/api/companies/:unternehmenId/projects', (req, res) => {
+app.get('/api/companies/:unternehmenId/projects', requireCompanyAccess(), (req, res) => {
   const result = db.select().from(projects)
     .where(eq(projects.companyId, req.params.unternehmenId))
     .orderBy(desc(projects.createdAt))
@@ -1841,7 +1998,7 @@ app.get('/api/companies/:unternehmenId/projects', (req, res) => {
   res.json(result);
 });
 
-app.post('/api/companies/:unternehmenId/projects', (req, res) => {
+app.post('/api/companies/:unternehmenId/projects', requireCompanyAccess(), (req, res) => {
   const { name, beschreibung, prioritaet, zielId, eigentuemerId, farbe, deadline, workDir } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });
 
@@ -1866,7 +2023,7 @@ app.post('/api/companies/:unternehmenId/projects', (req, res) => {
   res.status(201).json(projekt);
 });
 
-app.get('/api/projects/:id', (req, res) => {
+app.get('/api/projects/:id', requireResourceAccess("project"), (req, res) => {
   const projekt = db.select().from(projects).where(eq(projects.id, req.params.id as string)).get();
   if (!projekt) return res.status(404).json({ error: 'Project not found' });
 
@@ -1879,7 +2036,7 @@ app.get('/api/projects/:id', (req, res) => {
   res.json({ ...projekt, tasks: projectTasks });
 });
 
-app.patch('/api/projects/:id', (req, res) => {
+app.patch('/api/projects/:id', requireResourceAccess("project"), (req, res) => {
   const existing = db.select().from(projects).where(eq(projects.id, req.params.id as string)).get();
   if (!existing) return res.status(404).json({ error: 'Project not found' });
 
@@ -1899,7 +2056,7 @@ app.patch('/api/projects/:id', (req, res) => {
   res.json(db.select().from(projects).where(eq(projects.id, req.params.id as string)).get());
 });
 
-app.delete('/api/projects/:id', (req, res) => {
+app.delete('/api/projects/:id', requireResourceAccess("project"), (req, res) => {
   const existing = db.select().from(projects).where(eq(projects.id, req.params.id as string)).get();
   if (!existing) return res.status(404).json({ error: 'Project not found' });
 
@@ -1913,7 +2070,7 @@ app.delete('/api/projects/:id', (req, res) => {
 });
 
 // Fortschritt automatisch berechnen (% done Tasks)
-app.post('/api/projects/:id/fortschritt-aktualisieren', (req, res) => {
+app.post('/api/projects/:id/fortschritt-aktualisieren', requireResourceAccess("project"), (req, res) => {
   const projekt = db.select().from(projects).where(eq(projects.id, req.params.id as string)).get();
   if (!projekt) return res.status(404).json({ error: 'Project not found' });
 
@@ -1931,7 +2088,7 @@ app.post('/api/projects/:id/fortschritt-aktualisieren', (req, res) => {
 // =============================================
 // AGENT PERMISSIONS
 // =============================================
-app.get('/api/agents/:id/permissions', (req, res) => {
+app.get('/api/agents/:id/permissions', requireResourceAccess("agent"), (req, res) => {
   const perms = db.select().from(agentPermissions)
     .where(eq(agentPermissions.agentId, req.params.id as string)).get();
 
@@ -1952,7 +2109,7 @@ app.get('/api/agents/:id/permissions', (req, res) => {
   res.json(perms);
 });
 
-app.put('/api/agents/:id/permissions', (req, res) => {
+app.put('/api/agents/:id/permissions', requireResourceAccess("agent"), (req, res) => {
   const expertId = req.params.id as string;
   const expert = db.select().from(agents).where(eq(agents.id, expertId as string)).get();
   if (!expert) return res.status(404).json({ error: 'Agent not found' });
@@ -1985,7 +2142,7 @@ app.put('/api/agents/:id/permissions', (req, res) => {
 // =============================================
 // AKTIVITÄT
 // =============================================
-app.get('/api/companies/:unternehmenId/activity', (req, res) => {
+app.get('/api/companies/:unternehmenId/activity', requireCompanyAccess(), (req, res) => {
   const limit = parseInt(req.query.limit as string) || 50;
   const rows = db.select().from(activityLog)
     .where(eq(activityLog.companyId, req.params.unternehmenId))
@@ -2085,7 +2242,7 @@ function getAgentPermissions(expertId: string) {
 
 // ===== On-Demand Wakeup Endpoint =====
 // Manuelles Aufwecken eines Agenten über das Dashboard
-app.post('/api/agents/:id/wakeup', async (req, res) => {
+app.post('/api/agents/:id/wakeup', requireResourceAccess("agent"), async (req, res) => {
   const expertId = req.params.id as string;
   const expert = db.select().from(agents).where(eq(agents.id, expertId as string)).get();
   if (!expert) return res.status(404).json({ error: 'Agent not found' });
@@ -2104,7 +2261,7 @@ app.post('/api/agents/:id/wakeup', async (req, res) => {
 });
 
 // ===== Agent Performance (Self-Evolving Agents) =====
-app.get('/api/agents/:id/performance', async (req, res) => {
+app.get('/api/agents/:id/performance', requireResourceAccess("agent"), async (req, res) => {
   try {
     const days = Math.max(1, Math.min(180, parseInt(req.query.days as string) || 30));
     const { getAgentPerformance } = await import('./services/agent-performance.js');
@@ -2116,7 +2273,7 @@ app.get('/api/agents/:id/performance', async (req, res) => {
   }
 });
 
-app.get('/api/companies/:id/performance/leaderboard', async (req, res) => {
+app.get('/api/companies/:id/performance/leaderboard', requireCompanyAccess(), async (req, res) => {
   try {
     const days = Math.max(1, Math.min(180, parseInt(req.query.days as string) || 30));
     const { getCompanyLeaderboard } = await import('./services/agent-performance.js');
@@ -2127,7 +2284,7 @@ app.get('/api/companies/:id/performance/leaderboard', async (req, res) => {
 });
 
 // ===== Inbox Endpoint - Agent fetches assigned tasks =====
-app.get('/api/agents/:id/inbox', (req, res) => {
+app.get('/api/agents/:id/inbox', requireResourceAccess("agent"), (req, res) => {
   const expertId = req.params.id as string;
   const unternehmenId = req.query.unternehmenId as string;
 
@@ -2181,7 +2338,7 @@ app.get('/api/agents/:id/inbox', (req, res) => {
 });
 
 // ===== Team Status Endpoint - Orchestrator fetches team overview =====
-app.get('/api/agents/:id/team-status', authMiddleware, (req, res) => {
+app.get('/api/agents/:id/team-status', authMiddleware, requireResourceAccess("agent"), (req, res) => {
   const expertId = req.params.id as string;
   const unternehmenId = (req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
 
@@ -2354,7 +2511,7 @@ app.post('/api/agent/tasks/:id/kommentar', agentAuth, (req, res) => {
 // =============================================
 // DASHBOARD
 // =============================================
-app.get('/api/companies/:unternehmenId/dashboard', (req, res) => {
+app.get('/api/companies/:unternehmenId/dashboard', requireCompanyAccess(), (req, res) => {
   const unternehmenId = req.params.unternehmenId;
 
   try {
@@ -2516,7 +2673,7 @@ app.get('/api/companies/:unternehmenId/dashboard', (req, res) => {
 // =============================================
 // ZIELE (Goals)
 // =============================================
-app.get('/api/companies/:unternehmenId/goals', authMiddleware, (req, res) => {
+app.get('/api/companies/:unternehmenId/goals', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
   const result = db.select().from(goals)
     .where(eq(goals.companyId, req.params.unternehmenId as string))
     .orderBy(asc(goals.createdAt))
@@ -2524,7 +2681,7 @@ app.get('/api/companies/:unternehmenId/goals', authMiddleware, (req, res) => {
   res.json(result);
 });
 
-app.post('/api/companies/:unternehmenId/goals', authMiddleware, (req, res) => {
+app.post('/api/companies/:unternehmenId/goals', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
   const uid = req.params.unternehmenId as string;
   const b = req.body as any;
   const titel = b.titel || b.title;
@@ -2547,7 +2704,7 @@ app.post('/api/companies/:unternehmenId/goals', authMiddleware, (req, res) => {
   res.status(201).json(db.select().from(goals).where(eq(goals.id, id)).get());
 });
 
-app.patch('/api/goals/:id', authMiddleware, (req, res) => {
+app.patch('/api/goals/:id', authMiddleware, requireResourceAccess("goal"), (req, res) => {
   const id = req.params.id as string;
   const goal = db.select().from(goals).where(eq(goals.id, id)).get() as any;
   if (!goal) return res.status(404).json({ error: 'Goal not found' });
@@ -2563,7 +2720,7 @@ app.patch('/api/goals/:id', authMiddleware, (req, res) => {
   res.json(db.select().from(goals).where(eq(goals.id, id)).get());
 });
 
-app.delete('/api/goals/:id', authMiddleware, (req, res) => {
+app.delete('/api/goals/:id', authMiddleware, requireResourceAccess("goal"), (req, res) => {
   db.delete(goals).where(eq(goals.id, req.params.id as string)).run();
   res.json({ ok: true });
 });
@@ -2571,14 +2728,14 @@ app.delete('/api/goals/:id', authMiddleware, (req, res) => {
 // =============================================
 // ROUTINEN (Autonomous Agents Phase 1)
 // =============================================
-app.get('/api/companies/:unternehmenId/routines', (req, res) => {
+app.get('/api/companies/:unternehmenId/routines', requireCompanyAccess(), (req, res) => {
   const result = db.select().from(routines)
     .where(eq(routines.companyId, req.params.unternehmenId))
     .all();
   res.json(result);
 });
 
-app.post('/api/companies/:unternehmenId/routines', (req, res) => {
+app.post('/api/companies/:unternehmenId/routines', requireCompanyAccess(), (req, res) => {
   const b = req.body as any;
   const titel = b.titel || b.title;
   const beschreibung = b.beschreibung || b.description;
@@ -2604,13 +2761,13 @@ app.post('/api/companies/:unternehmenId/routines', (req, res) => {
   res.status(201).json(routine);
 });
 
-app.get('/api/routines/:id', (req, res) => {
+app.get('/api/routines/:id', requireResourceAccess("routine"), (req, res) => {
   const routine = db.select().from(routines).where(eq(routines.id, req.params.id as string)).get();
   if (!routine) return res.status(404).json({ error: 'Routine not found' });
   res.json(routine);
 });
 
-app.patch('/api/routines/:id', (req, res) => {
+app.patch('/api/routines/:id', requireResourceAccess("routine"), (req, res) => {
   const updates: any = { updatedAt: now() };
   const allowed: [string, string][] = [
     ['titel', 'title'],
@@ -2629,7 +2786,7 @@ app.patch('/api/routines/:id', (req, res) => {
   res.json(routine);
 });
 
-app.delete('/api/routines/:id', (req, res) => {
+app.delete('/api/routines/:id', requireResourceAccess("routine"), (req, res) => {
   const routine = db.select().from(routines).where(eq(routines.id, req.params.id as string)).get();
   if (!routine) return res.status(404).json({ error: 'Routine not found' });
   db.delete(routines).where(eq(routines.id, req.params.id as string)).run();
@@ -2640,14 +2797,14 @@ app.delete('/api/routines/:id', (req, res) => {
 // =============================================
 // ROUTINE TRIGGER
 // =============================================
-app.get('/api/routines/:routineId/triggers', (req, res) => {
+app.get('/api/routines/:routineId/triggers', requireResourceAccess("routine", "routineId"), (req, res) => {
   const result = db.select().from(routineTrigger)
     .where(eq(routineTrigger.routineId, req.params.routineId))
     .all();
   res.json(result);
 });
 
-app.post('/api/routines/:routineId/triggers', (req, res) => {
+app.post('/api/routines/:routineId/triggers', requireResourceAccess("routine", "routineId"), (req, res) => {
   const { kind, cronExpression, timezone, aktiv } = req.body;
   if (!kind) return res.status(400).json({ error: 'Trigger type required' });
   if (kind === 'schedule' && !cronExpression) {
@@ -2688,7 +2845,7 @@ app.post('/api/routines/:routineId/triggers', (req, res) => {
   res.status(201).json(trigger);
 });
 
-app.patch('/api/triggers/:id', (req, res) => {
+app.patch('/api/triggers/:id', requireResourceAccess("trigger"), (req, res) => {
   const updates: any = { updatedAt: now() };
   const allowed: [string, string][] = [
     ['aktiv', 'active'],
@@ -2713,7 +2870,7 @@ app.patch('/api/triggers/:id', (req, res) => {
   res.json(updated);
 });
 
-app.delete('/api/triggers/:id', (req, res) => {
+app.delete('/api/triggers/:id', requireResourceAccess("trigger"), (req, res) => {
   const trigger = db.select().from(routineTrigger).where(eq(routineTrigger.id, req.params.id as string)).get();
   if (!trigger) return res.status(404).json({ error: 'Trigger not found' });
   db.delete(routineTrigger).where(eq(routineTrigger.id, req.params.id as string)).run();
@@ -2723,7 +2880,7 @@ app.delete('/api/triggers/:id', (req, res) => {
 // =============================================
 // ROUTINE AUSFÜHRUNGEN
 // =============================================
-app.get('/api/routines/:routineId/ausfuehrungen', (req, res) => {
+app.get('/api/routines/:routineId/ausfuehrungen', requireResourceAccess("routine", "routineId"), (req, res) => {
   const limit = parseInt(req.query.limit as string) || 50;
   const result = db.select().from(routineRuns)
     .where(eq(routineRuns.routineId, req.params.routineId))
@@ -2733,7 +2890,7 @@ app.get('/api/routines/:routineId/ausfuehrungen', (req, res) => {
   res.json(result);
 });
 
-app.post('/api/routines/:id/trigger', (req, res) => {
+app.post('/api/routines/:id/trigger', requireResourceAccess("routine"), (req, res) => {
   // Manual trigger for a routine
   const routine = db.select().from(routines).where(eq(routines.id, req.params.id as string)).get();
   if (!routine) return res.status(404).json({ error: 'Routine not found' });
@@ -2767,7 +2924,7 @@ app.post('/api/routines/:id/trigger', (req, res) => {
 // =============================================
 // WORKSPACES (Isolation via git worktree)
 // =============================================
-app.get('/api/companies/:id/workspaces', (req, res) => {
+app.get('/api/companies/:id/workspaces', requireCompanyAccess(), (req, res) => {
   try {
     res.json(listeWorkspaces(req.params.id as string));
   } catch (e: any) {
@@ -2775,7 +2932,7 @@ app.get('/api/companies/:id/workspaces', (req, res) => {
   }
 });
 
-app.post('/api/tasks/:id/workspace', (req, res) => {
+app.post('/api/tasks/:id/workspace', requireResourceAccess("task"), (req, res) => {
   try {
     const task = db.select().from(tasks).where(eq(tasks.id, req.params.id as string)).get();
     if (!task) return res.status(404).json({ error: 'Task not found' });
@@ -2787,7 +2944,7 @@ app.post('/api/tasks/:id/workspace', (req, res) => {
   }
 });
 
-app.post('/api/workspaces/:id/close', (req, res) => {
+app.post('/api/workspaces/:id/close', requireResourceAccess("workspace"), (req, res) => {
   try {
     schliesseWorkspace(req.params.id as string);
     res.json({ ok: true });
@@ -2796,7 +2953,7 @@ app.post('/api/workspaces/:id/close', (req, res) => {
   }
 });
 
-app.delete('/api/workspaces/:id', (req, res) => {
+app.delete('/api/workspaces/:id', requireResourceAccess("workspace"), (req, res) => {
   try {
     const force = String(req.query.force || '') === 'true';
     const result = raeumeWorkspaceAuf(req.params.id, force);
@@ -2952,7 +3109,7 @@ app.get('/api/skills/categories', (_req, res) => {
   res.json(skillsService.getSkillCategories());
 });
 
-app.get('/api/agents/:id/skills', async (req, res) => {
+app.get('/api/agents/:id/skills', requireResourceAccess("agent"), async (req, res) => {
   try {
     const skills = await skillsService.getAgentSkills(req.params.id as string);
     res.json(skills);
@@ -2962,7 +3119,7 @@ app.get('/api/agents/:id/skills', async (req, res) => {
   }
 });
 
-app.post('/api/agents/:id/skills', async (req, res) => {
+app.post('/api/agents/:id/skills', requireResourceAccess("agent"), async (req, res) => {
   const { skillId, proficiency } = req.body;
   if (!skillId) {
     return res.status(400).json({ error: 'skillId is required' });
@@ -2985,7 +3142,7 @@ app.post('/api/agents/:id/skills', async (req, res) => {
   }
 });
 
-app.delete('/api/agents/:id/skills/:skillId', async (req, res) => {
+app.delete('/api/agents/:id/skills/:skillId', requireResourceAccess("agent"), async (req, res) => {
   try {
     const success = await skillsService.removeSkillFromAgent(
       req.params.id,
@@ -3003,7 +3160,7 @@ app.delete('/api/agents/:id/skills/:skillId', async (req, res) => {
 });
 
 // ── Export-Soul: migrate existing systemPrompt → SOUL.md file ────────────────
-app.post('/api/agents/:id/export-soul', authMiddleware, async (req, res) => {
+app.post('/api/agents/:id/export-soul', authMiddleware, requireResourceAccess("agent"), async (req, res) => {
   try {
     const agent = db.select().from(agents).where(eq(agents.id, req.params.id as string)).get();
     if (!agent) return res.status(404).json({ error: 'Agent not found' });
@@ -3059,7 +3216,7 @@ app.post('/api/agents/:id/export-soul', authMiddleware, async (req, res) => {
 });
 
 // ── SOUL.md: read file content ────────────────────────────────────────────────
-app.get('/api/agents/:id/soul', authMiddleware, (req, res) => {
+app.get('/api/agents/:id/soul', authMiddleware, requireResourceAccess("agent"), (req, res) => {
   try {
     const agent = db.select({ soulPath: agents.soulPath, soulVersion: agents.soulVersion, name: agents.name })
       .from(agents).where(eq(agents.id, req.params.id as string)).get();
@@ -3075,7 +3232,7 @@ app.get('/api/agents/:id/soul', authMiddleware, (req, res) => {
 });
 
 // ── SOUL.md: save edited content ──────────────────────────────────────────────
-app.put('/api/agents/:id/soul', authMiddleware, (req, res) => {
+app.put('/api/agents/:id/soul', authMiddleware, requireResourceAccess("agent"), (req, res) => {
   try {
     const { content } = req.body;
     if (typeof content !== 'string') return res.status(400).json({ error: 'content required' });
@@ -3103,7 +3260,7 @@ app.put('/api/agents/:id/soul', authMiddleware, (req, res) => {
 });
 
 // ─── SOUL Generator ──────────────────────────────────────────────────────────
-app.post('/api/agents/:id/soul/generate', authMiddleware, async (req, res) => {
+app.post('/api/agents/:id/soul/generate', authMiddleware, requireResourceAccess("agent"), async (req, res) => {
   try {
     const expert = db.select().from(agents).where(eq(agents.id, req.params.id as string)).get() as any;
     if (!expert) return res.status(404).json({ error: 'Expert not found' });
@@ -3262,7 +3419,7 @@ app.get('/api/settings', (req, res) => {
 app.put('/api/settings/:key', async (req: express.Request, res: express.Response) => {
   const key = req.params.key;
   const uId = req.body.unternehmenId || '';
-  const wert = (req.body.value ?? '') as string;
+  const wert = (req.body.value ?? req.body.wert ?? '') as string;
 
   // Validate Telegram bot token before saving
   if (key === 'telegram_bot_token' && wert) {
@@ -3308,7 +3465,7 @@ app.put('/api/settings/:key', async (req: express.Request, res: express.Response
 // =============================================
 
 // DELETE /api/companies/:id — löscht ein Unternehmen inkl. aller abhängigen Daten
-app.delete('/api/companies/:id', authMiddleware, (req, res) => {
+app.delete('/api/companies/:id', authMiddleware, requireCompanyAccess(['owner', 'admin']), (req, res) => {
   const id = req.params.id as string;
   const company = db.select().from(companies).where(eq(companies.id, id)).get();
   if (!company) return res.status(404).json({ error: 'Company not found' });
@@ -3369,7 +3526,7 @@ app.delete('/api/companies/:id', authMiddleware, (req, res) => {
 });
 
 // DELETE /api/companies/:id/reset — löscht alle Daten des Unternehmens außer dem Unternehmen selbst
-app.delete('/api/companies/:id/reset', authMiddleware, (req, res) => {
+app.delete('/api/companies/:id/reset', authMiddleware, requireCompanyAccess(['owner', 'admin']), (req, res) => {
   const id = req.params.id as string;
   const company = db.select().from(companies).where(eq(companies.id, id)).get();
   if (!company) return res.status(404).json({ error: 'Company not found' });
@@ -3421,6 +3578,161 @@ app.delete('/api/companies/:id/reset', authMiddleware, (req, res) => {
 
   console.log(`🗑️  Unternehmen ${company.name} (${id}) zurückgesetzt`);
   res.json({ ok: true, name: company.name });
+});
+
+// =============================================
+// COMPANY MEMBERSHIPS & INVITES
+// =============================================
+
+// GET /api/user/memberships — companies the current user belongs to
+app.get('/api/user/memberships', authMiddleware, (req, res) => {
+  const userId = (req as any).users?.userId;
+  if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+  const rows = db.select({
+    companyId: companyMemberships.companyId,
+    role: companyMemberships.role,
+    joinedAt: companyMemberships.joinedAt,
+  })
+    .from(companyMemberships)
+    .where(eq(companyMemberships.userId, userId))
+    .all();
+
+  const companyIds = rows.map(r => r.companyId);
+  if (companyIds.length === 0) return res.json([]);
+
+  const companyRows = db.select().from(companies)
+    .where(inArray(companies.id, companyIds))
+    .all() as any[];
+
+  const result = rows.map(m => {
+    const c = companyRows.find((x: any) => x.id === m.companyId);
+    return {
+      companyId: m.companyId,
+      role: m.role,
+      joinedAt: m.joinedAt,
+      companyName: c?.name || null,
+      companyStatus: c?.status || null,
+    };
+  });
+
+  res.json(result);
+});
+
+// GET /api/companies/:id/members — list active members (owner/admin only)
+app.get('/api/companies/:id/members', authMiddleware, requireCompanyAccess(['owner', 'admin']), (req, res) => {
+  const companyId = req.params.id as string;
+
+  const rows = db.select({
+    userId: companyMemberships.userId,
+    role: companyMemberships.role,
+    joinedAt: companyMemberships.joinedAt,
+  })
+    .from(companyMemberships)
+    .where(eq(companyMemberships.companyId, companyId))
+    .all();
+
+  const userIds = rows.map(r => r.userId);
+  if (userIds.length === 0) return res.json([]);
+
+  const userRows = db.select({ id: user.id, name: user.name, email: user.email })
+    .from(user)
+    .where(inArray(user.id, userIds))
+    .all() as any[];
+
+  const result = rows.map(m => {
+    const u = userRows.find((x: any) => x.id === m.userId);
+    return {
+      userId: m.userId,
+      name: u?.name || null,
+      email: u?.email || null,
+      role: m.role,
+      joinedAt: m.joinedAt,
+    };
+  });
+
+  res.json(result);
+});
+
+// POST /api/companies/:id/invites — invite user by email (owner/admin only)
+app.post('/api/companies/:id/invites', authMiddleware, requireCompanyAccess(['owner', 'admin']), (req, res) => {
+  const companyId = req.params.id as string;
+  const { email, role = 'member' } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email required' });
+  if (!['admin', 'member'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+
+  // Find user by email
+  const targetUser = db.select().from(user).where(eq(user.email, email)).get() as any;
+  if (!targetUser) return res.status(404).json({ error: 'User not found' });
+
+  // Check if already a member
+  const existing = db.select().from(companyMemberships)
+    .where(and(
+      eq(companyMemberships.userId, targetUser.id),
+      eq(companyMemberships.companyId, companyId)
+    )).get();
+  if (existing) return res.status(409).json({ error: 'User is already a member' });
+
+  const token = uuid();
+  db.insert(companyMemberships).values({
+    id: uuid(),
+    userId: targetUser.id,
+    companyId,
+    role,
+    invitedAt: new Date().toISOString(),
+    inviteToken: token,
+  }).run();
+
+  res.json({ token, email, role, message: 'Invite created' });
+});
+
+// POST /api/invites/:token/accept — accept an invite
+app.post('/api/invites/:token/accept', authMiddleware, (req, res) => {
+  const token = req.params.token as string;
+  const userId = (req as any).users?.userId;
+  if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+  const membership = db.select().from(companyMemberships)
+    .where(eq(companyMemberships.inviteToken, token))
+    .get() as any;
+
+  if (!membership) return res.status(404).json({ error: 'Invite not found' });
+  if (membership.userId !== userId) return res.status(403).json({ error: 'Invite belongs to another user' });
+  if (membership.joinedAt) return res.status(409).json({ error: 'Invite already accepted' });
+
+  db.update(companyMemberships)
+    .set({ joinedAt: new Date().toISOString(), inviteToken: null })
+    .where(eq(companyMemberships.id, membership.id))
+    .run();
+
+  res.json({ ok: true, companyId: membership.companyId, role: membership.role });
+});
+
+// DELETE /api/companies/:id/members/:userId — remove a member (owner/admin only)
+app.delete('/api/companies/:id/members/:userId', authMiddleware, requireCompanyAccess(['owner', 'admin']), (req, res) => {
+  const companyId = req.params.id as string;
+  const targetUserId = req.params.userId as string;
+
+  // Prevent self-removal of the last owner
+  const selfMembership = (req as any).companyMembership;
+  if (selfMembership?.userId === targetUserId) {
+    const ownerCount = db.select({ value: count() })
+      .from(companyMemberships)
+      .where(and(
+        eq(companyMemberships.companyId, companyId),
+        eq(companyMemberships.role, 'owner')
+      ))
+      .get()?.value ?? 0;
+    if (ownerCount <= 1) return res.status(400).json({ error: 'Cannot remove the last owner' });
+  }
+
+  db.delete(companyMemberships)
+    .where(and(
+      eq(companyMemberships.companyId, companyId),
+      eq(companyMemberships.userId, targetUserId)
+    )).run();
+
+  res.json({ ok: true });
 });
 
 // DELETE /api/system/factory-reset — alles löschen (außer Benutzer-Account bleibt, aber Unternehmen + alles weg)
@@ -3538,8 +3850,8 @@ function handleChatPost(req: express.Request, res: express.Response) {
 }
 
 // Both /api/agents/:id/chat and /api/mitarbeiter/:id/chat point to the same handlers
-app.get('/api/agents/:id/chat', handleChatGet);
-app.post('/api/agents/:id/chat', handleChatPost);
+app.get('/api/agents/:id/chat', requireResourceAccess('agent'), handleChatGet);
+app.post('/api/agents/:id/chat', requireResourceAccess('agent'), handleChatPost);
 
 // ─── Direct LLM Chat (fast, context-aware, bypasses heartbeat) ─────────────
 // ── URL-Fetch helper for chat context ───────────────────────────────────────
@@ -3572,7 +3884,7 @@ async function fetchUrlContent(url: string): Promise<string | null> {
 
 const URL_PATTERN = /https?:\/\/[^\s)>"']+/g;
 
-app.post('/api/agents/:id/chat/direct', async (req: express.Request, res: express.Response) => {
+app.post('/api/agents/:id/chat/direct', requireResourceAccess("agent"), async (req: express.Request, res: express.Response) => {
   const expertId = req.params.id as string;
   const unternehmenId = (req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
   const { nachricht } = req.body;
@@ -3654,7 +3966,12 @@ app.post('/api/agents/:id/chat/direct', async (req: express.Request, res: expres
       const row = db.select().from(settings).where(eq(settings.key, 'poe_api_key')).get();
       if (row) { apiKey = decryptSetting('poe_api_key', row.value); }
       apiUrl = 'https://api.poe.com/v1/chat/completions';
-      provider = 'openai'; // Poe is OpenAI-compatible
+      provider = 'openai';
+    } else if (provider === 'moonshot') {
+      const row = db.select().from(settings).where(eq(settings.key, 'moonshot_api_key')).get();
+      if (row) { apiKey = decryptSetting('moonshot_api_key', row.value); }
+      apiUrl = 'https://api.moonshot.cn/v1/chat/completions';
+      provider = 'openai';
     } else {
       // Fallback: try anthropic key
       const row = db.select().from(settings).where(eq(settings.key, 'anthropic_api_key')).get();
@@ -3894,7 +4211,7 @@ ${langLine(uiLang)} ${isEn ? `You respond directly to board messages. Be precise
 // =============================================
 // CHAT STREAMING — SSE with thinking + images
 // =============================================
-app.post('/api/agents/:id/chat/stream', authMiddleware, async (req: express.Request, res: express.Response) => {
+app.post(['/api/agents/:id/chat/stream', '/api/experten/:id/chat/stream'], authMiddleware, requireResourceAccess('agent'), async (req: express.Request, res: express.Response) => {
   const expertId = req.params.id as string;
   const unternehmenId = (req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
   const { nachricht, image } = req.body; // image: { data: string (base64), mimeType: string }
@@ -3938,6 +4255,12 @@ app.post('/api/agents/:id/chat/stream', authMiddleware, async (req: express.Requ
     db.insert(chatMessages).values(boardMsg2).run();
     broadcastUpdate('chat_message', boardMsg2);
 
+    // Keepalive: prevents browser/proxy from closing the SSE connection during long CLI runs
+    const keepalive = setInterval(() => { try { res.write(':ping\n\n'); } catch {} }, 8000);
+
+    // Immediate "thinking" indicator so the user sees something right away
+    emit('thinking_delta', { chunk: `${expert.name} denkt nach…` });
+
     try {
       let cliReply: string;
       if (provider === 'codex-cli') {
@@ -3949,13 +4272,15 @@ app.post('/api/agents/:id/chat/stream', authMiddleware, async (req: express.Requ
       } else {
         cliReply = await runClaudeDirectChat(cliPrompt, expertId);
       }
-      emit('text_delta', { text: cliReply });
+      emit('text_delta', { chunk: cliReply });
       const agentMsg2 = { id: uuid(), companyId: unternehmenId, agentId: expertId, senderType: 'agent' as const, message: cliReply, read: false, createdAt: new Date().toISOString() };
       db.insert(chatMessages).values(agentMsg2).run();
       broadcastUpdate('chat_message', agentMsg2);
-      emit('done', { fullReply: cliReply });
+      emit('done', { reply: cliReply });
     } catch (err: any) {
       emit('error', { message: err.message });
+    } finally {
+      clearInterval(keepalive);
     }
     return res.end();
   }
@@ -3979,7 +4304,12 @@ app.post('/api/agents/:id/chat/stream', authMiddleware, async (req: express.Requ
     const row = db.select().from(settings).where(eq(settings.key, 'poe_api_key')).get();
     if (row) apiKey = decryptSetting('poe_api_key', row.value);
     apiUrl = 'https://api.poe.com/v1/chat/completions';
-    provider = 'openai'; // Poe is OpenAI-compatible
+    provider = 'openai';
+  } else if (provider === 'moonshot') {
+    const row = db.select().from(settings).where(eq(settings.key, 'moonshot_api_key')).get();
+    if (row) apiKey = decryptSetting('moonshot_api_key', row.value);
+    apiUrl = 'https://api.moonshot.cn/v1/chat/completions';
+    provider = 'openai';
   } else {
     // Fallback anthropic
     const row = db.select().from(settings).where(eq(settings.key, 'anthropic_api_key')).get();
@@ -4080,10 +4410,10 @@ ${langLine(uiLang)} ${isEn ? 'You respond directly to board messages. Be precise
             }
             if (ev.type === 'content_block_delta') {
               if (ev.delta?.type === 'thinking_delta') {
-                emit('thinking_delta', { text: ev.delta.thinking });
+                emit('thinking_delta', { chunk: ev.delta.thinking });
               } else if (ev.delta?.type === 'text_delta') {
                 fullReply += ev.delta.text;
-                emit('text_delta', { text: ev.delta.text });
+                emit('text_delta', { chunk: ev.delta.text });
               }
             }
             if (ev.type === 'message_delta') {
@@ -4131,7 +4461,7 @@ ${langLine(uiLang)} ${isEn ? 'You respond directly to board messages. Be precise
           try {
             const ev = JSON.parse(raw);
             const token = ev.choices?.[0]?.delta?.content || '';
-            if (token) { fullReply += token; emit('text_delta', { text: token }); }
+            if (token) { fullReply += token; emit('text_delta', { chunk: token }); }
           } catch {}
         }
       }
@@ -4165,7 +4495,7 @@ ${langLine(uiLang)} ${isEn ? 'You respond directly to board messages. Be precise
     }
   }
 
-  emit('done', { fullReply: finalReply });
+  emit('done', { reply: finalReply });
   res.end();
 });
 
@@ -4202,7 +4532,7 @@ function emitTrace(expertId: string, unternehmenId: string, typ: string, titel: 
 export { emitTrace };
 
 // SSE stream endpoint — accepts token as query param (EventSource limitation)
-app.get('/api/agents/:id/trace', authMiddleware, (req, res) => {
+app.get('/api/agents/:id/trace', authMiddleware, requireResourceAccess("agent"), (req, res) => {
   const expertId = req.params.id as string;
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -4228,7 +4558,7 @@ app.get('/api/agents/:id/trace', authMiddleware, (req, res) => {
 });
 
 // Get trace history (REST fallback for initial load)
-app.get('/api/agents/:id/trace/history', async (req, res) => {
+app.get('/api/agents/:id/trace/history', requireResourceAccess("agent"), async (req, res) => {
   // 1. Try BetterAuth session first
   let authenticated = false;
   try {
@@ -4496,7 +4826,7 @@ function buildDefaultTeam(description: string, language: string): any {
 // DAILY BRIEFING — AI-generated CEO summary
 // =============================================
 
-app.post('/api/companies/:id/briefing', authMiddleware, async (req, res) => {
+app.post('/api/companies/:id/briefing', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), async (req, res) => {
   const unternehmenId = req.params.id as string;
   const { language = 'de' } = req.body;
   const isDE = language === 'de';
@@ -4600,7 +4930,7 @@ Monthly costs so far: $${(monthCost / 100).toFixed(2)}`;
 // TASK DECOMPOSER — AI-powered subtask creation
 // =============================================
 
-app.post('/api/tasks/:id/decompose', authMiddleware, async (req, res) => {
+app.post('/api/tasks/:id/decompose', authMiddleware, requireResourceAccess("task"), requireResourceAccess("task"), async (req, res) => {
   const aufgabeId = req.params.id as string;
   const { language = 'de' } = req.body;
   const isDE = language === 'de';
@@ -4683,7 +5013,7 @@ app.post('/api/tasks/:id/decompose', authMiddleware, async (req, res) => {
 // FOCUS MODE — human daily command center
 // =============================================
 
-app.get('/api/companies/:id/focus', authMiddleware, (req, res) => {
+app.get('/api/companies/:id/focus', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
   const unternehmenId = req.params.id as string;
 
   const firma = db.select().from(companies).where(eq(companies.id, unternehmenId)).get();
@@ -4776,7 +5106,7 @@ app.get('/api/companies/:id/focus', authMiddleware, (req, res) => {
 // =============================================
 
 // GET: check if focus mode is currently active
-app.get('/api/companies/:id/focus-mode', authMiddleware, (req, res) => {
+app.get('/api/companies/:id/focus-mode', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
   const unternehmenId = req.params.id as string;
 
   const activeRow = db.select().from(settings)
@@ -4797,7 +5127,7 @@ app.get('/api/companies/:id/focus-mode', authMiddleware, (req, res) => {
 });
 
 // PUT: enable or disable focus mode
-app.put('/api/companies/:id/focus-mode', authMiddleware, (req, res) => {
+app.put('/api/companies/:id/focus-mode', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
   const unternehmenId = req.params.id as string;
   const { active, durationMinutes } = req.body as { active: boolean; durationMinutes?: number };
 
@@ -4835,7 +5165,7 @@ app.put('/api/companies/:id/focus-mode', authMiddleware, (req, res) => {
 // WEEKLY REPORT — AI-generated performance digest
 // =============================================
 
-app.get('/api/companies/:id/weekly-report', authMiddleware, async (req, res) => {
+app.get('/api/companies/:id/weekly-report', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), async (req, res) => {
   const unternehmenId = req.params.id as string;
   const { language = 'de' } = req.query as Record<string, string>;
   const isDE = language === 'de';
@@ -4969,7 +5299,7 @@ app.get('/api/companies/:id/weekly-report', authMiddleware, async (req, res) => 
 // AI WORKSPACE ASSISTANT — ask anything
 // =============================================
 
-app.post('/api/companies/:id/ask', authMiddleware, async (req, res) => {
+app.post('/api/companies/:id/ask', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), async (req, res) => {
   const unternehmenId = req.params.id as string;
   const { question, language = 'de' } = req.body;
   if (!question?.trim()) return res.status(400).json({ error: 'question required' });
@@ -5053,7 +5383,7 @@ Monthly AI cost so far: ${(monthCost2 / 100).toFixed(2)} EUR`;
 // TEAM STANDUP — AI-generated daily standup
 // =============================================
 
-app.post('/api/companies/:id/standup', authMiddleware, async (req, res) => {
+app.post('/api/companies/:id/standup', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), async (req, res) => {
   const unternehmenId = req.params.id as string;
   const { language = 'de' } = req.body;
   const isDE = language === 'de';
@@ -5180,7 +5510,7 @@ Blocked: ${blocked.map(t => t.title).join(', ') || 'none'}`;
 // WHITEBOARD — shared project state
 // =============================================
 
-app.get('/api/projects/:id/whiteboard', authMiddleware, (req, res) => {
+app.get('/api/projects/:id/whiteboard', authMiddleware, requireResourceAccess("project"), requireResourceAccess("project"), (req, res) => {
   const id = req.params.id as string;
   const projekt = db.select().from(projects).where(eq(projects.id, id)).get();
   if (!projekt) return res.status(404).json({ error: 'Project not found' });
@@ -5188,7 +5518,7 @@ app.get('/api/projects/:id/whiteboard', authMiddleware, (req, res) => {
   res.json(state);
 });
 
-app.put('/api/projects/:id/whiteboard', authMiddleware, (req, res) => {
+app.put('/api/projects/:id/whiteboard', authMiddleware, requireResourceAccess("project"), requireResourceAccess("project"), (req, res) => {
   const { inhalt, expertId } = req.body;
   if (!inhalt?.trim()) return res.status(400).json({ error: 'inhalt required' });
 
@@ -5206,7 +5536,7 @@ app.put('/api/projects/:id/whiteboard', authMiddleware, (req, res) => {
   res.json(neuerEintrag);
 });
 
-app.delete('/api/projects/:id/whiteboard', authMiddleware, (req, res) => {
+app.delete('/api/projects/:id/whiteboard', authMiddleware, requireResourceAccess("project"), requireResourceAccess("project"), (req, res) => {
   const id = req.params.id as string;
   db.update(projects).set({ whiteboardState: JSON.stringify({ entries: [], updatedAt: now() }), updatedAt: now() }).where(eq(projects.id, id)).run();
   broadcastUpdate('whiteboard_cleared', { projektId: req.params.id });
@@ -5217,7 +5547,7 @@ app.delete('/api/projects/:id/whiteboard', authMiddleware, (req, res) => {
 // AGENT MEETINGS — Multi-Agent Coordination
 // =============================================
 
-app.get('/api/companies/:id/meetings', authMiddleware, (req, res) => {
+app.get('/api/companies/:id/meetings', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
   try {
     const meetings = db.select().from(agentMeetings)
       .where(eq(agentMeetings.companyId, req.params.id as string))
@@ -5271,7 +5601,7 @@ app.get('/api/companies/:id/meetings', authMiddleware, (req, res) => {
   }
 });
 
-app.get('/api/meetings/:id', authMiddleware, (req, res) => {
+app.get('/api/meetings/:id', authMiddleware, requireResourceAccess("meeting"), requireResourceAccess("meeting"), (req, res) => {
   try {
     const meeting = db.select().from(agentMeetings).where(eq(agentMeetings.id, req.params.id as string)).get() as any;
     if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
@@ -5300,7 +5630,7 @@ app.get('/api/meetings/:id', authMiddleware, (req, res) => {
   }
 });
 
-app.post('/api/meetings/:id/message', authMiddleware, async (req, res) => {
+app.post('/api/meetings/:id/message', authMiddleware, requireResourceAccess("meeting"), requireResourceAccess("meeting"), async (req, res) => {
   try {
     const meeting = db.select().from(agentMeetings).where(eq(agentMeetings.id, req.params.id as string)).get() as any;
     if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
@@ -5370,7 +5700,7 @@ app.post('/api/meetings/:id/message', authMiddleware, async (req, res) => {
   }
 });
 
-app.post('/api/meetings/:id/cancel', authMiddleware, (req, res) => {
+app.post('/api/meetings/:id/cancel', authMiddleware, requireResourceAccess("meeting"), requireResourceAccess("meeting"), (req, res) => {
   try {
     const meeting = db.select().from(agentMeetings).where(eq(agentMeetings.id, req.params.id as string)).get() as any;
     if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
@@ -5384,7 +5714,7 @@ app.post('/api/meetings/:id/cancel', authMiddleware, (req, res) => {
 });
 
 // ─── Create a new meeting ─────────────────────────────────────────────────────
-app.post('/api/companies/:id/meetings', authMiddleware, (req, res) => {
+app.post('/api/companies/:id/meetings', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
   try {
     const unternehmenId = req.params.id as string;
     const { titel, veranstalterExpertId, teilnehmerIds } = req.body as {
@@ -5451,7 +5781,7 @@ app.post('/api/companies/:id/meetings', authMiddleware, (req, res) => {
 });
 
 // ─── Close a meeting with synthesis ──────────────────────────────────────────
-app.post('/api/meetings/:id/complete', authMiddleware, (req, res) => {
+app.post('/api/meetings/:id/complete', authMiddleware, requireResourceAccess("meeting"), requireResourceAccess("meeting"), (req, res) => {
   try {
     const meeting = db.select().from(agentMeetings).where(eq(agentMeetings.id, req.params.id as string)).get() as any;
     if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
@@ -5468,7 +5798,7 @@ app.post('/api/meetings/:id/complete', authMiddleware, (req, res) => {
   }
 });
 
-app.delete('/api/meetings/:id', authMiddleware, (req, res) => {
+app.delete('/api/meetings/:id', authMiddleware, requireResourceAccess("meeting"), requireResourceAccess("meeting"), (req, res) => {
   try {
     const meeting = db.select().from(agentMeetings).where(eq(agentMeetings.id, req.params.id as string)).get() as any;
     if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
@@ -5504,7 +5834,7 @@ function mapSkillToDe(skill: any) {
   };
 }
 
-app.get('/api/companies/:unternehmenId/skills-library', authMiddleware, (req, res) => {
+app.get('/api/companies/:unternehmenId/skills-library', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
   const unternehmenId = req.params.unternehmenId as string;
   const skills = db.select().from(skillsLibrary)
     .where(eq(skillsLibrary.companyId, unternehmenId))
@@ -5512,7 +5842,7 @@ app.get('/api/companies/:unternehmenId/skills-library', authMiddleware, (req, re
   res.json(skills.map(mapSkillToDe));
 });
 
-app.post('/api/companies/:unternehmenId/skills-library', authMiddleware, (req, res) => {
+app.post('/api/companies/:unternehmenId/skills-library', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
   const { name, beschreibung, inhalt, tags } = req.body;
   if (!name?.trim() || !inhalt?.trim()) return res.status(400).json({ error: 'name and inhalt required' });
   const id = uuid();
@@ -5526,14 +5856,14 @@ app.post('/api/companies/:unternehmenId/skills-library', authMiddleware, (req, r
   res.status(201).json({ id, name });
 });
 
-app.get('/api/skills-library/:id', authMiddleware, (req, res) => {
+app.get('/api/skills-library/:id', authMiddleware, requireResourceAccess("skillsLibrary"), requireResourceAccess("skillsLibrary"), (req, res) => {
   const id = req.params.id as string;
   const skill = db.select().from(skillsLibrary).where(eq(skillsLibrary.id, id)).get();
   if (!skill) return res.status(404).json({ error: 'Skill not found' });
   res.json(mapSkillToDe(skill));
 });
 
-app.patch('/api/skills-library/:id', authMiddleware, (req, res) => {
+app.patch('/api/skills-library/:id', authMiddleware, requireResourceAccess("skillsLibrary"), requireResourceAccess("skillsLibrary"), (req, res) => {
   const { name, beschreibung, inhalt, tags } = req.body;
   const updates: any = { updatedAt: now() };
   if (name !== undefined) updates.name = name;
@@ -5545,7 +5875,7 @@ app.patch('/api/skills-library/:id', authMiddleware, (req, res) => {
   res.json({ ok: true });
 });
 
-app.delete('/api/skills-library/:id', authMiddleware, (req, res) => {
+app.delete('/api/skills-library/:id', authMiddleware, requireResourceAccess("skillsLibrary"), requireResourceAccess("skillsLibrary"), (req, res) => {
   const id = req.params.id as string;
   db.delete(agentSkills).where(eq(agentSkills.skillId, id)).run();
   db.delete(skillsLibrary).where(eq(skillsLibrary.id, id)).run();
@@ -5553,7 +5883,7 @@ app.delete('/api/skills-library/:id', authMiddleware, (req, res) => {
 });
 
 // ── Seed Standard Skill Library ──────────────────────────────────────────────
-app.post('/api/companies/:unternehmenId/skills-library/seed', authMiddleware, (req, res) => {
+app.post('/api/companies/:unternehmenId/skills-library/seed', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
   const unternehmenId = req.params.unternehmenId as string;
   const n = now();
 
@@ -5651,7 +5981,7 @@ app.post('/api/companies/:unternehmenId/skills-library/seed', authMiddleware, (r
 });
 
 // Expert <-> Skill assignment
-app.get('/api/agents/:id/skills-library', authMiddleware, (req, res) => {
+app.get('/api/agents/:id/skills-library', authMiddleware, requireResourceAccess("agent"), (req, res) => {
   const expertId = req.params.id as string;
   const assigned = db.select({ skill: skillsLibrary }).from(agentSkills)
     .innerJoin(skillsLibrary, eq(agentSkills.skillId, skillsLibrary.id))
@@ -5659,7 +5989,7 @@ app.get('/api/agents/:id/skills-library', authMiddleware, (req, res) => {
   res.json(assigned.map((r: any) => mapSkillToDe(r.skill)));
 });
 
-app.post('/api/agents/:id/skills-library', authMiddleware, (req, res) => {
+app.post('/api/agents/:id/skills-library', authMiddleware, requireResourceAccess("agent"), (req, res) => {
   const { skillId } = req.body;
   if (!skillId) return res.status(400).json({ error: 'skillId required' });
   const expertId = req.params.id as string;
@@ -5669,7 +5999,7 @@ app.post('/api/agents/:id/skills-library', authMiddleware, (req, res) => {
   res.status(201).json({ ok: true });
 });
 
-app.delete('/api/agents/:id/skills-library/:skillId', authMiddleware, (req, res) => {
+app.delete('/api/agents/:id/skills-library/:skillId', authMiddleware, requireResourceAccess("agent"), (req, res) => {
   const expertId = req.params.id as string;
   const skillId = req.params.skillId as string;
   db.delete(agentSkills).where(and(eq(agentSkills.agentId, expertId), eq(agentSkills.skillId, skillId))).run();
@@ -5677,7 +6007,7 @@ app.delete('/api/agents/:id/skills-library/:skillId', authMiddleware, (req, res)
 });
 
 // RAG query: get relevant skill chunks for a prompt (keyword-based, no vector DB needed)
-app.post('/api/agents/:id/skills-library/query', authMiddleware, (req, res) => {
+app.post('/api/agents/:id/skills-library/query', authMiddleware, requireResourceAccess("agent"), (req, res) => {
   const expertId = req.params.id as string;
   const { prompt } = req.body;
   if (!prompt) return res.status(400).json({ error: 'prompt required' });
@@ -5713,18 +6043,18 @@ app.post('/api/agents/:id/skills-library/query', authMiddleware, (req, res) => {
 import { exportCompany, previewImport, importCompany } from './services/company-portability.js';
 import { exportTrainingData } from './services/exportImport.js';
 
-app.get('/api/companies/:id/export', authMiddleware, (req, res) => {
+app.get('/api/companies/:id/export', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
   const manifest = exportCompany(req.params.id as string);
   if (!manifest) return res.status(404).json({ error: 'Company not found' });
   res.json(manifest);
 });
 
-app.post('/api/companies/:id/import/preview', authMiddleware, (req, res) => {
+app.post('/api/companies/:id/import/preview', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
   const preview = previewImport(req.params.id as string, req.body);
   res.json(preview);
 });
 
-app.post('/api/companies/:id/import', authMiddleware, (req, res) => {
+app.post('/api/companies/:id/import', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
   const { manifest, options } = req.body;
   if (!manifest) return res.status(400).json({ error: 'manifest ist erforderlich' });
   const result = importCompany(req.params.id as string, manifest, options || { collisionStrategy: 'skip' });
@@ -5733,7 +6063,7 @@ app.post('/api/companies/:id/import', authMiddleware, (req, res) => {
 });
 
 // GET /api/companies/:id/export/training — fine-tuning JSONL/JSON export
-app.get('/api/companies/:id/export/training', authMiddleware, async (req, res) => {
+app.get('/api/companies/:id/export/training', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), async (req, res) => {
   const format = (req.query.format as string) === 'json' ? 'json' : 'jsonl';
   const minQuality = (req.query.minQuality as string) === 'all' ? 'all' : 'approved';
   const agentId = req.query.agentId as string | undefined;
@@ -5762,14 +6092,14 @@ app.get('/api/companies/:id/export/training', authMiddleware, async (req, res) =
 
 import { erstellePolicy, pruefeBudgets, berechneBudgetStatus } from './services/budget-policies.js';
 
-app.get('/api/companies/:id/budget-policies', authMiddleware, (req, res) => {
+app.get('/api/companies/:id/budget-policies', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
   const policies = db.select().from(budgetPolicies)
     .where(eq(budgetPolicies.companyId, req.params.id as string)).all();
   const mitStatus = policies.map(p => ({ ...p, status: berechneBudgetStatus(p.id) }));
   res.json(mitStatus);
 });
 
-app.post('/api/companies/:id/budget-policies', authMiddleware, (req, res) => {
+app.post('/api/companies/:id/budget-policies', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
   const { scope, scopeId, limitCent, fenster, warnProzent, hardStop } = req.body;
   const id = erstellePolicy({
     unternehmenId: req.params.id as string,
@@ -5778,7 +6108,7 @@ app.post('/api/companies/:id/budget-policies', authMiddleware, (req, res) => {
   res.json({ id });
 });
 
-app.get('/api/companies/:id/budget-incidents', authMiddleware, (req, res) => {
+app.get('/api/companies/:id/budget-incidents', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
   const incidents = db.select().from(budgetIncidents)
     .where(eq(budgetIncidents.companyId, req.params.id as string)).all();
   res.json(incidents);
@@ -5790,21 +6120,21 @@ app.get('/api/companies/:id/budget-incidents', authMiddleware, (req, res) => {
 
 import { erstelleAbhaengigkeit, entferneAbhaengigkeit, getBlocker, getBlockiert } from './services/issue-dependencies.js';
 
-app.get('/api/tasks/:id/blocker', authMiddleware, (req, res) => {
+app.get('/api/tasks/:id/blocker', authMiddleware, requireResourceAccess("task"), requireResourceAccess("task"), (req, res) => {
   res.json(getBlocker(req.params.id as string));
 });
 
-app.get('/api/tasks/:id/blockiert', authMiddleware, (req, res) => {
+app.get('/api/tasks/:id/blockiert', authMiddleware, requireResourceAccess("task"), requireResourceAccess("task"), (req, res) => {
   res.json(getBlockiert(req.params.id as string));
 });
 
-app.post('/api/tasks/:id/blocker', authMiddleware, (req, res) => {
+app.post('/api/tasks/:id/blocker', authMiddleware, requireResourceAccess("task"), requireResourceAccess("task"), (req, res) => {
   const { blockerId } = req.body;
   const result = erstelleAbhaengigkeit(blockerId, req.params.id as string, 'board');
   res.json(result);
 });
 
-app.delete('/api/tasks/:id/blocker/:blockerId', authMiddleware, (req, res) => {
+app.delete('/api/tasks/:id/blocker/:blockerId', authMiddleware, requireResourceAccess("task"), requireResourceAccess("task"), (req, res) => {
   entferneAbhaengigkeit(req.params.blockerId as string, req.params.id as string);
   res.json({ ok: true });
 });
@@ -5821,7 +6151,7 @@ app.get('/api/clipmart/templates', authMiddleware, (_req, res) => {
 });
 
 // Template in ein Unternehmen importieren
-app.post('/api/companies/:unternehmenId/clipmart/import', authMiddleware, (req, res) => {
+app.post('/api/companies/:unternehmenId/clipmart/import', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
   const { unternehmenId } = req.params;
   const { templateName, templateId, config } = req.body;
 
@@ -5841,7 +6171,7 @@ app.post('/api/companies/:unternehmenId/clipmart/import', authMiddleware, (req, 
 // =============================================
 
 // Memory Status für einen Agenten abrufen
-app.get('/api/companies/:unternehmenId/intelligence/memory', authMiddleware, async (req, res) => {
+app.get('/api/companies/:unternehmenId/intelligence/memory', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), async (req, res) => {
   try {
     const { mcpClient } = await import('./services/mcpClient.js');
     const agentRows = db.select().from(agents)
@@ -5871,7 +6201,7 @@ app.get('/api/companies/:unternehmenId/intelligence/memory', authMiddleware, asy
 });
 
 // Memory Wing eines Agenten löschen
-app.delete('/api/intelligence/memory/:expertId', authMiddleware, async (req, res) => {
+app.delete('/api/intelligence/memory/:expertId', authMiddleware, requireResourceAccess("agent", "expertId"), async (req, res) => {
   const expert = db.select().from(agents).where(eq(agents.id, req.params.agentId as string)).get();
   if (expert) {
     try {
@@ -5885,7 +6215,7 @@ app.delete('/api/intelligence/memory/:expertId', authMiddleware, async (req, res
 });
 
 // Memory: Eintrag in den Wing eines Agenten schreiben
-app.put('/api/intelligence/memory/:expertId', authMiddleware, async (req, res) => {
+app.put('/api/intelligence/memory/:expertId', authMiddleware, requireResourceAccess("agent", "expertId"), async (req, res) => {
   const expertId = req.params.agentId as string;
   const { content, room } = req.body;
 
@@ -5904,7 +6234,7 @@ app.put('/api/intelligence/memory/:expertId', authMiddleware, async (req, res) =
 });
 
 // ─── Palace: Rooms eines Agenten (strukturiert nach Rooms) ───────────────
-app.get('/api/palace/:expertId/rooms', authMiddleware, (req, res) => {
+app.get('/api/palace/:expertId/rooms', authMiddleware, requireResourceAccess("agent", "expertId"), (req, res) => {
   const expertId = req.params.agentId as string;
   const expert = db.select().from(agents).where(eq(agents.id, expertId as string)).get();
   if (!expert) return res.status(404).json({ error: 'Agent not found' });
@@ -5928,7 +6258,7 @@ app.get('/api/palace/:expertId/rooms', authMiddleware, (req, res) => {
 });
 
 // ─── Palace: Diary-Einträge eines Agenten ────────────────────────────────
-app.get('/api/palace/:expertId/diary', authMiddleware, (req, res) => {
+app.get('/api/palace/:expertId/diary', authMiddleware, requireResourceAccess("agent", "expertId"), (req, res) => {
   const expertId = req.params.agentId as string;
   const expert = db.select().from(agents).where(eq(agents.id, expertId as string)).get();
   if (!expert) return res.status(404).json({ error: 'Agent not found' });
@@ -5947,7 +6277,7 @@ app.get('/api/palace/:expertId/diary', authMiddleware, (req, res) => {
 });
 
 // ─── Palace: Knowledge Graph (company-weit, nur aktive Fakten) ───────────
-app.get('/api/palace/kg/:unternehmenId', authMiddleware, (req, res) => {
+app.get('/api/palace/kg/:unternehmenId', authMiddleware, requireCompanyAccess(), (req, res) => {
   const uid = req.params.unternehmenId as string;
   const fakten = db.select().from(palaceKg)
     .where(and(eq(palaceKg.companyId, uid), isNull(palaceKg.validUntil)))
@@ -5959,7 +6289,7 @@ app.get('/api/palace/kg/:unternehmenId', authMiddleware, (req, res) => {
 });
 
 // ─── Palace: KG — Fakt hinzufügen ────────────────────────────────────────
-app.post('/api/palace/kg/:unternehmenId', authMiddleware, (req, res) => {
+app.post('/api/palace/kg/:unternehmenId', authMiddleware, requireCompanyAccess(), (req, res) => {
   const uid = req.params.unternehmenId as string;
   const { subject, predicate, object } = req.body as { subject?: string; predicate?: string; object?: string };
   if (!subject?.trim() || !predicate?.trim() || !object?.trim()) {
@@ -5987,14 +6317,14 @@ app.post('/api/palace/kg/:unternehmenId', authMiddleware, (req, res) => {
 });
 
 // ─── Palace: KG — Fakt löschen ───────────────────────────────────────────
-app.delete('/api/palace/kg/:factId', authMiddleware, (req, res) => {
+app.delete('/api/palace/kg/:factId', authMiddleware, requireResourceAccess("palaceKgFact", "factId"), (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
   db.update(palaceKg).set({ validUntil: today }).where(eq(palaceKg.id, req.params.factId as string)).run();
   res.json({ ok: true });
 });
 
 // ─── Palace: Summary (Konsolidierungsstatus) ─────────────────────────────
-app.get('/api/palace/:expertId/summary', authMiddleware, (req, res) => {
+app.get('/api/palace/:expertId/summary', authMiddleware, requireResourceAccess("agent", "expertId"), (req, res) => {
   const { expertId } = req.params as { expertId: string };
   const s = db.select().from(palaceSummaries).where(eq(palaceSummaries.agentId, expertId)).get();
   if (!s) return res.json(null);
@@ -6002,7 +6332,7 @@ app.get('/api/palace/:expertId/summary', authMiddleware, (req, res) => {
 });
 
 // ─── Palace: Konsolidierung manuell auslösen ─────────────────────────────
-app.post('/api/palace/:expertId/consolidate', authMiddleware, async (req, res) => {
+app.post('/api/palace/:expertId/consolidate', authMiddleware, requireResourceAccess("agent", "expertId"), async (req, res) => {
   const { expertId } = req.params as { expertId: string };
   try {
     const { consolidateWing } = await import('./services/memory-consolidation.js');
@@ -6016,7 +6346,7 @@ app.post('/api/palace/:expertId/consolidate', authMiddleware, async (req, res) =
 });
 
 // ─── Palace: Neuen Drawer-Eintrag direkt schreiben ────────────────────────
-app.post('/api/palace/:expertId/rooms', authMiddleware, (req, res) => {
+app.post('/api/palace/:expertId/rooms', authMiddleware, requireResourceAccess("agent", "expertId"), (req, res) => {
   const { expertId } = req.params as { expertId: string };
   const { room, content } = req.body as { room: string; content: string };
   if (!room || !content) return res.status(400).json({ error: 'room und content erforderlich' });
@@ -6040,13 +6370,13 @@ app.post('/api/palace/:expertId/rooms', authMiddleware, (req, res) => {
 });
 
 // ─── Palace: Drawer-Eintrag löschen ──────────────────────────────────────
-app.delete('/api/palace/drawer/:entryId', authMiddleware, (req, res) => {
+app.delete('/api/palace/drawer/:entryId', authMiddleware, requireResourceAccess("palaceDrawer", "entryId"), (req, res) => {
   db.delete(palaceDrawers).where(eq(palaceDrawers.id, req.params.entryId as string)).run();
   res.json({ ok: true });
 });
 
 // ─── Palace: Diary-Eintrag löschen ───────────────────────────────────────
-app.delete('/api/palace/diary/:entryId', authMiddleware, (req, res) => {
+app.delete('/api/palace/diary/:entryId', authMiddleware, requireResourceAccess("palaceDiary", "entryId"), (req, res) => {
   db.delete(palaceDiary).where(eq(palaceDiary.id, req.params.entryId as string)).run();
   res.json({ ok: true });
 });
@@ -6074,7 +6404,7 @@ app.get('/api/nodes/status', authMiddleware, (_req, res) => {
   })));
 });
 
-app.get('/api/agents/:id/stats', authMiddleware, (req, res) => {
+app.get('/api/agents/:id/stats', authMiddleware, requireResourceAccess("agent"), (req, res) => {
   const expertId = req.params.id as string;
 
   // 30 days window for stats
@@ -6121,7 +6451,7 @@ app.get('/api/agents/:id/stats', authMiddleware, (req, res) => {
 // =============================================
 // HALLUCINATION / QUALITY TRACKING
 // =============================================
-app.get('/api/companies/:unternehmenId/agent-quality', authMiddleware, (req, res) => {
+app.get('/api/companies/:unternehmenId/agent-quality', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
   const { unternehmenId } = req.params;
   const daysBack = Number(req.query.days || 30);
   const since = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString();
@@ -6638,15 +6968,25 @@ Rules:
 
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON in response');
-    const plan = JSON.parse(jsonMatch[0]);
+    const rawPlan = JSON.parse(jsonMatch[0]);
 
-    res.json({ plan, source: 'ai' });
+    res.json({ plan: normalizeBootstrapPlan(rawPlan), source: 'ai' });
   } catch (e: any) {
     console.error('[Bootstrap] Plan generation failed:', e.message);
     const allSkillsFallback = await skillsService.getAllSkills();
-    res.json({ plan: buildFallbackPlan(businessDescription, dir, isDE, allSkillsFallback), source: 'default', warning: e.message });
+    res.json({ plan: normalizeBootstrapPlan(buildFallbackPlan(businessDescription, dir, isDE, allSkillsFallback)), source: 'default', warning: e.message });
   }
 });
+
+function normalizeBootstrapPlan(plan: any) {
+  return {
+    companyGoal: plan.companyGoal || '',
+    projekte: plan.projekte || plan.projects || [],
+    agenten: plan.agenten || plan.agents || [],
+    tasks: plan.tasks || [],
+    routinen: plan.routinen || plan.routines || [],
+  };
+}
 
 function buildFallbackPlan(description: string, workDir: string, isDE: boolean, allSkills: any[]) {
   const firstSkill = allSkills[0]?.id || 'javascript';
@@ -7724,17 +8064,16 @@ async function start() {
   }
 
   server.listen(PORT, () => {
-    console.log('\x1b[36m'); // cyan
-    console.log(' ██████╗ ██████╗ ███████╗███╗   ██╗ ██████╗ ██████╗  ██████╗ ███╗   ██╗██╗████████╗');
-    console.log('██╔═══██╗██╔══██╗██╔════╝████╗  ██║██╔════╝██╔═══██╗██╔════╝ ████╗  ██║██║╚══██╔══╝');
-    console.log('██║   ██║██████╔╝█████╗  ██╔██╗ ██║██║     ██║   ██║██║  ███╗██╔██╗ ██║██║   ██║   ');
-    console.log('██║   ██║██╔═══╝ ██╔══╝  ██║╚██╗██║██║     ██║   ██║██║   ██║██║╚██╗██║██║   ██║   ');
-    console.log('╚██████╔╝██║     ███████╗██║ ╚████║╚██████╗╚██████╔╝╚██████╔╝██║ ╚████║██║   ██║   ');
-    console.log(' ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝ ╚═════╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═══╝╚═╝   ╚═╝  ');
-    console.log('\x1b[0m'); // reset
-    console.log(`\x1b[36m  🚀 API        \x1b[0m http://localhost:${PORT}`);
-    console.log(`\x1b[36m  📡 WebSocket  \x1b[0m ws://localhost:${PORT}/ws`);
-    console.log(`\x1b[36m  📊 Health     \x1b[0m http://localhost:${PORT}/api/health`);
+    const G = '\x1b[1;33m'; const R = '\x1b[0m';
+    console.log(`${G} ██████╗ ██████╗ ███████╗███╗   ██╗ ██████╗ ██████╗  ██████╗ ███╗   ██╗██╗████████╗${R}`);
+    console.log(`${G}██╔═══██╗██╔══██╗██╔════╝████╗  ██║██╔════╝██╔═══██╗██╔════╝ ████╗  ██║██║╚══██╔══╝${R}`);
+    console.log(`${G}██║   ██║██████╔╝█████╗  ██╔██╗ ██║██║     ██║   ██║██║  ███╗██╔██╗ ██║██║   ██║   ${R}`);
+    console.log(`${G}██║   ██║██╔═══╝ ██╔══╝  ██║╚██╗██║██║     ██║   ██║██║   ██║██║╚██╗██║██║   ██║   ${R}`);
+    console.log(`${G}╚██████╔╝██║     ███████╗██║ ╚████║╚██████╗╚██████╔╝╚██████╔╝██║ ╚████║██║   ██║   ${R}`);
+    console.log(`${G} ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝ ╚═════╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═══╝╚═╝   ╚═╝  ${R}`);
+    console.log(`\x1b[1;33m  🚀 API        \x1b[0m http://localhost:${PORT}`);
+    console.log(`\x1b[1;33m  📡 WebSocket  \x1b[0m ws://localhost:${PORT}/ws`);
+    console.log(`\x1b[1;33m  📊 Health     \x1b[0m http://localhost:${PORT}/api/health`);
     console.log(`\x1b[90m\n  Cron → Wakeup → Heartbeat → Adapter → Done\x1b[0m\n`);
   });
 }

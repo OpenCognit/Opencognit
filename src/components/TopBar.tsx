@@ -240,6 +240,7 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
         {/* Live agent indicator */}
         {runningAgents > 0 && (
           <button
+            data-tour-step="war-room"
             onClick={() => navigate('/war-room')}
             title={i18n.t.tooltips.agentsRunning}
             style={{

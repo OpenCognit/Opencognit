@@ -22,6 +22,8 @@ export const SENSITIVE_KEYS = new Set([
   'openrouter_api_key',
   'openai_api_key',
   'google_api_key',
+  'poe_api_key',
+  'moonshot_api_key',
   'jwt_secret',
   'webhook_secret',
   'telegram_bot_token',

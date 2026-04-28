@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-  Users, ListTodo, Wallet, Gauge, ArrowRight, ShieldCheck,
+  Users, ListTodo, ArrowRight, ShieldCheck,
   Loader2, Plus, MessageSquare, Zap, ZapOff, CheckCircle2,
   AlertCircle, Clock, Radio, Activity, Building2,
   Target, FolderOpen, Cpu, TrendingUp, TrendingDown, Minus,
@@ -110,7 +110,7 @@ function DailyBriefingWidget({ unternehmenId, lang }: { unternehmenId: string; l
     <div style={{
       padding: '1.125rem 1.5rem',
       background: 'rgba(197,160,89,0.03)',
-      backdropFilter: 'blur(20px)',
+      // backdropFilter removed
       borderRadius: 0,
       border: '1px solid rgba(197,160,89,0.1)',
     }}>
@@ -289,7 +289,7 @@ function Card({ children, style = {}, accent = '#c5a059', onClick }: {
         position: 'relative',
         overflow: 'hidden',
         background: hovered ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.04)',
-        backdropFilter: 'blur(24px) saturate(160%)',
+        // backdropFilter removed
         borderRadius: 0,
         border: `1px solid ${hovered ? `${accent}30` : 'rgba(255,255,255,0.09)'}`,
         transform: hovered ? 'translateY(-2px)' : 'none',
@@ -1060,7 +1060,7 @@ function CompanyBrief({
       display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap',
       padding: '0.875rem 1.5rem', borderRadius: 0,
       background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)',
-      backdropFilter: 'blur(20px)',
+      // backdropFilter removed
     }}>
       {/* Date label */}
       <div style={{ flexShrink: 0 }}>
@@ -1161,7 +1161,7 @@ function AgentMissionCard({
         borderRadius: 0, padding: '1.25rem',
         background: hovered ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.035)',
         border: `1px solid ${borderColor}`,
-        backdropFilter: 'blur(24px) saturate(160%)',
+        // backdropFilter removed
         boxShadow: shadowStyle,
         transform: hovered ? 'translateY(-3px)' : 'none',
         transition: 'all 0.25s cubic-bezier(0.4,0,0.2,1)',
@@ -2076,7 +2076,7 @@ function QuickActionCard({ item, onClick }: {
         display: 'flex', alignItems: 'center', gap: '0.75rem',
         padding: '0.875rem 1.125rem', borderRadius: 0,
         background: hovered ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.04)',
-        backdropFilter: 'blur(24px) saturate(160%)',
+        // backdropFilter removed
         border: `1px solid ${hovered ? `${accent}30` : 'rgba(255,255,255,0.09)'}`,
         transform: hovered ? 'translateY(-2px)' : 'none',
         boxShadow: hovered
@@ -2184,19 +2184,34 @@ export function Dashboard() {
 
   if (!aktivesUnternehmen) return null;
 
-  if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-      <Loader2 size={28} style={{ color: '#c5a059', animation: 'spin 1s linear infinite' }} />
-    </div>
+  // Wizard must stay mounted across loading/refresh cycles, otherwise its
+  // internal state (step, description, workDir, plan) resets every 30s.
+  const wizardOverlay = showWizard && (
+    <SetupWizard
+      onClose={() => setShowWizard(false)}
+      onDone={() => { setShowWizard(false); setWizardDismissed(true); localStorage.setItem('oc_wizard_dismissed', '1'); reload(); }}
+    />
+  );
+
+  if (loading && !data) return (
+    <>
+      {wizardOverlay}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <Loader2 size={28} style={{ color: '#c5a059', animation: 'spin 1s linear infinite' }} />
+      </div>
+    </>
   );
 
   if (!data) return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: '0.75rem' }}>
-      <AlertCircle size={32} style={{ color: '#ef4444' }} />
-      <p style={{ color: '#94a3b8', fontSize: '0.9375rem', margin: 0 }}>
-        {error ? (lang === 'de' ? `Fehler: ${error}` : `Error: ${error}`) : (lang === 'de' ? 'Keine Daten verfügbar' : 'No data available')}
-      </p>
-    </div>
+    <>
+      {wizardOverlay}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: '0.75rem' }}>
+        <AlertCircle size={32} style={{ color: '#ef4444' }} />
+        <p style={{ color: '#94a3b8', fontSize: '0.9375rem', margin: 0 }}>
+          {error ? (lang === 'de' ? `Fehler: ${error}` : `Error: ${error}`) : (lang === 'de' ? 'Keine Daten verfügbar' : 'No data available')}
+        </p>
+      </div>
+    </>
   );
 
   const { experten, aufgaben, kosten, pendingApprovals, topExperten, letzteAktivitaet } = data;
@@ -2215,16 +2230,154 @@ export function Dashboard() {
   const taskTrend: 'up' | 'down' | 'neutral' = aufgaben.inBearbeitung > 0 ? 'up' : 'neutral';
   const budgetTrend: 'up' | 'down' | 'neutral' = kosten.prozent > 80 ? 'up' : kosten.prozent < 20 ? 'neutral' : 'neutral';
 
+  const de = lang === 'de';
+
+  // ── Hero KPI data ──
+  const heroKpis = [
+    {
+      value: experten.running > 0 ? experten.running : experten.aktiv,
+      label: experten.running > 0 ? (de ? 'Agenten aktiv' : 'Agents live') : (de ? 'Agenten bereit' : 'Agents ready'),
+      color: experten.running > 0 ? '#c5a059' : '#5c554d',
+      pulse: experten.running > 0,
+      link: '/experts',
+    },
+    {
+      value: aufgaben.inBearbeitung,
+      label: de ? 'In Bearbeitung' : 'In Progress',
+      color: aufgaben.inBearbeitung > 0 ? '#9b87c8' : '#5c554d',
+      pulse: false,
+      link: '/tasks',
+    },
+    {
+      value: aufgaben.offen,
+      label: de ? 'Tasks offen' : 'Tasks open',
+      color: aufgaben.offen > 0 ? '#ede5d8' : '#5c554d',
+      pulse: false,
+      link: '/tasks',
+    },
+    {
+      value: aufgaben.blockiert > 0 ? aufgaben.blockiert : (pendingApprovals > 0 ? pendingApprovals : '✓'),
+      label: aufgaben.blockiert > 0 ? (de ? 'Blockiert' : 'Blocked') : (de ? 'Genehmigungen' : 'Approvals'),
+      color: aufgaben.blockiert > 0 ? '#c97b7b' : pendingApprovals > 0 ? '#d4a373' : '#5c554d',
+      pulse: aufgaben.blockiert > 0 || pendingApprovals > 0,
+      link: aufgaben.blockiert > 0 ? '/tasks' : '/approvals',
+    },
+    {
+      value: `${kosten.prozent}%`,
+      label: de ? 'Budget verbraucht' : 'Budget used',
+      color: budgetColor,
+      pulse: false,
+      link: '/costs',
+    },
+  ];
+
+  // ── Alert conditions ──
+  const alerts: Array<{ msg: string; color: string; link: string }> = [];
+  if (pendingApprovals > 0) alerts.push({ msg: de ? `${pendingApprovals} Genehmigung${pendingApprovals > 1 ? 'en' : ''} ausstehend` : `${pendingApprovals} approval${pendingApprovals > 1 ? 's' : ''} pending`, color: '#d4a373', link: '/approvals' });
+  if (aufgaben.blockiert > 0) alerts.push({ msg: de ? `${aufgaben.blockiert} Tasks blockiert` : `${aufgaben.blockiert} tasks blocked`, color: '#c97b7b', link: '/tasks' });
+  if (kosten.prozent >= 90) alerts.push({ msg: de ? `Budget fast aufgebraucht (${kosten.prozent}%)` : `Budget nearly exhausted (${kosten.prozent}%)`, color: '#c97b7b', link: '/costs' });
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
       {/* ── CEO Setup Wizard Modal ── */}
-      {showWizard && (
-        <SetupWizard
-          onClose={() => setShowWizard(false)}
-          onDone={() => { setShowWizard(false); setWizardDismissed(true); localStorage.setItem('oc_wizard_dismissed', '1'); reload(); }}
-        />
+      {wizardOverlay}
+
+      {/* ── ALERT STRIP — action required, always first ── */}
+      {alerts.length > 0 && (
+        <div style={{
+          display: 'flex', gap: '0.75rem', flexWrap: 'wrap',
+        }}>
+          {alerts.map((a, i) => (
+            <button
+              key={i}
+              onClick={() => navigate(a.link)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.625rem',
+                padding: '0.625rem 1.125rem',
+                background: `${a.color}10`,
+                border: `1px solid ${a.color}40`,
+                color: a.color, cursor: 'pointer',
+                fontSize: '0.875rem', fontWeight: 700,
+                letterSpacing: '0.01em',
+              }}
+            >
+              <div style={{ width: 7, height: 7, borderRadius: '50%', background: a.color, boxShadow: `0 0 8px ${a.color}`, animation: 'pulse 1.5s ease-in-out infinite', flexShrink: 0 }} />
+              {a.msg}
+              <span style={{ opacity: 0.5, fontSize: '0.75rem' }}>→</span>
+            </button>
+          ))}
+        </div>
       )}
+
+      {/* ── HEADER ── */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.375rem' }}>
+            <span style={{ fontSize: '0.625rem', fontWeight: 700, color: '#c5a059', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
+              {aktivesUnternehmen.name}
+            </span>
+            {experten.running > 0 && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.1rem 0.5rem', border: '1px solid rgba(197,160,89,0.2)', fontSize: '0.5625rem', color: '#c5a059', fontWeight: 700, letterSpacing: '0.08em' }}>
+                <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#c5a059', animation: 'pulse 1.5s ease-in-out infinite' }} />
+                {experten.running} LIVE
+              </span>
+            )}
+          </div>
+          <h1 className="page-title" style={{ margin: 0 }}>
+            {t.dashboard.title}
+          </h1>
+          {(aktivesUnternehmen.ziel || aktivesUnternehmen.beschreibung) && (
+            <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-tertiary)', marginTop: '0.375rem', maxWidth: 480, lineHeight: 1.5 }}>
+              {((aktivesUnternehmen.ziel || aktivesUnternehmen.beschreibung) ?? '').slice(0, 100)}
+              {((aktivesUnternehmen.ziel || aktivesUnternehmen.beschreibung) ?? '').length > 100 ? '…' : ''}
+            </p>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexShrink: 0 }}>
+          <button onClick={() => navigate('/war-room')} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.875rem', background: 'rgba(155,135,200,0.08)', border: '1px solid rgba(155,135,200,0.2)', color: '#9b87c8', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>
+            <MonitorPlay size={14} /> {de ? 'War Room' : 'War Room'}
+          </button>
+          <button onClick={() => navigate('/tasks')} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.875rem', background: 'rgba(197,160,89,0.1)', border: '1px solid rgba(197,160,89,0.25)', color: '#c5a059', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>
+            <Plus size={14} /> {de ? 'Neue Aufgabe' : 'New Task'}
+          </button>
+        </div>
+      </div>
+
+      {/* ── HERO KPI STRIP ── */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: `repeat(${heroKpis.length}, 1fr)`,
+        border: '1px solid rgba(197,160,89,0.12)',
+      }}>
+        {heroKpis.map((kpi, i) => (
+          <button
+            key={i}
+            onClick={() => navigate(kpi.link)}
+            style={{
+              display: 'flex', flexDirection: 'column', gap: '0.375rem',
+              padding: '1.375rem 1.5rem',
+              background: 'rgba(8,6,4,0.82)',
+              border: 'none',
+              borderRight: i < heroKpis.length - 1 ? '1px solid rgba(197,160,89,0.10)' : 'none',
+              cursor: 'pointer', textAlign: 'left',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(197,160,89,0.05)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'rgba(8,6,4,0.82)')}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              {kpi.pulse && <div style={{ width: 6, height: 6, borderRadius: '50%', background: kpi.color, boxShadow: `0 0 6px ${kpi.color}`, animation: 'pulse 2s ease-in-out infinite', flexShrink: 0 }} />}
+              <span style={{ fontSize: '2.25rem', fontWeight: 800, color: kpi.color, lineHeight: 1, fontFamily: 'var(--font-mono)', letterSpacing: '-0.03em' }}>
+                {kpi.value}
+              </span>
+            </div>
+            <span style={{ fontSize: '0.625rem', fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'var(--font-mono)' }}>
+              {kpi.label}
+            </span>
+          </button>
+        ))}
+      </div>
 
       {/* ── First-Run Banner ── */}
       {isFirstRun && !wizardDismissed && (
@@ -2269,384 +2422,6 @@ export function Dashboard() {
               <Sparkles size={14} /> {lang === 'de' ? 'CEO Setup starten' : 'Start CEO Setup'}
             </button>
           </div>
-        </div>
-      )}
-
-      {/* ── Header ── */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.375rem' }}>
-            <Building2 size={14} style={{ color: '#c5a059' }} />
-            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#c5a059', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-              {aktivesUnternehmen.name}
-            </span>
-            {hasRunningAgents && (
-              <span style={{
-                display: 'flex', alignItems: 'center', gap: '0.3rem',
-                padding: '0.15rem 0.5rem', borderRadius: '9999px',
-                background: 'rgba(197,160,89,0.1)', border: '1px solid rgba(197,160,89,0.2)',
-                fontSize: '0.625rem', color: '#c5a059', fontWeight: 700,
-              }}>
-                <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#c5a059', animation: 'pulse 1.5s ease-in-out infinite' }} />
-                {experten.running} {lang === 'de' ? 'aktiv' : 'live'}
-              </span>
-            )}
-          </div>
-          <h1 style={{
-            fontSize: '1.875rem', fontWeight: 800, margin: 0, lineHeight: 1.1,
-            background: 'linear-gradient(135deg, #f8fafc 0%, #94a3b8 100%)',
-            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
-          }}>
-            {t.dashboard.title}
-          </h1>
-          {(aktivesUnternehmen.ziel || aktivesUnternehmen.beschreibung) && (
-            <p style={{ fontSize: '0.8125rem', color: '#475569', marginTop: '0.375rem', maxWidth: 540, lineHeight: 1.5 }}>
-              {(aktivesUnternehmen.ziel || aktivesUnternehmen.beschreibung)?.slice(0, 120)}
-              {((aktivesUnternehmen.ziel || aktivesUnternehmen.beschreibung) ?? '').length > 120 ? '…' : ''}
-            </p>
-          )}
-          {/* Project directory indicator */}
-          {(aktivesUnternehmen as any).workDir ? (
-            <button
-              onClick={async () => {
-                await authFetch(`/api/unternehmen/${aktivesUnternehmen.id}/open-folder`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ path: (aktivesUnternehmen as any).workDir }),
-                });
-              }}
-              title={t.tooltips.openProjectFolder}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '0.375rem',
-                marginTop: '0.5rem', padding: '0.25rem 0.625rem',
-                background: 'rgba(35,205,203,0.08)', border: '1px solid rgba(35,205,203,0.2)',
-                borderRadius: 0, cursor: 'pointer',
-                fontSize: '0.7rem', color: '#c5a059', fontFamily: 'monospace',
-                maxWidth: 420, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}
-            >
-              <FolderOpen size={11} />
-              {(aktivesUnternehmen as any).workDir}
-            </button>
-          ) : (
-            <button
-              onClick={() => navigate('/settings')}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '0.375rem',
-                marginTop: '0.5rem', padding: '0.25rem 0.625rem',
-                background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)',
-                borderRadius: 0, cursor: 'pointer',
-                fontSize: '0.7rem', color: '#f59e0b',
-              }}
-            >
-              <FolderOpen size={11} />
-              {lang === 'de' ? 'Projektverzeichnis einrichten →' : 'Set up project directory →'}
-            </button>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <button onClick={() => navigate('/approvals')} style={{
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            padding: '0.625rem 1rem', borderRadius: 0,
-            background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)',
-            color: '#f59e0b', fontWeight: 700, fontSize: '0.8125rem', cursor: 'pointer',
-          }}>
-            <ShieldCheck size={15} />
-            {lang === 'de' ? 'Genehmigungen' : 'Approvals'}
-          </button>
-          <button onClick={() => navigate('/war-room')} style={{
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            padding: '0.625rem 1rem', borderRadius: 0,
-            background: 'rgba(155,135,200,0.08)', border: '1px solid rgba(155,135,200,0.2)',
-            color: '#9b87c8', fontWeight: 700, fontSize: '0.8125rem', cursor: 'pointer',
-          }}>
-            <MonitorPlay size={15} />
-            {lang === 'de' ? 'Live Room' : 'Live Room'}
-          </button>
-          <button onClick={() => navigate('/tasks')} style={{
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            padding: '0.625rem 1rem', borderRadius: 0,
-            background: 'rgba(197,160,89,0.1)', border: '1px solid rgba(197,160,89,0.2)',
-            color: '#c5a059', fontWeight: 700, fontSize: '0.8125rem', cursor: 'pointer',
-          }}>
-            <Plus size={15} />
-            {lang === 'de' ? 'Neue Aufgabe' : 'New Task'}
-          </button>
-        </div>
-      </div>
-
-      {/* ── Onboarding ── */}
-      <GettingStartedCard
-        companyId={aktivesUnternehmen.id}
-        hasAgents={experten.gesamt > 0}
-        hasCycle={alleExperten.some((e: any) => e.zyklusAktiv)}
-        hasTasks={aufgaben.gesamt > 0}
-        hasDoneTasks={aufgaben.erledigt > 0}
-        lang={lang}
-        navigate={navigate}
-      />
-
-      {/* ── Top Row: Greeting + Health ── */}
-      {(() => {
-        const de = lang === 'de';
-        const todayEvents = letzteAktivitaet.filter(a => new Date(a.erstelltAm).toDateString() === new Date().toDateString()).length;
-        const hour = new Date().getHours();
-        const greeting = de
-          ? hour < 12 ? 'Guten Morgen' : hour < 18 ? 'Guten Nachmittag' : 'Guten Abend'
-          : hour < 12 ? 'Good Morning' : hour < 18 ? 'Good Afternoon' : 'Good Evening';
-
-        let insight = '';
-        if (kosten.prozent >= 90) {
-          insight = de ? `⚠ Budget fast aufgebraucht (${kosten.prozent}%)` : `⚠ Budget nearly exhausted (${kosten.prozent}%)`;
-        } else if (pendingApprovals > 0) {
-          insight = de ? `${pendingApprovals} Genehmigung${pendingApprovals > 1 ? 'en' : ''} warten auf dich` : `${pendingApprovals} approval${pendingApprovals > 1 ? 's' : ''} waiting for you`;
-        } else if (aufgaben.blockiert > 0) {
-          insight = de ? `${aufgaben.blockiert} blockierte Aufgabe${aufgaben.blockiert > 1 ? 'n' : ''} — Eingriff empfohlen` : `${aufgaben.blockiert} blocked task${aufgaben.blockiert > 1 ? 's' : ''} — action recommended`;
-        } else if (experten.running > 0) {
-          insight = de ? `${experten.running} Agent${experten.running > 1 ? 'en' : ''} arbeite${experten.running > 1 ? 'n' : 't'} gerade` : `${experten.running} agent${experten.running > 1 ? 's' : ''} working right now`;
-        } else if (aufgaben.erledigt > 0) {
-          insight = de ? `${aufgaben.erledigt} Aufgaben erledigt — gute Arbeit!` : `${aufgaben.erledigt} tasks completed — great work!`;
-        } else if (experten.gesamt === 0) {
-          insight = de ? 'Starte mit dem CEO Setup um dein Team einzurichten' : 'Start with CEO Setup to configure your team';
-        } else {
-          insight = de ? 'System bereit — keine aktiven Aufgaben' : 'System ready — no active tasks';
-        }
-
-        return (
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: '0.875rem' }}>
-            {/* Left: Status Overview */}
-            <Card style={{ padding: '1.5rem' }} accent="#c5a059">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div>
-                  <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#f1f5f9', margin: 0, lineHeight: 1.2 }}>
-                    {greeting}
-                  </h2>
-                  <p style={{ fontSize: '0.8125rem', color: '#64748b', margin: '0.25rem 0 0' }}>
-                    {new Date().toLocaleDateString(de ? 'de-DE' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' })}
-                  </p>
-                </div>
-                {/* Metrics row */}
-                <div style={{ display: 'flex', gap: '0', flexWrap: 'wrap' }}>
-                  {[
-                    { label: de ? 'Agents live' : 'Agents live',     value: experten.running,     color: experten.running > 0 ? '#c5a059' : '#475569', pulse: experten.running > 0 },
-                    { label: de ? 'Tasks open' : 'Tasks open',     value: aufgaben.offen,       color: aufgaben.offen > 0 ? '#94a3b8' : '#334155',   pulse: false },
-                    { label: de ? 'Budget used' : 'Budget used',    value: `${kosten.prozent}%`, color: budgetColor,                                   pulse: false },
-                    { label: de ? 'Events today' : 'Events today', value: todayEvents,          color: todayEvents > 0 ? '#64748b' : '#334155',        pulse: false },
-                  ].map((m, i, arr) => (
-                    <div key={i} style={{
-                      display: 'flex', flexDirection: 'column', gap: '0.25rem',
-                      paddingRight: i < arr.length - 1 ? '1.75rem' : 0,
-                      marginRight: i < arr.length - 1 ? '1.75rem' : 0,
-                      borderRight: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none',
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                        {m.pulse && (
-                          <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#c5a059', boxShadow: '0 0 6px #c5a059', animation: 'pulse 2s ease-in-out infinite', flexShrink: 0 }} />
-                        )}
-                        <span style={{ fontSize: '1.75rem', fontWeight: 800, color: m.color, lineHeight: 1 }}>{m.value}</span>
-                      </div>
-                      <span style={{ fontSize: '0.6875rem', color: '#475569', fontWeight: 500 }}>{m.label}</span>
-                    </div>
-                  ))}
-                </div>
-                {/* Insight line */}
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: '0.5rem',
-                  padding: '0.5rem 0.75rem', borderRadius: 0,
-                  background: pendingApprovals > 0 || aufgaben.blockiert > 0 || kosten.prozent >= 90
-                    ? 'rgba(245,158,11,0.06)' : experten.running > 0
-                    ? 'rgba(197,160,89,0.06)' : 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${pendingApprovals > 0 || aufgaben.blockiert > 0 || kosten.prozent >= 90
-                    ? 'rgba(245,158,11,0.15)' : experten.running > 0
-                    ? 'rgba(197,160,89,0.12)' : 'rgba(255,255,255,0.06)'}`,
-                }}>
-                  <span style={{
-                    fontSize: '0.75rem', fontWeight: 500,
-                    color: pendingApprovals > 0 || aufgaben.blockiert > 0 || kosten.prozent >= 90
-                      ? '#f59e0b' : experten.running > 0 ? '#c5a059' : '#475569',
-                  }}>
-                    {insight}
-                  </span>
-                </div>
-              </div>
-            </Card>
-
-            {/* Right: Health Score */}
-            <Card style={{ padding: '1.5rem' }} accent={healthColor}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.875rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
-                  <Gauge size={16} style={{ color: healthColor }} />
-                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#94a3b8' }}>
-                    {de ? 'Unternehmensgesundheit' : 'Company Health'}
-                  </span>
-                </div>
-                <div style={{ position: 'relative' }}>
-                  <HealthScoreGauge score={healthScore} color={healthColor} size={96} />
-                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.1rem' }}>
-                    <span style={{ fontSize: 22, fontWeight: 900, color: healthColor, lineHeight: 1 }}>{healthScore}</span>
-                    <span style={{ fontSize: '0.5625rem', fontWeight: 700, color: healthColor, opacity: 0.7, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{healthGrade}</span>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', width: '100%' }}>
-                  {healthFactors.length === 0 ? (
-                    <div style={{ textAlign: 'center', fontSize: '0.6875rem', color: '#334155', fontStyle: 'italic' }}>
-                      {de ? 'Keine Probleme erkannt' : 'No issues detected'}
-                    </div>
-                  ) : (
-                    healthFactors.slice(0, 4).map((f, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                        <div style={{ width: 5, height: 5, borderRadius: '50%', background: f.color, flexShrink: 0 }} />
-                        <span style={{ fontSize: '0.6875rem', color: f.color, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {f.delta < 0 ? `${f.delta} ` : ''}{f.label}
-                        </span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </Card>
-          </div>
-        );
-      })()}
-
-      {/* ── Status Overview Card ── */}
-      {(() => {
-        const de = lang === 'de';
-        const statusRows = [
-          {
-            icon: <Users size={15} style={{ color: '#c5a059' }} />,
-            label: de ? 'Agenten' : 'Agents',
-            value: `${experten.aktiv} / ${experten.gesamt}`,
-            detail: `${experten.running} ${de ? 'laufen' : 'running'}`,
-            color: '#c5a059',
-            link: '/experts',
-          },
-          {
-            icon: <ListTodo size={15} style={{ color: '#3b82f6' }} />,
-            label: de ? 'Aufgaben' : 'Tasks',
-            value: `${aufgaben.offen}`,
-            detail: `${aufgaben.inBearbeitung} ${de ? 'aktiv' : 'active'} · ${aufgaben.blockiert} ${de ? 'blockiert' : 'blocked'} · ${aufgaben.erledigt} ${de ? 'erledigt' : 'done'}`,
-            color: '#3b82f6',
-            link: '/tasks',
-          },
-          {
-            icon: <FolderOpen size={15} style={{ color: '#9b87c8' }} />,
-            label: de ? 'Projekte' : 'Projects',
-            value: `${topProjekte.length}`,
-            detail: `${topProjekte.filter((p: any) => p.status === 'abgeschlossen').length} ${de ? 'abgeschlossen' : 'completed'}`,
-            color: '#9b87c8',
-            link: '/projects',
-          },
-          {
-            icon: <AlertCircle size={15} style={{ color: '#ef4444' }} />,
-            label: de ? 'Überfällig' : 'Overdue',
-            value: '0',
-            detail: de ? 'Alles im Plan' : 'All on schedule',
-            color: '#22c55e',
-            link: '/tasks',
-          },
-          {
-            icon: <Wallet size={15} style={{ color: budgetColor }} />,
-            label: de ? 'Budget' : 'Budget',
-            value: euro(kosten.gesamtVerbraucht),
-            detail: `${de ? 'von' : 'of'} ${euro(kosten.gesamtBudget)}  ·  ${kosten.prozent}%`,
-            color: budgetColor,
-            link: '/costs',
-            hasBar: true,
-          },
-          {
-            icon: <ShieldCheck size={15} style={{ color: pendingApprovals > 0 ? '#f59e0b' : '#22c55e' }} />,
-            label: de ? 'Genehmigungen' : 'Approvals',
-            value: pendingApprovals > 0 ? String(pendingApprovals) : '✓',
-            detail: pendingApprovals > 0
-              ? (de ? 'Ausstehende Anfragen' : 'Pending requests')
-              : (de ? 'Alles erledigt' : 'All clear'),
-            color: pendingApprovals > 0 ? '#f59e0b' : '#22c55e',
-            link: '/approvals',
-          },
-        ];
-
-        return (
-          <div style={{
-            padding: '1.25rem 1.5rem',
-            background: 'rgba(255,255,255,0.03)',
-            border: '1px solid rgba(255,255,255,0.07)',
-            backdropFilter: 'blur(20px)',
-          }}>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-              gap: '0.5rem 1.5rem',
-            }}>
-              {statusRows.map((row, i) => (
-                <div
-                  key={i}
-                  onClick={() => navigate(row.link)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '0.625rem',
-                    padding: '0.625rem 0',
-                    cursor: 'pointer',
-                    borderBottom: i < statusRows.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
-                  }}
-                >
-                  <div style={{
-                    width: 28, height: 28, flexShrink: 0,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: `${row.color}12`, border: `1px solid ${row.color}20`,
-                  }}>
-                    {row.icon}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
-                      <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#f1f5f9' }}>
-                        {row.value}
-                      </span>
-                      <span style={{ fontSize: '0.75rem', color: '#475569', fontWeight: 500 }}>
-                        {row.label}
-                      </span>
-                    </div>
-                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                      {row.detail}
-                    </span>
-                    {row.hasBar && (
-                      <div style={{ height: 3, marginTop: '0.375rem', background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-                        <div style={{
-                          height: '100%', background: row.color,
-                          width: `${Math.min(kosten.prozent, 100)}%`, transition: 'width 0.6s ease',
-                        }} />
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* ── Approval Pending Banner ── */}
-      {pendingApprovals > 0 && (
-        <div style={{
-          padding: '0.875rem 1.25rem', borderRadius: 0,
-          background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.2)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <AlertCircle size={16} style={{ color: '#f59e0b' }} />
-            <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#f59e0b' }}>
-              {pendingApprovals} {lang === 'de' ? `Genehmigung${pendingApprovals !== 1 ? 'en' : ''} ausstehend` : `approval${pendingApprovals !== 1 ? 's' : ''} pending`}
-            </span>
-          </div>
-          <button onClick={() => navigate('/approvals')} style={{
-            padding: '0.375rem 0.875rem', borderRadius: 0,
-            background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)',
-            color: '#f59e0b', fontSize: '0.8125rem', fontWeight: 700, cursor: 'pointer',
-          }}>
-            {lang === 'de' ? 'Prüfen →' : 'Review →'}
-          </button>
         </div>
       )}
 

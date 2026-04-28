@@ -2679,7 +2679,10 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                     {m.images && m.images.map((img: string, idx: number) => (
                       <img key={idx} src={img} alt="" style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 0, marginBottom: 8, display: 'block' }} />
                     ))}
-                    <MessageContent text={m.nachricht} />
+                    {!m.nachricht && isStreaming
+                      ? <span style={{ color: 'var(--color-text-muted)', fontStyle: 'italic', fontSize: 12 }}>{m.thinking || (de ? 'Denkt nach…' : 'Thinking…')}</span>
+                      : <MessageContent text={m.nachricht} />
+                    }
                     {isStreaming && <span style={{ display: 'inline-block', width: 6, height: 6, background: 'var(--color-accent)', marginLeft: 4, verticalAlign: 'middle', animation: 'pulse 1s infinite' }} />}
                   </div>
                   <div style={{ fontSize: 10, opacity: 0.3, marginTop: 4, textAlign: isAgent ? 'left' : 'right', display: 'flex', alignItems: 'center', gap: 8, justifyContent: isAgent ? 'flex-start' : 'flex-end' }}>

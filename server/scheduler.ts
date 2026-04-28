@@ -1470,7 +1470,15 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
       try {
         const data = JSON.parse(jsonStr.trim());
         if (data && data.action) {
-          await this.executeAgentAction(companyId, agentId, data.action, data.params, fromBoard, workspacePath);
+          // Normalize German param keys → English (prompts use DE, handlers expect EN)
+          const params = data.params || {};
+          if (params.titel !== undefined && params.title === undefined) params.title = params.titel;
+          if (params.beschreibung !== undefined && params.description === undefined) params.description = params.beschreibung;
+          if (params.prioritaet !== undefined && params.priority === undefined) params.priority = params.prioritaet;
+          if (params.zugewiesenAn !== undefined && params.assignedTo === undefined) params.assignedTo = params.zugewiesenAn;
+          if (params.rolle !== undefined && params.role === undefined) params.role = params.rolle;
+          if (params.faehigkeiten !== undefined && params.skills === undefined) params.skills = params.faehigkeiten;
+          await this.executeAgentAction(companyId, agentId, data.action, params, fromBoard, workspacePath);
         }
       } catch (e) {
         console.error("Konnte Agent Action JSON nicht parsen:", e);

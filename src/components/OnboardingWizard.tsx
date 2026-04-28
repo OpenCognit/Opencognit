@@ -228,6 +228,7 @@ export function OnboardingWizard() {
       const agent = await agentRes.json();
 
       // 4. Hard-navigate to CEO chat (resets App state with new company)
+      localStorage.removeItem('oc_force_onboarding');
       window.location.href = `/chat?agent=${agent.id}&company=${company.id}`;
     } catch (e: any) {
       setError(e.message || o.errorGeneric);

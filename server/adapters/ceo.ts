@@ -836,6 +836,14 @@ Regeln:
     const chatReply: string = parsed?.reply || '';
 
     const actions: any[] = parsed?.actions || [];
+    // Normalize German keys → English (prompts/schemas use DE, handlers expect EN)
+    for (const action of actions) {
+      if (action.titel !== undefined && action.title === undefined) action.title = action.titel;
+      if (action.beschreibung !== undefined && action.description === undefined) action.description = action.beschreibung;
+      if (action.prioritaet !== undefined && action.priority === undefined) action.priority = action.prioritaet;
+      if (action.rolle !== undefined && action.role === undefined) action.role = action.rolle;
+      if (action.faehigkeiten !== undefined && action.skills === undefined) action.skills = action.faehigkeiten;
+    }
     const summary: string = parsed?.summary || '';
     const log: string[] = [];
     // Collect agents to wake in parallel at the end (avoid sequential delays)

@@ -18,20 +18,27 @@ if (!isPg) {
   const { drizzle } = await import('drizzle-orm/better-sqlite3');
   const schema = await import('./schema.js');
 
+  const isTest = process.env.VITEST === 'true' || process.env.NODE_ENV === 'test';
   const DATA_DIR = path.join(process.cwd(), 'data');
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-  const DB_PATH = path.join(DATA_DIR, 'opencognit.db');
+  const DB_PATH = isTest ? ':memory:' : path.join(DATA_DIR, 'opencognit.db');
   sqlite = new Database(DB_PATH);
-  sqlite.pragma('journal_mode = WAL');
+  if (!isTest) {
+    sqlite.pragma('journal_mode = WAL');
+    sqlite.pragma('synchronous = NORMAL');  // Faster writes, still crash-safe with WAL
+    sqlite.pragma('cache_size = -32000');   // 32MB page cache for better read performance
+  }
   sqlite.pragma('foreign_keys = ON');
-  sqlite.pragma('synchronous = NORMAL');  // Faster writes, still crash-safe with WAL
-  sqlite.pragma('cache_size = -32000');   // 32MB page cache for better read performance
   sqlite.pragma('temp_store = memory');   // Temp tables in memory
   sqlite.pragma('busy_timeout = 5000');   // Wait up to 5s on SQLITE_BUSY instead of crashing
 
   db = drizzle(sqlite, { schema });
-  console.log('🗄️  SQLite Datenbank:', DB_PATH);
+  if (isTest) {
+    console.log('🗄️  SQLite Test-Datenbank (:memory:)');
+  } else {
+    console.log('🗄️  SQLite Datenbank:', DB_PATH);
+  }
 } else {
   // ─── PostgreSQL setup ───────────────────────────────────────────────────────
   const { default: postgres } = await import('postgres');
