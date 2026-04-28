@@ -16,7 +16,7 @@ Thanks for your interest in contributing!
 
 - Bug fixes
 - New agent adapters (new LLM provider, new runtime)
-- UI improvements (glassmorphism design system, cyan accent `#23CDCB`)
+- UI improvements (warm-dark vintage palette, gold accents, Merriweather typography)
 - New channel plugins (Slack, Discord, WhatsApp)
 - Documentation improvements
 - Performance improvements
@@ -24,9 +24,10 @@ Thanks for your interest in contributing!
 ## Code Style
 
 - TypeScript strict mode — no `any` unless unavoidable
-- Glassmorphism UI: `backdrop-blur`, semi-transparent backgrounds, cyan particles `#23CDCB`
-- German variable names for DB entities (historical — keep consistent): `aufgaben`, `experten`, `unternehmen`
-- English for new service/adapter code
+- UI: warm-dark vintage palette, gold accents, Merriweather typography, scan-lines, ambient panels
+- German SQL table names (legacy — keep consistent): `aufgaben`, `experten`, `unternehmen`
+- English TypeScript variable names: `tasks`, `agents`, `companies` (DB-aliased to the German tables)
+- English for all new service/adapter code
 
 ## Architecture Notes
 
