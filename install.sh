@@ -176,7 +176,7 @@ case "\$1" in
     echo -e "    \${CYAN}opencognit help\${RESET}       Show this help"
     echo -e "\n  \${BOLD}Install dir:\${RESET} \$INSTALL_DIR"
     echo -e "  \${BOLD}URL:\${RESET}          http://localhost:\${PORT}"
-    echo -e "  \${BOLD}Docs:\${RESET}         https://opencognit.mytherrablockchain.org/docs/en/\n"
+    echo -e "  \${BOLD}Docs:\${RESET}         https://github.com/OpenCognit/opencognit\n"
     ;;
   *)
     echo -e "\n  \${CYAN}\${BOLD}Starting OpenCognit...\${RESET}"

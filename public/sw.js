@@ -1,4 +1,5 @@
-const CACHE_NAME = "opencognit-v1";
+const CACHE_NAME = "opencognit-v2";
+const isDev = self.location.hostname === "localhost" || self.location.hostname === "127.0.0.1";
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -16,6 +17,11 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
+
+  // Skip caching entirely in development
+  if (isDev) {
+    return;
+  }
 
   // Skip non-GET requests and API calls
   if (request.method !== "GET" || url.pathname.startsWith("/api")) {

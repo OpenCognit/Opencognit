@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { FolderOpen, ChevronRight, ArrowLeft, Home, Check, Loader2, X, FolderPlus } from 'lucide-react';
+import { FolderOpen, ChevronRight, ArrowLeft, Home, Check, Loader2, FolderPlus } from 'lucide-react';
 import { authFetch } from '../utils/api';
 import { useI18n } from '../i18n';
+import { ModalShell, inputStyle, inputFocus, btnPrimary, btnPrimaryHover, btnSecondary, btnSecondaryHover } from './ModalShell';
 
 interface DirEntry {
   name: string;
@@ -96,100 +97,123 @@ export function FolderPickerModal({ initialPath, onSelect, onClose }: Props) {
       }, [{ label: de ? 'Root' : 'Root', path: '/' }])
     : [];
 
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 9999,
-      background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{
-        background: 'rgba(15,15,25,0.98)',
-        border: '1px solid rgba(35,205,202,0.2)',
-        borderRadius: 20,
-        width: 560, maxWidth: '95vw',
-        maxHeight: '80vh',
-        display: 'flex', flexDirection: 'column',
-        boxShadow: '0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(35,205,202,0.1)',
-        overflow: 'hidden',
-      }}>
-        {/* Header */}
-        <div style={{
-          padding: '1.125rem 1.5rem',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-            <div style={{
-              width: 32, height: 32, borderRadius: 9,
-              background: 'rgba(35,205,202,0.1)', border: '1px solid rgba(35,205,202,0.2)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#23CDCB',
-            }}>
-              <FolderOpen size={15} />
-            </div>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#f4f4f5' }}>
-                {de ? 'Projektverzeichnis wählen' : 'Select Project Directory'}
-              </div>
-              <div style={{ fontSize: 11, color: '#52525b' }}>
-                {de ? 'Agenten dieses Projekts arbeiten in diesem Ordner' : 'Agents in this project will work in this folder'}
-              </div>
-            </div>
-          </div>
-          <button onClick={onClose} style={{
-            background: 'none', border: 'none', color: '#52525b', cursor: 'pointer',
-            display: 'flex', padding: 4, borderRadius: 6,
-          }}>
-            <X size={16} />
-          </button>
-        </div>
+  const footer = (
+    <>
+      <button
+        onClick={() => setShowNewFolder(v => !v)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '0.375rem',
+          marginRight: 'auto',
+          ...btnSecondary,
+          background: showNewFolder ? 'rgba(197,160,89,0.08)' : btnSecondary.background,
+          borderColor: showNewFolder ? 'rgba(197,160,89,0.2)' : btnSecondary.borderColor,
+          color: showNewFolder ? '#c5a059' : btnSecondary.color,
+        }}
+        onMouseEnter={(e) => Object.assign(e.currentTarget.style, btnSecondaryHover)}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = showNewFolder ? 'rgba(197,160,89,0.08)' : btnSecondary.background;
+          e.currentTarget.style.borderColor = showNewFolder ? 'rgba(197,160,89,0.2)' : btnSecondary.borderColor;
+          e.currentTarget.style.color = showNewFolder ? '#c5a059' : btnSecondary.color;
+        }}
+      >
+        <FolderPlus size={14} />
+        {de ? 'Neuer Ordner' : 'New Folder'}
+      </button>
+      <button
+        onClick={onClose}
+        style={btnSecondary}
+        onMouseEnter={(e) => Object.assign(e.currentTarget.style, btnSecondaryHover)}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = btnSecondary.background;
+          e.currentTarget.style.borderColor = btnSecondary.borderColor;
+          e.currentTarget.style.color = btnSecondary.color;
+        }}
+      >
+        {de ? 'Abbrechen' : 'Cancel'}
+      </button>
+      <button
+        onClick={() => current && onSelect(current.current)}
+        disabled={!current}
+        style={{
+          ...btnPrimary,
+          cursor: current ? 'pointer' : 'not-allowed',
+          opacity: current ? 1 : 0.5,
+        }}
+        onMouseEnter={(e) => {
+          if (current) Object.assign(e.currentTarget.style, btnPrimaryHover);
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = btnPrimary.background;
+          e.currentTarget.style.borderColor = btnPrimary.borderColor;
+          e.currentTarget.style.boxShadow = 'none';
+        }}
+      >
+        <Check size={14} />
+        {de ? 'Diesen Ordner wählen' : 'Select this folder'}
+      </button>
+    </>
+  );
 
+  return (
+    <ModalShell
+      isOpen={true}
+      onClose={onClose}
+      title={de ? 'Projektverzeichnis wählen' : 'Select Project Directory'}
+      titleIcon={<FolderOpen size={15} />}
+      maxWidth="560px"
+      footer={footer}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         {/* Manual path input */}
-        <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <input
-              value={manualInput}
-              onChange={e => setManualInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleManualGo()}
-              placeholder={de ? '/pfad/zum/projekt' : '/path/to/project'}
-              style={{
-                flex: 1, padding: '0.5rem 0.75rem', borderRadius: 8,
-                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                color: '#e4e4e7', fontSize: 13, fontFamily: 'monospace', outline: 'none',
-              }}
-            />
-            <button onClick={handleManualGo} style={{
-              padding: '0.5rem 0.875rem', borderRadius: 8, cursor: 'pointer',
-              background: 'rgba(35,205,202,0.1)', border: '1px solid rgba(35,205,202,0.2)',
-              color: '#23CDCB', fontSize: 12, fontWeight: 600,
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <input
+            value={manualInput}
+            onChange={e => setManualInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleManualGo()}
+            placeholder={de ? '/pfad/zum/projekt' : '/path/to/project'}
+            style={{
+              ...inputStyle,
+              flex: 1,
+              fontFamily: 'monospace',
+              fontSize: 13,
+            }}
+            onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus)}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = (inputStyle as any).borderColor;
+              e.currentTarget.style.boxShadow = 'none';
+            }}
+          />
+          <button onClick={handleManualGo} style={{
+            padding: '0.5rem 0.875rem', borderRadius: 0, cursor: 'pointer',
+            background: 'rgba(197,160,89,0.1)', border: '1px solid rgba(197,160,89,0.2)',
+            color: '#c5a059', fontSize: 12, fontWeight: 600,
+          }}>
+            {de ? 'Gehen' : 'Go'}
+          </button>
+          {current && (
+            <button onClick={() => navigateTo(current.home)} title={de ? 'Home-Verzeichnis' : 'Home directory'} style={{
+              padding: '0.5rem', borderRadius: 0, cursor: 'pointer',
+              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+              color: '#71717a', display: 'flex', alignItems: 'center',
             }}>
-              {de ? 'Gehen' : 'Go'}
+              <Home size={14} />
             </button>
-            {current && (
-              <button onClick={() => navigateTo(current.home)} title={de ? 'Home-Verzeichnis' : 'Home directory'} style={{
-                padding: '0.5rem', borderRadius: 8, cursor: 'pointer',
-                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-                color: '#71717a', display: 'flex', alignItems: 'center',
-              }}>
-                <Home size={14} />
-              </button>
-            )}
-          </div>
-          {error && (
-            <div style={{ fontSize: 12, color: '#ef4444', marginTop: 4 }}>{error}</div>
           )}
         </div>
+        {error && (
+          <div style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>
+        )}
 
         {/* Breadcrumbs */}
         {current && (
           <div style={{
-            padding: '0.5rem 1.25rem',
             display: 'flex', alignItems: 'center', gap: '0.25rem', flexWrap: 'wrap',
-            borderBottom: '1px solid rgba(255,255,255,0.04)',
+            padding: '0.375rem 0',
           }}>
             {current.parent && (
               <button onClick={() => navigateTo(current.parent!)} style={{
                 background: 'none', border: 'none', color: '#71717a', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', padding: '2px 4px', borderRadius: 4,
+                display: 'flex', alignItems: 'center', padding: '2px 4px', borderRadius: 0,
               }}>
                 <ArrowLeft size={13} />
               </button>
@@ -201,8 +225,8 @@ export function FolderPickerModal({ initialPath, onSelect, onClose }: Props) {
                   onClick={() => navigateTo(b.path)}
                   style={{
                     background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px',
-                    borderRadius: 5, fontSize: 12,
-                    color: i === breadcrumbs.length - 1 ? '#23CDCB' : '#71717a',
+                    borderRadius: 0, fontSize: 12,
+                    color: i === breadcrumbs.length - 1 ? '#c5a059' : '#71717a',
                     fontWeight: i === breadcrumbs.length - 1 ? 600 : 400,
                   }}
                 >
@@ -214,7 +238,7 @@ export function FolderPickerModal({ initialPath, onSelect, onClose }: Props) {
         )}
 
         {/* Directory list */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
+        <div style={{ maxHeight: '280px', overflowY: 'auto', marginTop: '0.25rem' }}>
           {loading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2.5rem', color: '#52525b' }}>
               <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} />
@@ -230,21 +254,21 @@ export function FolderPickerModal({ initialPath, onSelect, onClose }: Props) {
                 onClick={() => navigateTo(dir.path)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: '0.625rem',
-                  width: '100%', padding: '0.5rem 0.75rem', borderRadius: 9,
+                  width: '100%', padding: '0.5rem 0.75rem', borderRadius: 0,
                   background: 'none', border: '1px solid transparent',
                   color: '#e4e4e7', cursor: 'pointer', textAlign: 'left',
                   fontSize: 13, transition: 'all 0.15s',
                 }}
                 onMouseEnter={e => {
-                  e.currentTarget.style.background = 'rgba(35,205,202,0.06)';
-                  e.currentTarget.style.borderColor = 'rgba(35,205,202,0.12)';
+                  e.currentTarget.style.background = 'rgba(197,160,89,0.06)';
+                  e.currentTarget.style.borderColor = 'rgba(197,160,89,0.12)';
                 }}
                 onMouseLeave={e => {
                   e.currentTarget.style.background = 'none';
                   e.currentTarget.style.borderColor = 'transparent';
                 }}
               >
-                <FolderOpen size={15} style={{ color: '#23CDCB', flexShrink: 0, opacity: 0.7 }} />
+                <FolderOpen size={15} style={{ color: '#c5a059', flexShrink: 0, opacity: 0.7 }} />
                 <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {dir.name}
                 </span>
@@ -256,81 +280,29 @@ export function FolderPickerModal({ initialPath, onSelect, onClose }: Props) {
 
         {/* New folder input */}
         {showNewFolder && (
-          <div style={{ padding: '0.625rem 1.25rem', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <input
-                autoFocus
-                value={newFolderName}
-                onChange={e => setNewFolderName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleCreateFolder()}
-                placeholder={de ? 'Neuer Ordner-Name…' : 'New folder name…'}
-                style={{
-                  flex: 1, padding: '0.4rem 0.625rem', borderRadius: 7,
-                  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                  color: '#e4e4e7', fontSize: 13, outline: 'none',
-                }}
-              />
-              <button onClick={handleCreateFolder} disabled={!newFolderName.trim() || creating} style={{
-                padding: '0.4rem 0.75rem', borderRadius: 7, cursor: 'pointer',
-                background: 'rgba(35,205,202,0.1)', border: '1px solid rgba(35,205,202,0.2)',
-                color: '#23CDCB', fontSize: 12, fontWeight: 600, opacity: !newFolderName.trim() ? 0.5 : 1,
-              }}>
-                {creating ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : (de ? 'Erstellen' : 'Create')}
-              </button>
-              <button onClick={() => setShowNewFolder(false)} style={{
-                background: 'none', border: 'none', color: '#52525b', cursor: 'pointer', padding: 4,
-              }}>
-                <X size={14} />
-              </button>
-            </div>
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+            <input
+              autoFocus
+              value={newFolderName}
+              onChange={e => setNewFolderName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleCreateFolder()}
+              placeholder={de ? 'Neuer Ordner-Name…' : 'New folder name…'}
+              style={{
+                flex: 1, padding: '0.4rem 0.625rem', borderRadius: 0,
+                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                color: '#e4e4e7', fontSize: 13, outline: 'none',
+              }}
+            />
+            <button onClick={handleCreateFolder} disabled={!newFolderName.trim() || creating} style={{
+              padding: '0.4rem 0.75rem', borderRadius: 0, cursor: 'pointer',
+              background: 'rgba(197,160,89,0.1)', border: '1px solid rgba(197,160,89,0.2)',
+              color: '#c5a059', fontSize: 12, fontWeight: 600, opacity: !newFolderName.trim() ? 0.5 : 1,
+            }}>
+              {creating ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : (de ? 'Erstellen' : 'Create')}
+            </button>
           </div>
         )}
-
-        {/* Footer */}
-        <div style={{
-          padding: '0.875rem 1.25rem',
-          borderTop: '1px solid rgba(255,255,255,0.06)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem',
-        }}>
-          <button
-            onClick={() => setShowNewFolder(v => !v)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '0.375rem',
-              padding: '0.5rem 0.875rem', borderRadius: 9, cursor: 'pointer',
-              background: showNewFolder ? 'rgba(35,205,202,0.08)' : 'rgba(255,255,255,0.04)',
-              border: `1px solid ${showNewFolder ? 'rgba(35,205,202,0.2)' : 'rgba(255,255,255,0.08)'}`,
-              color: showNewFolder ? '#23CDCB' : '#71717a', fontSize: 13,
-            }}
-          >
-            <FolderPlus size={14} />
-            {de ? 'Neuer Ordner' : 'New Folder'}
-          </button>
-
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button onClick={onClose} style={{
-              padding: '0.5rem 1rem', borderRadius: 9, cursor: 'pointer',
-              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-              color: '#71717a', fontSize: 13,
-            }}>
-              {de ? 'Abbrechen' : 'Cancel'}
-            </button>
-            <button
-              onClick={() => current && onSelect(current.current)}
-              disabled={!current}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '0.375rem',
-                padding: '0.5rem 1.125rem', borderRadius: 9, cursor: current ? 'pointer' : 'not-allowed',
-                background: current ? 'rgba(35,205,202,0.9)' : 'rgba(35,205,202,0.3)',
-                border: '1px solid rgba(35,205,202,0.3)',
-                color: '#000', fontSize: 13, fontWeight: 700,
-              }}
-            >
-              <Check size={14} />
-              {de ? 'Diesen Ordner wählen' : 'Select this folder'}
-            </button>
-          </div>
-        </div>
       </div>
-    </div>
+    </ModalShell>
   );
 }

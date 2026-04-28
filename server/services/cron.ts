@@ -2,7 +2,7 @@
 // Implements a 5-field cron parser and fires due triggers every 30 seconds
 
 import { db } from '../db/client.js';
-import { routineTrigger, routinen, agentWakeupRequests, experten, routineAusfuehrung, unternehmen } from '../db/schema.js';
+import { routineTrigger, routines, agentWakeupRequests, agents, routineRuns, companies } from '../db/schema.js';
 import { eq, and, lt, sql, isNull } from 'drizzle-orm';
 import { wakeupService } from './wakeup.js';
 import { heartbeatService } from './heartbeat.js';
@@ -169,8 +169,8 @@ class CronServiceImpl implements CronService {
     this.consolidationIntervalId = setInterval(async () => {
       try {
         const { consolidateAll } = await import('./memory-consolidation.js');
-        const companies = db.select({ id: unternehmen.id }).from(unternehmen).all();
-        for (const c of companies) {
+        const companiesRows = db.select({ id: companies.id }).from(companies).all();
+        for (const c of companiesRows) {
           await consolidateAll(c.id);
         }
       } catch (e: any) {
@@ -206,19 +206,19 @@ class CronServiceImpl implements CronService {
       id: routineTrigger.id,
       routineId: routineTrigger.routineId,
       cronExpression: routineTrigger.cronExpression,
-      naechsterAusfuehrungAm: routineTrigger.naechsterAusfuehrungAm,
-      aktiv: routineTrigger.aktiv,
+      naechsterAusfuehrungAm: routineTrigger.nextExecutionAt,
+      aktiv: routineTrigger.active,
     })
     .from(routineTrigger)
-    .where(eq(routineTrigger.aktiv, true));
+    .where(eq(routineTrigger.active, true));
 
     let firedCount = 0;
 
     for (const trigger of triggers) {
       if (!trigger.cronExpression) continue;
 
-      const nextRun = trigger.naechsterAusfuehrungAm
-        ? new Date(trigger.naechsterAusfuehrungAm)
+      const nextRun = trigger.nextExecutionAt
+        ? new Date(trigger.nextExecutionAt)
         : this.nextCronTick(trigger.cronExpression, now);
 
       if (!nextRun) continue;
@@ -246,61 +246,61 @@ class CronServiceImpl implements CronService {
    */
   private async fireTrigger(triggerId: string, routineId: string, nowStr: string): Promise<void> {
     // Get routine details
-    const routines = await db.select({
-      id: routinen.id,
-      titel: routinen.titel,
-      zugewiesenAn: routinen.zugewiesenAn,
-      unternehmenId: routinen.unternehmenId,
-      prioritaet: routinen.prioritaet,
+    const routineRows = await db.select({
+      id: routines.id,
+      titel: routines.title,
+      zugewiesenAn: routines.assignedTo,
+      unternehmenId: routines.companyId,
+      prioritaet: routines.priority,
     })
-    .from(routinen)
-    .where(eq(routinen.id, routineId))
+    .from(routines)
+    .where(eq(routines.id, routineId))
     .limit(1);
 
-    if (routines.length === 0) {
+    if (routineRows.length === 0) {
       console.warn(`⚠️ Routine ${routineId} not found`);
       return;
     }
 
-    const routine = routines[0];
+    const routine = routineRows[0];
 
-    if (!routine.zugewiesenAn) {
+    if (!routine.assignedTo) {
       console.warn(`⚠️ Routine ${routineId} has no assigned agent`);
       return;
     }
 
     // Check if agent exists and is active
-    const agents = await db.select({
-      id: experten.id,
-      status: experten.status,
-      zyklusAktiv: experten.zyklusAktiv,
+    const agentRows = await db.select({
+      id: agents.id,
+      status: agents.status,
+      zyklusAktiv: agents.autoCycleActive,
     })
-    .from(experten)
-    .where(eq(experten.id, routine.zugewiesenAn))
+    .from(agents)
+    .where(eq(agents.id, routine.assignedTo))
     .limit(1);
 
-    if (agents.length === 0 || agents[0].status === 'terminated' || !agents[0].zyklusAktiv) {
-      console.warn(`⚠️ Agent ${routine.zugewiesenAn} is not available for routine ${routineId}`);
+    if (agentRows.length === 0 || agentRows[0].status === 'terminated' || !agentRows[0].autoCycleActive) {
+      console.warn(`⚠️ Agent ${routine.assignedTo} is not available for routine ${routineId}`);
       return;
     }
 
     // Create routine execution record
     const executionId = crypto.randomUUID();
-    await db.insert(routineAusfuehrung).values({
+    await db.insert(routineRuns).values({
       id: executionId,
-      unternehmenId: routine.unternehmenId,
+      companyId: routine.companyId,
       routineId,
       triggerId,
-      quelle: 'schedule',
+      source: 'schedule',
       status: 'enqueued',
-      erstelltAm: nowStr,
+      createdAt: nowStr,
     });
 
     // Queue wakeup for the assigned agent
-    await wakeupService.wakeup(routine.zugewiesenAn, routine.unternehmenId, {
+    await wakeupService.wakeup(routine.assignedTo, routine.companyId, {
       source: 'timer',
       triggerDetail: 'cron',
-      reason: `Geplante Aufgabe: ${routine.titel}`,
+      reason: `Geplante Aufgabe: ${routine.title}`,
       payload: {
         routineId,
         executionId,
@@ -329,19 +329,19 @@ class CronServiceImpl implements CronService {
 
     await db.update(routineTrigger)
       .set({
-        naechsterAusfuehrungAm: nextRunAt,
-        zuletztGefeuertAm: nowStr,
+        nextExecutionAt: nextRunAt,
+        lastFiredAt: nowStr,
       })
       .where(eq(routineTrigger.id, triggerId));
 
     // Update routine last executed time
-    await db.update(routinen)
+    await db.update(routines)
       .set({
-        zuletztAusgefuehrtAm: nowStr,
+        lastExecutedAt: nowStr,
       })
-      .where(eq(routinen.id, routineId));
+      .where(eq(routines.id, routineId));
 
-    console.log(`⏰ Trigger ${triggerId} fired for routine ${routine.titel}`);
+    console.log(`⏰ Trigger ${triggerId} fired for routine ${routine.title}`);
   }
 }
 

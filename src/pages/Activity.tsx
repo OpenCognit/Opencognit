@@ -4,14 +4,15 @@ import { PageHelp } from '../components/PageHelp';
 import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 import { useI18n } from '../i18n';
 import { zeitRelativ } from '../utils/i18n';
+import { translateActivity } from '../utils/activityTranslator';
 import { useCompany } from '../hooks/useCompany';
 import { useApi } from '../hooks/useApi';
 import { apiAktivitaet, type Aktivitaet as AktivitaetType } from '../api/client';
 import { GlassCard } from '../components/GlassCard';
 
 const typFarben: Record<string, string> = {
-  aufgabe: '#3b82f6', experte: '#23CDCB', kosten: '#22c55e',
-  genehmigung: '#eab308', system: '#71717a', unternehmen: '#a855f7',
+  aufgabe: '#3b82f6', experte: '#c5a059', kosten: '#22c55e',
+  genehmigung: '#eab308', system: '#71717a', unternehmen: '#9b87c8',
 };
 
 // ── Activity Heatmap ──────────────────────────────────────────────────────────
@@ -55,10 +56,10 @@ function ActivityHeatmap({ data, de }: { data: AktivitaetType[]; de: boolean }) 
   function cellColor(count: number): string {
     if (count === 0) return 'rgba(255,255,255,0.05)';
     const pct = count / maxCount;
-    if (pct >= 0.75) return 'rgba(35,205,202,0.85)';
-    if (pct >= 0.50) return 'rgba(35,205,202,0.55)';
-    if (pct >= 0.25) return 'rgba(35,205,202,0.30)';
-    return 'rgba(35,205,202,0.12)';
+    if (pct >= 0.75) return 'rgba(197,160,89,0.85)';
+    if (pct >= 0.50) return 'rgba(197,160,89,0.55)';
+    if (pct >= 0.25) return 'rgba(197,160,89,0.30)';
+    return 'rgba(197,160,89,0.12)';
   }
 
   const DOW_LABELS = de
@@ -87,7 +88,7 @@ function ActivityHeatmap({ data, de }: { data: AktivitaetType[]; de: boolean }) 
               <strong style={{ color: '#f1f5f9' }}>{totalEvents}</strong> {de ? 'Ereignisse gesamt' : 'total events'}
             </span>
             <span style={{ fontSize: '0.8125rem', color: '#64748b' }}>
-              <strong style={{ color: '#23CDCB' }}>{todayCount}</strong> {de ? 'heute' : 'today'}
+              <strong style={{ color: '#c5a059' }}>{todayCount}</strong> {de ? 'heute' : 'today'}
             </span>
             {peakDay && (
               <span style={{ fontSize: '0.8125rem', color: '#64748b' }}>
@@ -100,8 +101,8 @@ function ActivityHeatmap({ data, de }: { data: AktivitaetType[]; de: boolean }) 
           <span style={{ fontSize: '0.6875rem', color: '#334155' }}>{de ? 'Weniger' : 'Less'}</span>
           {[0, 0.15, 0.35, 0.6, 0.9].map((pct, i) => (
             <div key={i} style={{
-              width: 12, height: 12, borderRadius: '3px',
-              background: pct === 0 ? 'rgba(255,255,255,0.05)' : `rgba(35,205,202,${pct})`,
+              width: 12, height: 12, borderRadius: 0,
+              background: pct === 0 ? 'rgba(255,255,255,0.05)' : `rgba(197,160,89,${pct})`,
             }} />
           ))}
           <span style={{ fontSize: '0.6875rem', color: '#334155' }}>{de ? 'Mehr' : 'More'}</span>
@@ -135,9 +136,9 @@ function ActivityHeatmap({ data, de }: { data: AktivitaetType[]; de: boolean }) 
                     }}
                     onMouseLeave={() => setTooltip(null)}
                     style={{
-                      height: 16, borderRadius: '3px',
+                      height: 16, borderRadius: 0,
                       background: day ? cellColor(count) : 'transparent',
-                      border: isToday ? '1px solid rgba(35,205,202,0.7)' : '1px solid transparent',
+                      border: isToday ? '1px solid rgba(197,160,89,0.7)' : '1px solid transparent',
                       cursor: day ? 'default' : 'default',
                       transition: 'transform 0.1s',
                     }}
@@ -247,7 +248,7 @@ export function Activity() {
   if (loading || !data) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' }}>
-        <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#23CDCB' }} />
+        <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#c5a059' }} />
       </div>
     );
   }
@@ -257,14 +258,14 @@ export function Activity() {
       {/* Header */}
       <div style={{ marginBottom: '2rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-          <ActivityIcon size={20} style={{ color: '#23CDCB' }} />
-          <span style={{ fontSize: '12px', fontWeight: 600, color: '#23CDCB', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+          <ActivityIcon size={20} style={{ color: '#c5a059' }} />
+          <span style={{ fontSize: '12px', fontWeight: 600, color: '#c5a059', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
             {aktivesUnternehmen.name}
           </span>
         </div>
         <h1 style={{
           fontSize: '2rem', fontWeight: 700, margin: 0,
-          background: 'linear-gradient(135deg, #23CDCB 0%, #f8fafc 100%)',
+          background: 'linear-gradient(135deg, #c5a059 0%, #f8fafc 100%)',
           WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
         }}>
           {i18n.t.nav.aktivitaet}
@@ -280,7 +281,7 @@ export function Activity() {
       <ActivityHeatmap data={data} de={de} />
 
       {/* Filter Bar */}
-      <GlassCard style={{ padding: '0.75rem 1rem', marginBottom: '1.5rem', borderRadius: '14px' }}>
+      <GlassCard style={{ padding: '0.75rem 1rem', marginBottom: '1.5rem', borderRadius: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
         <Filter size={13} style={{ color: '#52525b', flexShrink: 0 }} />
         <span style={{ fontSize: '0.6875rem', color: '#52525b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 }}>
@@ -307,9 +308,9 @@ export function Activity() {
           <button key={name} onClick={() => setFilterAkteur(filterAkteur === name ? null : name)} style={{
             padding: '0.2rem 0.5rem', borderRadius: '9999px', cursor: 'pointer',
             fontSize: '0.6875rem', fontWeight: 600,
-            background: filterAkteur === name ? 'rgba(35,205,202,0.12)' : 'transparent',
-            border: `1px solid ${filterAkteur === name ? 'rgba(35,205,202,0.3)' : 'rgba(255,255,255,0.08)'}`,
-            color: filterAkteur === name ? '#23CDCB' : '#71717a',
+            background: filterAkteur === name ? 'rgba(197,160,89,0.12)' : 'transparent',
+            border: `1px solid ${filterAkteur === name ? 'rgba(197,160,89,0.3)' : 'rgba(255,255,255,0.08)'}`,
+            color: filterAkteur === name ? '#c5a059' : '#71717a',
           }}>
             {name}
           </button>
@@ -336,7 +337,7 @@ export function Activity() {
       <GlassCard>
         {grouped.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
-            <ActivityIcon size={32} style={{ color: '#23CDCB', opacity: 0.2, margin: '0 auto 1rem', display: 'block' }} />
+            <ActivityIcon size={32} style={{ color: '#c5a059', opacity: 0.2, margin: '0 auto 1rem', display: 'block' }} />
             <p style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#475569', margin: '0 0 0.25rem' }}>
               {de ? 'Keine Aktivitäten' : 'No activities'}
             </p>
@@ -383,7 +384,7 @@ export function Activity() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
                       <span style={{
-                        padding: '0.1rem 0.4rem', borderRadius: '5px',
+                        padding: '0.1rem 0.4rem', borderRadius: 0,
                         fontSize: '0.625rem', fontWeight: 700, letterSpacing: '0.04em',
                         background: (typFarben[a.entitaetTyp] || '#71717a') + '18',
                         color: typFarben[a.entitaetTyp] || '#d4d4d8',
@@ -395,7 +396,7 @@ export function Activity() {
                     <p style={{ fontSize: '0.875rem', color: '#cbd5e1', lineHeight: 1.5, margin: 0 }}>
                       <strong style={{ color: '#f1f5f9', fontWeight: 600 }}>{a.akteurName}</strong>
                       {' '}
-                      <span style={{ color: '#64748b' }}>{a.aktion}</span>
+                      <span style={{ color: '#64748b' }}>{translateActivity(a.aktion, i18n.language)}</span>
                     </p>
                   </div>
                   <span style={{ fontSize: '0.6875rem', color: '#334155', flexShrink: 0, marginTop: '0.25rem' }}>

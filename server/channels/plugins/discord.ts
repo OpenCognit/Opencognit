@@ -4,7 +4,7 @@
 import type { ChannelPlugin, ChannelConfig, ChannelStatus, OutboundMessage, InboundMessage } from '../types.js';
 import { channelRegistry } from '../registry.js';
 import { db } from '../../db/client.js';
-import { einstellungen } from '../../db/schema.js';
+import { settings } from '../../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 
 export class DiscordChannel implements ChannelPlugin {
@@ -55,11 +55,11 @@ export class DiscordChannel implements ChannelPlugin {
       const payload = req.body;
 
       try {
-        const setting = db.select().from(einstellungen)
-          .where(and(eq(einstellungen.schluessel, 'webhook_secret'), eq(einstellungen.wert, secret)))
+        const setting = db.select().from(settings)
+          .where(and(eq(settings.key, 'webhook_secret'), eq(settings.value, secret)))
           .get();
 
-        if (!setting?.unternehmenId) return res.status(403).json({ error: 'Invalid secret' });
+        if (!setting?.companyId) return res.status(403).json({ error: 'Invalid secret' });
 
         // Discord sendet Ping zur Verifikation
         if (payload.type === 1) return res.json({ type: 1 });
@@ -75,7 +75,7 @@ export class DiscordChannel implements ChannelPlugin {
             raw: payload,
           };
           this.lastActivity = normalized.timestamp;
-          await channelRegistry.handleInbound(setting.unternehmenId, normalized);
+          await channelRegistry.handleInbound(setting.companyId, normalized);
         }
 
         res.json({ ok: true });

@@ -74,7 +74,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <details style={{
               marginTop: "var(--space-4)",
               padding: "var(--space-3)",
-              borderRadius: "var(--radius-md)",
+              borderRadius: "0",
               background: "var(--color-surface)",
               border: "1px solid var(--color-border)",
               maxWidth: "600px",

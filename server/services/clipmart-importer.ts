@@ -2,7 +2,7 @@
 // Adaptiert das "Aqua-Hiring" Konzept für OpenCognit
 
 import { db } from '../db/client.js';
-import { experten, expertenSkills, skillsLibrary, routinen, routineTrigger } from '../db/schema.js';
+import { agents, agentSkills, skillsLibrary, routines, routineTrigger } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { v4 as uuid } from 'uuid';
 
@@ -10,15 +10,15 @@ import { v4 as uuid } from 'uuid';
 
 export interface ClipmartAgentDef {
   name: string;
-  rolle: string;
-  titel?: string;
-  faehigkeiten?: string;
-  verbindungsTyp?: string;
+  role: string;
+  title?: string;
+  capabilities?: string;
+  connectionType?: string;
   avatar?: string;
-  avatarFarbe?: string;
-  budgetMonatCent?: number;
-  zyklusIntervallSek?: number;
-  zyklusAktiv?: boolean;
+  avatarColor?: string;
+  monthlyBudgetCent?: number;
+  autoCycleIntervalSec?: number;
+  autoCycleActive?: boolean;
   isOrchestrator?: boolean;
   reportsToName?: string;
   skills?: ClipmartSkillRef[];
@@ -27,32 +27,32 @@ export interface ClipmartAgentDef {
 
 export interface ClipmartSkillRef {
   name: string;
-  beschreibung: string;
-  inhalt: string;
+  description: string;
+  content: string;
   tags?: string[];
   remoteSource?: string;
 }
 
 export interface ClipmartRoutineDef {
-  titel: string;
-  beschreibung?: string;
+  title: string;
+  description?: string;
   assignedToName: string; // Agent-Name, wird bei Import aufgelöst
   cronExpression: string; // z.B. "0 9 * * *" = täglich 09:00
   timezone?: string;
-  prioritaet?: 'critical' | 'high' | 'medium' | 'low';
+  priority?: 'critical' | 'high' | 'medium' | 'low';
 }
 
 export interface ClipmartTemplate {
   id: string;
   name: string;
-  beschreibung: string;
+  description: string;
   version: string;
-  kategorie: 'automation' | 'team' | 'content' | 'dev' | 'research' | 'ecommerce' | 'integrations' | 'company';
+  category: 'automation' | 'team' | 'content' | 'dev' | 'research' | 'ecommerce' | 'integrations' | 'company';
   icon: string;
   accentColor: string;
   tags: string[];
   agents: ClipmartAgentDef[];
-  routinen?: ClipmartRoutineDef[];
+  routines?: ClipmartRoutineDef[];
   /** Konfigurationsfelder die der User ausfüllen muss (z.B. API Keys) */
   configFields?: Array<{ key: string; label: string; placeholder?: string; required: boolean; isSecret?: boolean }>;
 }
@@ -66,24 +66,24 @@ export const BUILTIN_TEMPLATES: ClipmartTemplate[] = [
   {
     id: 'social-media-daily',
     name: 'Social Media Daily Poster',
-    beschreibung: 'Erstellt täglich automatisch Posts für X/Twitter, LinkedIn oder andere Plattformen und veröffentlicht sie über die API. Kein manuelles Eingreifen nötig.',
+    description: 'Erstellt täglich automatisch Posts für X/Twitter, LinkedIn oder andere Plattformen und veröffentlicht sie über die API. Kein manuelles Eingreifen nötig.',
     version: '1.0.0',
-    kategorie: 'automation',
+    category: 'automation',
     icon: '📱',
     accentColor: '#1d9bf0',
     tags: ['social media', 'automation', 'daily', 'content', 'x.com'],
     agents: [
       {
         name: 'Content Creator',
-        rolle: 'Social Media Content Writer',
-        titel: 'Content Spezialist',
-        faehigkeiten: 'Copywriting, Social Media, Trending Topics, Hashtag Research, Engagement-Optimierung',
-        verbindungsTyp: 'openrouter',
+        role: 'Social Media Content Writer',
+        title: 'Content Spezialist',
+        capabilities: 'Copywriting, Social Media, Trending Topics, Hashtag Research, Engagement-Optimierung',
+        connectionType: 'openrouter',
         avatar: '✍️',
-        avatarFarbe: '#1d9bf0',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 86400,
-        zyklusAktiv: false,
+        avatarColor: '#1d9bf0',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 86400,
+        autoCycleActive: false,
         systemPrompt: `Du bist ein Social Media Content Creator. Deine Aufgabe: Schreibe täglich einen hochwertigen Post für die zugewiesene Plattform.
 Der Post soll authentisch, informativ und engagement-orientiert sein. Nutze aktuelle Trends und relevante Hashtags.
 Schreibe den Post direkt — kein Vorgeplänkel. Format: Posttext + Hashtags.
@@ -91,34 +91,34 @@ Markiere den fertigen Post mit: POST_READY: [dein post hier]`,
         skills: [
           {
             name: 'Viral Copywriting',
-            beschreibung: 'Posts die hohe Engagement-Rate erzielen',
-            inhalt: '# Viral Copywriting\n\n## Formeln\n- Hook in Zeile 1 (Frage, konträre Aussage, Zahl)\n- Value im Körper\n- CTA am Ende\n\n## Regeln\n- Max 280 Zeichen für X\n- 3-5 relevante Hashtags\n- Ein Emoji pro Abschnitt max.\n- Keine corporate speak',
+            description: 'Posts die hohe Engagement-Rate erzielen',
+            content: '# Viral Copywriting\n\n## Formeln\n- Hook in Zeile 1 (Frage, konträre Aussage, Zahl)\n- Value im Körper\n- CTA am Ende\n\n## Regeln\n- Max 280 Zeichen für X\n- 3-5 relevante Hashtags\n- Ein Emoji pro Abschnitt max.\n- Keine corporate speak',
             tags: ['copywriting', 'social', 'viral'],
           }
         ]
       },
       {
         name: 'Social Poster',
-        rolle: 'API Publisher',
-        titel: 'Automatischer Publisher',
-        faehigkeiten: 'API-Integration, HTTP Requests, Social Media APIs, Content Scheduling',
-        verbindungsTyp: 'http',
+        role: 'API Publisher',
+        title: 'Automatischer Publisher',
+        capabilities: 'API-Integration, HTTP Requests, Social Media APIs, Content Scheduling',
+        connectionType: 'http',
         avatar: '🚀',
-        avatarFarbe: '#22c55e',
-        budgetMonatCent: 0,
+        avatarColor: '#22c55e',
+        monthlyBudgetCent: 0,
         reportsToName: 'Content Creator',
         systemPrompt: `Du bist ein automatischer Publisher. Du empfängst fertige Posts vom Content Creator und veröffentlichst sie über die konfigurierte API.
 Suche nach POST_READY: im Kontext und veröffentliche diesen Inhalt.`,
       }
     ],
-    routinen: [
+    routines: [
       {
-        titel: 'Täglicher Social Media Post',
-        beschreibung: 'Erstellt und veröffentlicht täglich um 09:00 Uhr einen neuen Post',
+        title: 'Täglicher Social Media Post',
+        description: 'Erstellt und veröffentlicht täglich um 09:00 Uhr einen neuen Post',
         assignedToName: 'Content Creator',
         cronExpression: '0 9 * * *',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       }
     ],
     configFields: [
@@ -131,40 +131,40 @@ Suche nach POST_READY: im Kontext und veröffentliche diesen Inhalt.`,
   {
     id: 'newsletter-engine',
     name: 'Newsletter Engine',
-    beschreibung: 'Recherchiert wöchentlich die wichtigsten Themen deiner Nische, schreibt einen professionellen Newsletter und versendet ihn automatisch.',
+    description: 'Recherchiert wöchentlich die wichtigsten Themen deiner Nische, schreibt einen professionellen Newsletter und versendet ihn automatisch.',
     version: '1.0.0',
-    kategorie: 'automation',
+    category: 'automation',
     icon: '📧',
     accentColor: '#f59e0b',
     tags: ['newsletter', 'email', 'weekly', 'content', 'automation'],
     agents: [
       {
         name: 'News Researcher',
-        rolle: 'Research Analyst',
-        titel: 'Rechercheur',
-        faehigkeiten: 'Web Research, Trend Analysis, Topic Curation, Source Evaluation',
-        verbindungsTyp: 'openrouter',
+        role: 'Research Analyst',
+        title: 'Rechercheur',
+        capabilities: 'Web Research, Trend Analysis, Topic Curation, Source Evaluation',
+        connectionType: 'openrouter',
         avatar: '🔍',
-        avatarFarbe: '#f59e0b',
-        budgetMonatCent: 0,
+        avatarColor: '#f59e0b',
+        monthlyBudgetCent: 0,
         systemPrompt: `Du bist ein Research Analyst. Jeden Montag recherchierst du die 5 wichtigsten News, Trends oder Erkenntnisse der Woche für das konfigurierte Thema.
 Strukturiere deine Ausgabe als: TOP5_INSIGHTS: [nummerierte Liste mit Titel + 2-3 Sätze Erklärung]`,
         skills: [{
           name: 'Research & Curation',
-          beschreibung: 'Systematische Recherche und Kuratierung relevanter Inhalte',
-          inhalt: '# Research Methodik\n\n## Quellen\n- Aktuelle News (letzte 7 Tage priorisieren)\n- Akademische Papers für tiefe Insights\n- Social Media Diskussionen für Stimmung\n\n## Qualitätskriterien\n- Relevant für die Zielgruppe\n- Nicht schon bekannt/viral\n- Bietet echten Mehrwert',
+          description: 'Systematische Recherche und Kuratierung relevanter Inhalte',
+          content: '# Research Methodik\n\n## Quellen\n- Aktuelle News (letzte 7 Tage priorisieren)\n- Akademische Papers für tiefe Insights\n- Social Media Diskussionen für Stimmung\n\n## Qualitätskriterien\n- Relevant für die Zielgruppe\n- Nicht schon bekannt/viral\n- Bietet echten Mehrwert',
           tags: ['research', 'curation', 'newsletter']
         }]
       },
       {
         name: 'Newsletter Writer',
-        rolle: 'Content Writer',
-        titel: 'Newsletter-Autor',
-        faehigkeiten: 'Email Copywriting, Storytelling, Newsletter-Struktur, CTA-Optimierung',
-        verbindungsTyp: 'openrouter',
+        role: 'Content Writer',
+        title: 'Newsletter-Autor',
+        capabilities: 'Email Copywriting, Storytelling, Newsletter-Struktur, CTA-Optimierung',
+        connectionType: 'openrouter',
         avatar: '✍️',
-        avatarFarbe: '#a855f7',
-        budgetMonatCent: 0,
+        avatarColor: '#a855f7',
+        monthlyBudgetCent: 0,
         reportsToName: 'News Researcher',
         systemPrompt: `Du schreibst professionelle Newsletter auf Basis der Recherchen des News Researchers.
 Format: Intro (2-3 Sätze) + 5 Abschnitte + Outro mit CTA.
@@ -172,22 +172,22 @@ Ton: informell aber professionell, wie von einem klugen Freund.
 Markiere den fertigen Newsletter mit: NEWSLETTER_READY: [inhalt]`,
       }
     ],
-    routinen: [
+    routines: [
       {
-        titel: 'Wöchentliche Recherche',
-        beschreibung: 'Montags um 08:00 — Recherche der Woche',
+        title: 'Wöchentliche Recherche',
+        description: 'Montags um 08:00 — Recherche der Woche',
         assignedToName: 'News Researcher',
         cronExpression: '0 8 * * 1',
         timezone: 'Europe/Berlin',
-        prioritaet: 'high',
+        priority: 'high',
       },
       {
-        titel: 'Newsletter versenden',
-        beschreibung: 'Montags um 10:00 — Newsletter schreiben und versenden',
+        title: 'Newsletter versenden',
+        description: 'Montags um 10:00 — Newsletter schreiben und versenden',
         assignedToName: 'Newsletter Writer',
         cronExpression: '0 10 * * 1',
         timezone: 'Europe/Berlin',
-        prioritaet: 'high',
+        priority: 'high',
       }
     ],
     configFields: [
@@ -200,22 +200,22 @@ Markiere den fertigen Newsletter mit: NEWSLETTER_READY: [inhalt]`,
   {
     id: 'crypto-monitor',
     name: 'Crypto Research Bot',
-    beschreibung: 'Überwacht täglich Kryptomärkte, analysiert Trends und erstellt Reports. Sendet Alerts bei wichtigen Marktbewegungen.',
+    description: 'Überwacht täglich Kryptomärkte, analysiert Trends und erstellt Reports. Sendet Alerts bei wichtigen Marktbewegungen.',
     version: '1.0.0',
-    kategorie: 'research',
+    category: 'research',
     icon: '📊',
     accentColor: '#f97316',
     tags: ['crypto', 'research', 'monitoring', 'daily', 'alerts'],
     agents: [
       {
         name: 'Market Analyst',
-        rolle: 'Crypto Market Analyst',
-        titel: 'Krypto-Analyst',
-        faehigkeiten: 'Technical Analysis, On-Chain Metrics, Sentiment Analysis, DeFi Research, Market Reports',
-        verbindungsTyp: 'openrouter',
+        role: 'Crypto Market Analyst',
+        title: 'Krypto-Analyst',
+        capabilities: 'Technical Analysis, On-Chain Metrics, Sentiment Analysis, DeFi Research, Market Reports',
+        connectionType: 'openrouter',
         avatar: '📈',
-        avatarFarbe: '#f97316',
-        budgetMonatCent: 0,
+        avatarColor: '#f97316',
+        monthlyBudgetCent: 0,
         systemPrompt: `Du bist ein Krypto-Marktanalyst. Täglich analysierst du:
 - Top 10 Coins: Preistrends, Volumen, Sentiment
 - Wichtige On-Chain Metriken
@@ -226,20 +226,20 @@ Erstelle einen strukturierten Daily Report. Hebe bullische und bearische Signale
 Format: DAILY_REPORT: [strukturierter report]`,
         skills: [{
           name: 'Crypto Analysis',
-          beschreibung: 'Technical und Fundamental Analysis für Kryptomärkte',
-          inhalt: '# Crypto Analysis Framework\n\n## Daily Checks\n- Price action (24h, 7d)\n- Volume Anomalien\n- Funding Rates\n- Fear & Greed Index\n\n## Signals\n- Bull: steigende Volumen, positive Funding, Whale Accumulation\n- Bear: fallende Volumen, negative Funding, Exchange Inflows',
+          description: 'Technical und Fundamental Analysis für Kryptomärkte',
+          content: '# Crypto Analysis Framework\n\n## Daily Checks\n- Price action (24h, 7d)\n- Volume Anomalien\n- Funding Rates\n- Fear & Greed Index\n\n## Signals\n- Bull: steigende Volumen, positive Funding, Whale Accumulation\n- Bear: fallende Volumen, negative Funding, Exchange Inflows',
           tags: ['crypto', 'analysis', 'defi']
         }]
       }
     ],
-    routinen: [
+    routines: [
       {
-        titel: 'Täglicher Markt-Report',
-        beschreibung: 'Jeden Morgen um 07:00 Uhr Marktanalyse',
+        title: 'Täglicher Markt-Report',
+        description: 'Jeden Morgen um 07:00 Uhr Marktanalyse',
         assignedToName: 'Market Analyst',
         cronExpression: '0 7 * * *',
         timezone: 'Europe/Berlin',
-        prioritaet: 'high',
+        priority: 'high',
       }
     ],
     configFields: [
@@ -253,63 +253,63 @@ Format: DAILY_REPORT: [strukturierter report]`,
   {
     id: 'startup-team',
     name: 'Startup Team',
-    beschreibung: 'Klassisches Startup-Team mit CEO, CTO und Growth Lead. Optimiert für schnelle Iteration und Wachstum.',
+    description: 'Klassisches Startup-Team mit CEO, CTO und Growth Lead. Optimiert für schnelle Iteration und Wachstum.',
     version: '1.0.0',
-    kategorie: 'team',
+    category: 'team',
     icon: '🚀',
     accentColor: '#f59e0b',
     tags: ['startup', 'team', 'ceo', 'cto', 'growth'],
     agents: [
       {
         name: 'CEO',
-        rolle: 'Chief Executive Officer',
-        titel: 'Geschäftsführer',
-        faehigkeiten: 'Strategie, Delegation, Hiring, Finanzplanung, Stakeholder-Kommunikation',
-        verbindungsTyp: 'openrouter',
+        role: 'Chief Executive Officer',
+        title: 'Geschäftsführer',
+        capabilities: 'Strategie, Delegation, Hiring, Finanzplanung, Stakeholder-Kommunikation',
+        connectionType: 'openrouter',
         avatar: '👔',
-        avatarFarbe: '#f59e0b',
-        budgetMonatCent: 0,
+        avatarColor: '#f59e0b',
+        monthlyBudgetCent: 0,
         isOrchestrator: true,
         systemPrompt: `Du bist der CEO eines agilen Startups. Koordiniere CTO und Growth Lead effizient.
 Delegiere Aufgaben klar, triff finale Entscheidungen, und berichte dem User über Fortschritte.`,
         skills: [{
           name: 'Startup Strategy',
-          beschreibung: 'Schnelle Iteration und Product-Market Fit',
-          inhalt: '# Startup Strategy\n\n## Kernprinzipien\n- Ship fast, iterate faster\n- Talk to users every week\n- One metric that matters\n- Default alive > default dead',
+          description: 'Schnelle Iteration und Product-Market Fit',
+          content: '# Startup Strategy\n\n## Kernprinzipien\n- Ship fast, iterate faster\n- Talk to users every week\n- One metric that matters\n- Default alive > default dead',
           tags: ['strategy', 'startup']
         }]
       },
       {
         name: 'CTO',
-        rolle: 'Chief Technology Officer',
-        titel: 'Technischer Leiter',
-        faehigkeiten: 'Software-Architektur, Code Review, DevOps, Security, Tech-Stack Entscheidungen',
-        verbindungsTyp: 'openrouter',
+        role: 'Chief Technology Officer',
+        title: 'Technischer Leiter',
+        capabilities: 'Software-Architektur, Code Review, DevOps, Security, Tech-Stack Entscheidungen',
+        connectionType: 'openrouter',
         avatar: '💻',
-        avatarFarbe: '#3b82f6',
-        budgetMonatCent: 0,
+        avatarColor: '#3b82f6',
+        monthlyBudgetCent: 0,
         reportsToName: 'CEO',
         skills: [{
           name: 'Full-Stack Development',
-          beschreibung: 'TypeScript, React, Node.js, PostgreSQL',
-          inhalt: '# Full-Stack Dev\n\n## Stack\n- Frontend: React + TypeScript\n- Backend: Node.js + Express\n- DB: SQLite/PostgreSQL\n- Deploy: Docker + CI/CD',
+          description: 'TypeScript, React, Node.js, PostgreSQL',
+          content: '# Full-Stack Dev\n\n## Stack\n- Frontend: React + TypeScript\n- Backend: Node.js + Express\n- DB: SQLite/PostgreSQL\n- Deploy: Docker + CI/CD',
           tags: ['development', 'typescript', 'react']
         }]
       },
       {
         name: 'Growth Lead',
-        rolle: 'Head of Growth',
-        titel: 'Wachstumsleiter',
-        faehigkeiten: 'Marketing, Analytics, SEO, Content-Strategie, Social Media, Paid Ads',
-        verbindungsTyp: 'openrouter',
+        role: 'Head of Growth',
+        title: 'Wachstumsleiter',
+        capabilities: 'Marketing, Analytics, SEO, Content-Strategie, Social Media, Paid Ads',
+        connectionType: 'openrouter',
         avatar: '📈',
-        avatarFarbe: '#10b981',
-        budgetMonatCent: 0,
+        avatarColor: '#10b981',
+        monthlyBudgetCent: 0,
         reportsToName: 'CEO',
         skills: [{
           name: 'Growth Hacking',
-          beschreibung: 'Datengetriebene Wachstumsstrategien',
-          inhalt: '# Growth Hacking\n\n## Playbook\n- A/B Testing für alles\n- Funnel-Analyse (AARRR)\n- Content + SEO als Flywheel\n- Community > Paid Ads',
+          description: 'Datengetriebene Wachstumsstrategien',
+          content: '# Growth Hacking\n\n## Playbook\n- A/B Testing für alles\n- Funnel-Analyse (AARRR)\n- Content + SEO als Flywheel\n- Community > Paid Ads',
           tags: ['marketing', 'growth', 'analytics']
         }]
       }
@@ -319,22 +319,22 @@ Delegiere Aufgaben klar, triff finale Entscheidungen, und berichte dem User übe
   {
     id: 'dev-team',
     name: 'Dev Team',
-    beschreibung: 'Vollständiges Entwickler-Team: Backend, Frontend, DevOps und QA. Ideal für Software-Projekte und SaaS-Produkte.',
+    description: 'Vollständiges Entwickler-Team: Backend, Frontend, DevOps und QA. Ideal für Software-Projekte und SaaS-Produkte.',
     version: '1.0.0',
-    kategorie: 'dev',
+    category: 'dev',
     icon: '⚙️',
     accentColor: '#3b82f6',
     tags: ['dev', 'engineering', 'backend', 'frontend', 'devops', 'qa'],
     agents: [
       {
         name: 'Tech Lead',
-        rolle: 'Technical Lead',
-        titel: 'Team-Lead Engineering',
-        faehigkeiten: 'Architektur, Code Reviews, Sprint-Planning, Task-Breakdown, Technische Entscheidungen',
-        verbindungsTyp: 'openrouter',
+        role: 'Technical Lead',
+        title: 'Team-Lead Engineering',
+        capabilities: 'Architektur, Code Reviews, Sprint-Planning, Task-Breakdown, Technische Entscheidungen',
+        connectionType: 'openrouter',
         avatar: '🧑‍💻',
-        avatarFarbe: '#6366f1',
-        budgetMonatCent: 0,
+        avatarColor: '#6366f1',
+        monthlyBudgetCent: 0,
         isOrchestrator: true,
         systemPrompt: `Du bist der Tech Lead. Du planst und koordinierst das Entwicklungsteam.
 Breche User-Anforderungen in konkrete Tasks auf. Weise sie dem richtigen Team-Mitglied zu.
@@ -342,52 +342,52 @@ Prüfe regelmäßig ob alle Tasks korrekt umgesetzt werden.`,
       },
       {
         name: 'Backend Dev',
-        rolle: 'Backend Engineer',
-        titel: 'Backend-Entwickler',
-        faehigkeiten: 'Node.js, TypeScript, REST APIs, Datenbanken, Authentication, Performance',
-        verbindungsTyp: 'openrouter',
+        role: 'Backend Engineer',
+        title: 'Backend-Entwickler',
+        capabilities: 'Node.js, TypeScript, REST APIs, Datenbanken, Authentication, Performance',
+        connectionType: 'openrouter',
         avatar: '⚡',
-        avatarFarbe: '#3b82f6',
-        budgetMonatCent: 0,
+        avatarColor: '#3b82f6',
+        monthlyBudgetCent: 0,
         reportsToName: 'Tech Lead',
         skills: [{
           name: 'Backend Engineering',
-          beschreibung: 'Node.js, APIs, Datenbanken',
-          inhalt: '# Backend Engineering\n\n## Standards\n- RESTful APIs mit OpenAPI Spec\n- JWT Auth + Refresh Tokens\n- Input Validation an allen Endpoints\n- Error Handling mit strukturierten Fehlern\n- Rate Limiting',
+          description: 'Node.js, APIs, Datenbanken',
+          content: '# Backend Engineering\n\n## Standards\n- RESTful APIs mit OpenAPI Spec\n- JWT Auth + Refresh Tokens\n- Input Validation an allen Endpoints\n- Error Handling mit strukturierten Fehlern\n- Rate Limiting',
           tags: ['backend', 'nodejs', 'api']
         }]
       },
       {
         name: 'Frontend Dev',
-        rolle: 'Frontend Engineer',
-        titel: 'Frontend-Entwickler',
-        faehigkeiten: 'React, TypeScript, CSS, UX, Responsive Design, Performance, Accessibility',
-        verbindungsTyp: 'openrouter',
+        role: 'Frontend Engineer',
+        title: 'Frontend-Entwickler',
+        capabilities: 'React, TypeScript, CSS, UX, Responsive Design, Performance, Accessibility',
+        connectionType: 'openrouter',
         avatar: '🎨',
-        avatarFarbe: '#ec4899',
-        budgetMonatCent: 0,
+        avatarColor: '#ec4899',
+        monthlyBudgetCent: 0,
         reportsToName: 'Tech Lead',
         skills: [{
           name: 'Frontend Engineering',
-          beschreibung: 'React, TypeScript, UX',
-          inhalt: '# Frontend Engineering\n\n## Standards\n- React + TypeScript strict mode\n- Component-basierte Architektur\n- Mobile-first Responsive Design\n- Accessibility (WCAG 2.1 AA)\n- Web Vitals: LCP < 2.5s',
+          description: 'React, TypeScript, UX',
+          content: '# Frontend Engineering\n\n## Standards\n- React + TypeScript strict mode\n- Component-basierte Architektur\n- Mobile-first Responsive Design\n- Accessibility (WCAG 2.1 AA)\n- Web Vitals: LCP < 2.5s',
           tags: ['frontend', 'react', 'ux']
         }]
       },
       {
         name: 'DevOps',
-        rolle: 'DevOps Engineer',
-        titel: 'DevOps-Ingenieur',
-        faehigkeiten: 'Docker, CI/CD, GitHub Actions, AWS/GCP, Monitoring, Security, Infrastructure',
-        verbindungsTyp: 'openrouter',
+        role: 'DevOps Engineer',
+        title: 'DevOps-Ingenieur',
+        capabilities: 'Docker, CI/CD, GitHub Actions, AWS/GCP, Monitoring, Security, Infrastructure',
+        connectionType: 'openrouter',
         avatar: '🔧',
-        avatarFarbe: '#f97316',
-        budgetMonatCent: 0,
+        avatarColor: '#f97316',
+        monthlyBudgetCent: 0,
         reportsToName: 'Tech Lead',
         skills: [{
           name: 'DevOps & Infrastructure',
-          beschreibung: 'Docker, CI/CD, Cloud',
-          inhalt: '# DevOps\n\n## Stack\n- Docker + Docker Compose\n- GitHub Actions für CI/CD\n- Staging → Production Pipeline\n- Monitoring: Prometheus + Grafana\n- Security: SAST, dependency scanning',
+          description: 'Docker, CI/CD, Cloud',
+          content: '# DevOps\n\n## Stack\n- Docker + Docker Compose\n- GitHub Actions für CI/CD\n- Staging → Production Pipeline\n- Monitoring: Prometheus + Grafana\n- Security: SAST, dependency scanning',
           tags: ['devops', 'docker', 'cicd']
         }]
       }
@@ -397,22 +397,22 @@ Prüfe regelmäßig ob alle Tasks korrekt umgesetzt werden.`,
   {
     id: 'content-team',
     name: 'Content Marketing Team',
-    beschreibung: 'SEO-Artikel, Blog-Posts, Social Media — vollautomatisch produziert und veröffentlicht. Mit Weekly-Content-Plan.',
+    description: 'SEO-Artikel, Blog-Posts, Social Media — vollautomatisch produziert und veröffentlicht. Mit Weekly-Content-Plan.',
     version: '1.0.0',
-    kategorie: 'content',
+    category: 'content',
     icon: '✍️',
     accentColor: '#a855f7',
     tags: ['content', 'seo', 'blog', 'social', 'marketing', 'weekly'],
     agents: [
       {
         name: 'Content Strategist',
-        rolle: 'Content Strategy Lead',
-        titel: 'Content-Stratege',
-        faehigkeiten: 'Content Strategy, SEO, Keyword Research, Content Calendar, Audience Research',
-        verbindungsTyp: 'openrouter',
+        role: 'Content Strategy Lead',
+        title: 'Content-Stratege',
+        capabilities: 'Content Strategy, SEO, Keyword Research, Content Calendar, Audience Research',
+        connectionType: 'openrouter',
         avatar: '📋',
-        avatarFarbe: '#a855f7',
-        budgetMonatCent: 0,
+        avatarColor: '#a855f7',
+        monthlyBudgetCent: 0,
         isOrchestrator: true,
         systemPrompt: `Du bist der Content Strategist. Jeden Montag planst du den Content der Woche.
 Erstelle einen konkreten Content-Plan: welche Artikel, welche Social Posts, welche Keywords.
@@ -420,41 +420,41 @@ Delegiere Artikel an den SEO Writer und Social Posts an den Social Media Manager
       },
       {
         name: 'SEO Writer',
-        rolle: 'SEO Content Writer',
-        titel: 'SEO-Autor',
-        faehigkeiten: 'SEO Copywriting, Keyword-Optimierung, Meta Tags, Internal Linking, E-E-A-T',
-        verbindungsTyp: 'openrouter',
+        role: 'SEO Content Writer',
+        title: 'SEO-Autor',
+        capabilities: 'SEO Copywriting, Keyword-Optimierung, Meta Tags, Internal Linking, E-E-A-T',
+        connectionType: 'openrouter',
         avatar: '🔍',
-        avatarFarbe: '#22c55e',
-        budgetMonatCent: 0,
+        avatarColor: '#22c55e',
+        monthlyBudgetCent: 0,
         reportsToName: 'Content Strategist',
         skills: [{
           name: 'SEO Writing',
-          beschreibung: 'Artikel die ranken und konvertieren',
-          inhalt: '# SEO Writing\n\n## Artikel-Struktur\n- H1 mit Keyword\n- Intro: Nutzerversprechen in 50 Worten\n- H2/H3 Struktur für Featured Snippets\n- LSI Keywords natürlich einbauen\n- CTA am Ende\n\n## Technisch\n- Meta Title: 55-60 Zeichen\n- Meta Description: 150-160 Zeichen\n- Alt Texts für alle Bilder',
+          description: 'Artikel die ranken und konvertieren',
+          content: '# SEO Writing\n\n## Artikel-Struktur\n- H1 mit Keyword\n- Intro: Nutzerversprechen in 50 Worten\n- H2/H3 Struktur für Featured Snippets\n- LSI Keywords natürlich einbauen\n- CTA am Ende\n\n## Technisch\n- Meta Title: 55-60 Zeichen\n- Meta Description: 150-160 Zeichen\n- Alt Texts für alle Bilder',
           tags: ['seo', 'writing', 'content']
         }]
       },
       {
         name: 'Social Media Manager',
-        rolle: 'Social Media Specialist',
-        titel: 'Social Media Manager',
-        faehigkeiten: 'Social Media Copywriting, Community Management, Trend Research, Engagement',
-        verbindungsTyp: 'openrouter',
+        role: 'Social Media Specialist',
+        title: 'Social Media Manager',
+        capabilities: 'Social Media Copywriting, Community Management, Trend Research, Engagement',
+        connectionType: 'openrouter',
         avatar: '📱',
-        avatarFarbe: '#1d9bf0',
-        budgetMonatCent: 0,
+        avatarColor: '#1d9bf0',
+        monthlyBudgetCent: 0,
         reportsToName: 'Content Strategist',
       }
     ],
-    routinen: [
+    routines: [
       {
-        titel: 'Wöchentlicher Content-Plan',
-        beschreibung: 'Jeden Montag um 08:00 — Content-Plan für die Woche erstellen',
+        title: 'Wöchentlicher Content-Plan',
+        description: 'Jeden Montag um 08:00 — Content-Plan für die Woche erstellen',
         assignedToName: 'Content Strategist',
         cronExpression: '0 8 * * 1',
         timezone: 'Europe/Berlin',
-        prioritaet: 'high',
+        priority: 'high',
       }
     ],
     configFields: [
@@ -467,50 +467,50 @@ Delegiere Artikel an den SEO Writer und Social Posts an den Social Media Manager
   {
     id: 'game-studio',
     name: 'Indie Game Studio',
-    beschreibung: 'Game-Development-Team: Creative Director, Tech Director und QA Lead. Für Spieleentwicklung und Game Design.',
+    description: 'Game-Development-Team: Creative Director, Tech Director und QA Lead. Für Spieleentwicklung und Game Design.',
     version: '1.0.0',
-    kategorie: 'dev',
+    category: 'dev',
     icon: '🎮',
     accentColor: '#8b5cf6',
     tags: ['gamedev', 'indie', 'unity', 'unreal', 'game design'],
     agents: [
       {
         name: 'Creative Director',
-        rolle: 'Creative Director',
-        titel: 'Kreativdirektor',
-        faehigkeiten: 'Game Design, Story Writing, Art Direction, Player Experience, Monetarisierung',
-        verbindungsTyp: 'openrouter',
+        role: 'Creative Director',
+        title: 'Kreativdirektor',
+        capabilities: 'Game Design, Story Writing, Art Direction, Player Experience, Monetarisierung',
+        connectionType: 'openrouter',
         avatar: '🎮',
-        avatarFarbe: '#8b5cf6',
-        budgetMonatCent: 0,
+        avatarColor: '#8b5cf6',
+        monthlyBudgetCent: 0,
         isOrchestrator: true,
         skills: [{
           name: 'Game Design',
-          beschreibung: 'Spielmechaniken, Level Design, Balancing',
-          inhalt: '# Game Design\n\n## Core Loop\n- Engagement: Was hält den Spieler?\n- Progression: Was motiviert weiterzuspielen?\n- Mastery: Was fühlt sich befriedigend an?\n\n## Balancing\n- Playtest early, often\n- Daten > Meinungen',
+          description: 'Spielmechaniken, Level Design, Balancing',
+          content: '# Game Design\n\n## Core Loop\n- Engagement: Was hält den Spieler?\n- Progression: Was motiviert weiterzuspielen?\n- Mastery: Was fühlt sich befriedigend an?\n\n## Balancing\n- Playtest early, often\n- Daten > Meinungen',
           tags: ['gamedev', 'design', 'balancing']
         }]
       },
       {
         name: 'Tech Director',
-        rolle: 'Technical Director',
-        titel: 'Technischer Direktor',
-        faehigkeiten: 'Game Engine, Rendering, Networking, Performance Optimization, Build Systems',
-        verbindungsTyp: 'openrouter',
+        role: 'Technical Director',
+        title: 'Technischer Direktor',
+        capabilities: 'Game Engine, Rendering, Networking, Performance Optimization, Build Systems',
+        connectionType: 'openrouter',
         avatar: '⚙️',
-        avatarFarbe: '#06b6d4',
-        budgetMonatCent: 0,
+        avatarColor: '#06b6d4',
+        monthlyBudgetCent: 0,
         reportsToName: 'Creative Director',
       },
       {
         name: 'QA Lead',
-        rolle: 'Quality Assurance Lead',
-        titel: 'QA-Leiter',
-        faehigkeiten: 'Test-Automatisierung, Bug-Tracking, Regression Testing, Playtesting',
-        verbindungsTyp: 'openrouter',
+        role: 'Quality Assurance Lead',
+        title: 'QA-Leiter',
+        capabilities: 'Test-Automatisierung, Bug-Tracking, Regression Testing, Playtesting',
+        connectionType: 'openrouter',
         avatar: '🔍',
-        avatarFarbe: '#ef4444',
-        budgetMonatCent: 0,
+        avatarColor: '#ef4444',
+        monthlyBudgetCent: 0,
         reportsToName: 'Creative Director',
       }
     ],
@@ -521,24 +521,24 @@ Delegiere Artikel an den SEO Writer und Social Posts an den Social Media Manager
   {
     id: 'github-monitor',
     name: 'GitHub Monitor',
-    beschreibung: 'Überwacht GitHub-Repositories auf neue Issues, Pull Requests und Releases. Sendet tägliche Zusammenfassungen und weckt dein Team bei kritischen Events.',
+    description: 'Überwacht GitHub-Repositories auf neue Issues, Pull Requests und Releases. Sendet tägliche Zusammenfassungen und weckt dein Team bei kritischen Events.',
     version: '1.0.0',
-    kategorie: 'integrations',
+    category: 'integrations',
     icon: '🐙',
     accentColor: '#6e40c9',
     tags: ['github', 'devops', 'code review', 'issues', 'automation'],
     agents: [
       {
         name: 'GitHub Monitor',
-        rolle: 'DevOps & Repository Monitor',
-        titel: 'GitHub Agent',
-        faehigkeiten: 'GitHub API, Code Review, Issue Tracking, Release Management, CI/CD',
-        verbindungsTyp: 'openrouter',
+        role: 'DevOps & Repository Monitor',
+        title: 'GitHub Agent',
+        capabilities: 'GitHub API, Code Review, Issue Tracking, Release Management, CI/CD',
+        connectionType: 'openrouter',
         avatar: '🐙',
-        avatarFarbe: '#6e40c9',
-        budgetMonatCent: 0,
-        zyklusAktiv: true,
-        zyklusIntervallSek: 3600,
+        avatarColor: '#6e40c9',
+        monthlyBudgetCent: 0,
+        autoCycleActive: true,
+        autoCycleIntervalSec: 3600,
         systemPrompt: `Du bist ein GitHub-Monitor-Agent. Du überwachst das Repository {{repo}} via GitHub API.
 
 Dein GitHub Token: {{github_token}}
@@ -556,14 +556,14 @@ DEINE AUFGABEN:
 Nutze den http-Adapter für alle GitHub API Calls.`,
       }
     ],
-    routinen: [
+    routines: [
       {
-        titel: 'GitHub Daily Report',
-        beschreibung: 'Täglicher GitHub Activity Report',
+        title: 'GitHub Daily Report',
+        description: 'Täglicher GitHub Activity Report',
         assignedToName: 'GitHub Monitor',
         cronExpression: '0 9 * * *',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       }
     ],
     configFields: [
@@ -575,24 +575,24 @@ Nutze den http-Adapter für alle GitHub API Calls.`,
   {
     id: 'discord-bot',
     name: 'Discord Bot',
-    beschreibung: 'Sendet automatisch Updates, Task-Zusammenfassungen und Team-Briefings in einen Discord-Channel via Webhook. Keine Bot-Installation nötig.',
+    description: 'Sendet automatisch Updates, Task-Zusammenfassungen und Team-Briefings in einen Discord-Channel via Webhook. Keine Bot-Installation nötig.',
     version: '1.0.0',
-    kategorie: 'integrations',
+    category: 'integrations',
     icon: '🎮',
     accentColor: '#5865f2',
     tags: ['discord', 'notifications', 'team', 'webhook', 'chat'],
     agents: [
       {
         name: 'Discord Notifier',
-        rolle: 'Discord Communication Agent',
-        titel: 'Discord Bot',
-        faehigkeiten: 'Discord Webhooks, Team Communication, Notifications, Status Updates',
-        verbindungsTyp: 'openrouter',
+        role: 'Discord Communication Agent',
+        title: 'Discord Bot',
+        capabilities: 'Discord Webhooks, Team Communication, Notifications, Status Updates',
+        connectionType: 'openrouter',
         avatar: '🎮',
-        avatarFarbe: '#5865f2',
-        budgetMonatCent: 0,
-        zyklusAktiv: true,
-        zyklusIntervallSek: 86400,
+        avatarColor: '#5865f2',
+        monthlyBudgetCent: 0,
+        autoCycleActive: true,
+        autoCycleIntervalSec: 86400,
         systemPrompt: `Du bist ein Discord-Kommunikations-Agent. Du sendest Updates in den Discord-Channel via Webhook.
 
 Discord Webhook URL: {{discord_webhook_url}}
@@ -610,22 +610,22 @@ Sende immer via HTTP POST an: {{discord_webhook_url}}
 Content-Type: application/json`,
       }
     ],
-    routinen: [
+    routines: [
       {
-        titel: 'Discord Morning Briefing',
-        beschreibung: 'Tägliches Morgen-Briefing in Discord',
+        title: 'Discord Morning Briefing',
+        description: 'Tägliches Morgen-Briefing in Discord',
         assignedToName: 'Discord Notifier',
         cronExpression: '0 9 * * 1-5',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       },
       {
-        titel: 'Discord Evening Summary',
-        beschreibung: 'Tägliche Abend-Zusammenfassung in Discord',
+        title: 'Discord Evening Summary',
+        description: 'Tägliche Abend-Zusammenfassung in Discord',
         assignedToName: 'Discord Notifier',
         cronExpression: '0 18 * * 1-5',
         timezone: 'Europe/Berlin',
-        prioritaet: 'low',
+        priority: 'low',
       }
     ],
     configFields: [
@@ -636,24 +636,24 @@ Content-Type: application/json`,
   {
     id: 'slack-notifier',
     name: 'Slack Notifier',
-    beschreibung: 'Verbindet OpenCognit mit deinem Slack-Workspace. Sendet tägliche Reports, Task-Updates und Team-Briefings in beliebige Channels via Incoming Webhook.',
+    description: 'Verbindet OpenCognit mit deinem Slack-Workspace. Sendet tägliche Reports, Task-Updates und Team-Briefings in beliebige Channels via Incoming Webhook.',
     version: '1.0.0',
-    kategorie: 'integrations',
+    category: 'integrations',
     icon: '💬',
     accentColor: '#4a154b',
     tags: ['slack', 'notifications', 'team', 'webhook', 'communication'],
     agents: [
       {
         name: 'Slack Agent',
-        rolle: 'Slack Communication Manager',
-        titel: 'Slack Bot',
-        faehigkeiten: 'Slack API, Webhooks, Team Updates, Rich Formatting, Block Kit',
-        verbindungsTyp: 'openrouter',
+        role: 'Slack Communication Manager',
+        title: 'Slack Bot',
+        capabilities: 'Slack API, Webhooks, Team Updates, Rich Formatting, Block Kit',
+        connectionType: 'openrouter',
         avatar: '💬',
-        avatarFarbe: '#4a154b',
-        budgetMonatCent: 0,
-        zyklusAktiv: true,
-        zyklusIntervallSek: 86400,
+        avatarColor: '#4a154b',
+        monthlyBudgetCent: 0,
+        autoCycleActive: true,
+        autoCycleIntervalSec: 86400,
         systemPrompt: `Du bist ein Slack-Kommunikations-Agent. Du sendest Updates in Slack via Webhook.
 
 Slack Webhook URL: {{slack_webhook_url}}
@@ -676,14 +676,14 @@ Routinen:
 - Wöchentlich Montag: Wochenplanung`,
       }
     ],
-    routinen: [
+    routines: [
       {
-        titel: 'Slack Daily Standup',
-        beschreibung: 'Täglicher Standup-Report in Slack',
+        title: 'Slack Daily Standup',
+        description: 'Täglicher Standup-Report in Slack',
         assignedToName: 'Slack Agent',
         cronExpression: '0 9 * * 1-5',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       }
     ],
     configFields: [
@@ -695,24 +695,24 @@ Routinen:
   {
     id: 'gmail-assistant',
     name: 'Gmail Assistant',
-    beschreibung: 'KI-Agent der deine Gmail-Inbox überwacht, wichtige E-Mails zusammenfasst, Antworten vorbereitet und Tasks aus E-Mails erstellt — via Gmail API.',
+    description: 'KI-Agent der deine Gmail-Inbox überwacht, wichtige E-Mails zusammenfasst, Antworten vorbereitet und Tasks aus E-Mails erstellt — via Gmail API.',
     version: '1.0.0',
-    kategorie: 'integrations',
+    category: 'integrations',
     icon: '📧',
     accentColor: '#ea4335',
     tags: ['gmail', 'email', 'productivity', 'inbox', 'google'],
     agents: [
       {
         name: 'Gmail Assistant',
-        rolle: 'Email & Communication Manager',
-        titel: 'E-Mail Agent',
-        faehigkeiten: 'Gmail API, Email Management, Inbox Zero, Antwort-Drafts, Priorisierung',
-        verbindungsTyp: 'openrouter',
+        role: 'Email & Communication Manager',
+        title: 'E-Mail Agent',
+        capabilities: 'Gmail API, Email Management, Inbox Zero, Antwort-Drafts, Priorisierung',
+        connectionType: 'openrouter',
         avatar: '📧',
-        avatarFarbe: '#ea4335',
-        budgetMonatCent: 0,
-        zyklusAktiv: true,
-        zyklusIntervallSek: 3600,
+        avatarColor: '#ea4335',
+        monthlyBudgetCent: 0,
+        autoCycleActive: true,
+        autoCycleIntervalSec: 3600,
         systemPrompt: `Du bist ein Gmail-Assistant-Agent. Du verwaltest E-Mails via Gmail API.
 
 Gmail API Key: {{gmail_api_key}}
@@ -730,14 +730,14 @@ PRIORISIERUNG:
 - 🟢 Info: Zusammenfassung → Wochenreport`,
       }
     ],
-    routinen: [
+    routines: [
       {
-        titel: 'Gmail Inbox Check',
-        beschreibung: 'Stündlicher E-Mail-Check und Task-Erstellung',
+        title: 'Gmail Inbox Check',
+        description: 'Stündlicher E-Mail-Check und Task-Erstellung',
         assignedToName: 'Gmail Assistant',
         cronExpression: '0 * * * *',
         timezone: 'Europe/Berlin',
-        prioritaet: 'high',
+        priority: 'high',
       }
     ],
     configFields: [
@@ -748,24 +748,24 @@ PRIORISIERUNG:
   {
     id: 'twitter-x-poster',
     name: 'Twitter / X Daily Poster',
-    beschreibung: 'Erstellt und postet täglich Tweets via X API v2. Analysiert Trends, optimiert Hashtags und passt Content an deine Nische an. Kein manuelles Eingreifen nötig.',
+    description: 'Erstellt und postet täglich Tweets via X API v2. Analysiert Trends, optimiert Hashtags und passt Content an deine Nische an. Kein manuelles Eingreifen nötig.',
     version: '1.0.0',
-    kategorie: 'integrations',
+    category: 'integrations',
     icon: '𝕏',
     accentColor: '#000000',
     tags: ['twitter', 'x', 'social media', 'automation', 'content'],
     agents: [
       {
         name: 'X/Twitter Agent',
-        rolle: 'Social Media & Content Manager',
-        titel: 'Twitter Specialist',
-        faehigkeiten: 'X API, Tweet Writing, Trend Analysis, Hashtag Research, Engagement-Optimierung',
-        verbindungsTyp: 'openrouter',
+        role: 'Social Media & Content Manager',
+        title: 'Twitter Specialist',
+        capabilities: 'X API, Tweet Writing, Trend Analysis, Hashtag Research, Engagement-Optimierung',
+        connectionType: 'openrouter',
         avatar: '𝕏',
-        avatarFarbe: '#000000',
-        budgetMonatCent: 0,
-        zyklusAktiv: true,
-        zyklusIntervallSek: 86400,
+        avatarColor: '#000000',
+        monthlyBudgetCent: 0,
+        autoCycleActive: true,
+        autoCycleIntervalSec: 86400,
         systemPrompt: `Du bist ein Twitter/X-Content-Agent. Du erstellst und postest täglich Tweets.
 
 Thema/Nische: {{nische}}
@@ -790,14 +790,14 @@ CONTENT-REGELN:
 - Emojis sparsam einsetzen`,
       }
     ],
-    routinen: [
+    routines: [
       {
-        titel: 'X/Twitter Daily Post',
-        beschreibung: 'Täglicher Tweet in der besten Engagement-Zeit',
+        title: 'X/Twitter Daily Post',
+        description: 'Täglicher Tweet in der besten Engagement-Zeit',
         assignedToName: 'X/Twitter Agent',
         cronExpression: '0 10 * * *',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       }
     ],
     configFields: [
@@ -813,23 +813,23 @@ CONTENT-REGELN:
   {
     id: 'spotify-controller',
     name: 'Spotify DJ',
-    beschreibung: 'KI-DJ der deine Spotify-Playlists automatisch verwaltet. Erstellt Stimmungs-Playlists, fügt neue Tracks hinzu und passt die Musik an Tageszeit und Aktivität an.',
+    description: 'KI-DJ der deine Spotify-Playlists automatisch verwaltet. Erstellt Stimmungs-Playlists, fügt neue Tracks hinzu und passt die Musik an Tageszeit und Aktivität an.',
     version: '1.0.0',
-    kategorie: 'integrations',
+    category: 'integrations',
     icon: '🎵',
     accentColor: '#1db954',
     tags: ['spotify', 'music', 'playlist', 'automation', 'lifestyle'],
     agents: [
       {
         name: 'Spotify DJ',
-        rolle: 'Music & Playlist Manager',
-        titel: 'Spotify Agent',
-        faehigkeiten: 'Spotify API, Playlist Management, Music Curation, Mood Analysis',
-        verbindungsTyp: 'openrouter',
+        role: 'Music & Playlist Manager',
+        title: 'Spotify Agent',
+        capabilities: 'Spotify API, Playlist Management, Music Curation, Mood Analysis',
+        connectionType: 'openrouter',
         avatar: '🎵',
-        avatarFarbe: '#1db954',
-        budgetMonatCent: 0,
-        zyklusAktiv: false,
+        avatarColor: '#1db954',
+        monthlyBudgetCent: 0,
+        autoCycleActive: false,
         systemPrompt: `Du bist ein Spotify-DJ-Agent. Du verwaltest Playlists via Spotify Web API.
 
 Spotify Access Token: {{spotify_access_token}}
@@ -857,24 +857,24 @@ STIMMUNGS-MAPPING:
   {
     id: 'hue-automation',
     name: 'Philips Hue Automation',
-    beschreibung: 'KI-Agent der deine Philips Hue Lampen automatisch steuert — nach Tageszeit, Aktivität, Wetter oder Stimmung. Automatische Szenen ohne Alexa oder HomeKit.',
+    description: 'KI-Agent der deine Philips Hue Lampen automatisch steuert — nach Tageszeit, Aktivität, Wetter oder Stimmung. Automatische Szenen ohne Alexa oder HomeKit.',
     version: '1.0.0',
-    kategorie: 'integrations',
+    category: 'integrations',
     icon: '💡',
     accentColor: '#f59e0b',
     tags: ['hue', 'smart home', 'lighting', 'automation', 'iot'],
     agents: [
       {
         name: 'Hue Controller',
-        rolle: 'Smart Home & Lighting Automation',
-        titel: 'Hue Agent',
-        faehigkeiten: 'Philips Hue API, Smart Home, Lighting Scenes, Automation, IoT',
-        verbindungsTyp: 'openrouter',
+        role: 'Smart Home & Lighting Automation',
+        title: 'Hue Agent',
+        capabilities: 'Philips Hue API, Smart Home, Lighting Scenes, Automation, IoT',
+        connectionType: 'openrouter',
         avatar: '💡',
-        avatarFarbe: '#f59e0b',
-        budgetMonatCent: 0,
-        zyklusAktiv: true,
-        zyklusIntervallSek: 3600,
+        avatarColor: '#f59e0b',
+        monthlyBudgetCent: 0,
+        autoCycleActive: true,
+        autoCycleIntervalSec: 3600,
         systemPrompt: `Du bist ein Philips Hue Steuerungs-Agent. Du kontrollierst Lampen via Hue API.
 
 Hue Bridge IP: {{hue_bridge_ip}}
@@ -895,30 +895,30 @@ TAGES-AUTOMATISIERUNG:
 - 22:00: Sehr warm (1800K), 20% — Schlafen`,
       }
     ],
-    routinen: [
+    routines: [
       {
-        titel: 'Hue Morning Scene',
-        beschreibung: 'Morgenroutine — warmes Aufwachlicht',
+        title: 'Hue Morning Scene',
+        description: 'Morgenroutine — warmes Aufwachlicht',
         assignedToName: 'Hue Controller',
         cronExpression: '0 7 * * *',
         timezone: 'Europe/Berlin',
-        prioritaet: 'low',
+        priority: 'low',
       },
       {
-        titel: 'Hue Work Scene',
-        beschreibung: 'Arbeits-Licht aktivieren',
+        title: 'Hue Work Scene',
+        description: 'Arbeits-Licht aktivieren',
         assignedToName: 'Hue Controller',
         cronExpression: '0 9 * * 1-5',
         timezone: 'Europe/Berlin',
-        prioritaet: 'low',
+        priority: 'low',
       },
       {
-        titel: 'Hue Evening Scene',
-        beschreibung: 'Abend-Entspannungs-Licht',
+        title: 'Hue Evening Scene',
+        description: 'Abend-Entspannungs-Licht',
         assignedToName: 'Hue Controller',
         cronExpression: '0 18 * * *',
         timezone: 'Europe/Berlin',
-        prioritaet: 'low',
+        priority: 'low',
       }
     ],
     configFields: [
@@ -930,24 +930,24 @@ TAGES-AUTOMATISIERUNG:
   {
     id: 'browser-watcher',
     name: 'Browser & Web Watcher',
-    beschreibung: 'Agent der Websites überwacht — Preisänderungen, neue Inhalte, Verfügbarkeit, Competitor-Monitoring. Benachrichtigt dich bei relevanten Änderungen.',
+    description: 'Agent der Websites überwacht — Preisänderungen, neue Inhalte, Verfügbarkeit, Competitor-Monitoring. Benachrichtigt dich bei relevanten Änderungen.',
     version: '1.0.0',
-    kategorie: 'integrations',
+    category: 'integrations',
     icon: '🌐',
     accentColor: '#0ea5e9',
     tags: ['browser', 'monitoring', 'web scraping', 'price tracking', 'alerts'],
     agents: [
       {
         name: 'Web Watcher',
-        rolle: 'Web Monitoring & Intelligence Agent',
-        titel: 'Browser Agent',
-        faehigkeiten: 'Web Scraping, HTTP Requests, Content Monitoring, Price Tracking, Competitor Analysis',
-        verbindungsTyp: 'openrouter',
+        role: 'Web Monitoring & Intelligence Agent',
+        title: 'Browser Agent',
+        capabilities: 'Web Scraping, HTTP Requests, Content Monitoring, Price Tracking, Competitor Analysis',
+        connectionType: 'openrouter',
         avatar: '🌐',
-        avatarFarbe: '#0ea5e9',
-        budgetMonatCent: 0,
-        zyklusAktiv: true,
-        zyklusIntervallSek: 3600,
+        avatarColor: '#0ea5e9',
+        monthlyBudgetCent: 0,
+        autoCycleActive: true,
+        autoCycleIntervalSec: 3600,
         systemPrompt: `Du bist ein Web-Monitoring-Agent. Du überwachst Websites auf Änderungen.
 
 Zu überwachende URLs: {{watch_urls}}
@@ -967,14 +967,14 @@ BASH-COMMANDS die du nutzen kannst:
 Nutze die bash-Action für alle Web-Requests.`,
       }
     ],
-    routinen: [
+    routines: [
       {
-        titel: 'Web Monitoring Check',
-        beschreibung: 'Stündliche Website-Überprüfung',
+        title: 'Web Monitoring Check',
+        description: 'Stündliche Website-Überprüfung',
         assignedToName: 'Web Watcher',
         cronExpression: '0 * * * *',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       }
     ],
     configFields: [
@@ -988,24 +988,24 @@ Nutze die bash-Action für alle Web-Requests.`,
   {
     id: 'saas-company',
     name: 'SaaS Company',
-    beschreibung: 'Vollständige SaaS-Unternehmensstruktur: CEO, CTO mit Dev-Team, CMO mit Marketing, Customer Success. 8 Agents, vollständige Hierarchie, tägliche & wöchentliche Routinen.',
+    description: 'Vollständige SaaS-Unternehmensstruktur: CEO, CTO mit Dev-Team, CMO mit Marketing, Customer Success. 8 Agents, vollständige Hierarchie, tägliche & wöchentliche Routinen.',
     version: '1.0.0',
-    kategorie: 'company',
+    category: 'company',
     icon: '🏢',
     accentColor: '#6366f1',
     tags: ['saas', 'company', 'ceo', 'cto', 'marketing', 'fullstack', 'enterprise'],
     agents: [
       {
         name: 'CEO',
-        rolle: 'Chief Executive Officer',
-        titel: 'Geschäftsführer',
-        faehigkeiten: 'Strategie, Unternehmensführung, OKR-Setting, Stakeholder-Management, Fundraising, Hiring',
-        verbindungsTyp: 'openrouter',
+        role: 'Chief Executive Officer',
+        title: 'Geschäftsführer',
+        capabilities: 'Strategie, Unternehmensführung, OKR-Setting, Stakeholder-Management, Fundraising, Hiring',
+        connectionType: 'openrouter',
         avatar: '👔',
-        avatarFarbe: '#6366f1',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 14400,
-        zyklusAktiv: true,
+        avatarColor: '#6366f1',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 14400,
+        autoCycleActive: true,
         isOrchestrator: true,
         systemPrompt: `Du bist der CEO von {{company_name}}, einem SaaS-Unternehmen im Bereich {{nische}}.
 
@@ -1025,8 +1025,8 @@ WÖCHENTLICHER RHYTHMUS:
 WICHTIGE METRIKEN: MRR, Churn Rate, NPS, Time-to-Value, Burn Rate`,
         skills: [{
           name: 'CEO Playbook',
-          beschreibung: 'SaaS-Unternehmensführung und OKR-Framework',
-          inhalt: `# CEO Playbook — SaaS
+          description: 'SaaS-Unternehmensführung und OKR-Framework',
+          content: `# CEO Playbook — SaaS
 
 ## OKR-Framework
 - 3 Company-OKRs pro Quartal
@@ -1048,15 +1048,15 @@ WICHTIGE METRIKEN: MRR, Churn Rate, NPS, Time-to-Value, Burn Rate`,
       },
       {
         name: 'CTO',
-        rolle: 'Chief Technology Officer',
-        titel: 'Technischer Direktor',
-        faehigkeiten: 'Software-Architektur, Tech-Stack-Entscheidungen, Code Reviews, Security, Skalierung, Team-Führung',
-        verbindungsTyp: 'openrouter',
+        role: 'Chief Technology Officer',
+        title: 'Technischer Direktor',
+        capabilities: 'Software-Architektur, Tech-Stack-Entscheidungen, Code Reviews, Security, Skalierung, Team-Führung',
+        connectionType: 'openrouter',
         avatar: '💻',
-        avatarFarbe: '#3b82f6',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 7200,
-        zyklusAktiv: true,
+        avatarColor: '#3b82f6',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 7200,
+        autoCycleActive: true,
         reportsToName: 'CEO',
         systemPrompt: `Du bist der CTO von {{company_name}}.
 
@@ -1075,8 +1075,8 @@ WÖCHENTLICHE AUFGABEN:
 - Security Patches und Updates überwachen`,
         skills: [{
           name: 'Tech Leadership',
-          beschreibung: 'CTO-Playbook für SaaS-Architekturen',
-          inhalt: `# Tech Leadership Playbook
+          description: 'CTO-Playbook für SaaS-Architekturen',
+          content: `# Tech Leadership Playbook
 
 ## Architecture Principles
 - API-first Design
@@ -1098,18 +1098,18 @@ WÖCHENTLICHE AUFGABEN:
       },
       {
         name: 'Backend Dev',
-        rolle: 'Senior Backend Engineer',
-        titel: 'Backend-Entwickler',
-        faehigkeiten: 'Node.js, TypeScript, PostgreSQL, REST APIs, GraphQL, Caching, Message Queues, Authentication',
-        verbindungsTyp: 'openrouter',
+        role: 'Senior Backend Engineer',
+        title: 'Backend-Entwickler',
+        capabilities: 'Node.js, TypeScript, PostgreSQL, REST APIs, GraphQL, Caching, Message Queues, Authentication',
+        connectionType: 'openrouter',
         avatar: '⚡',
-        avatarFarbe: '#06b6d4',
-        budgetMonatCent: 0,
+        avatarColor: '#06b6d4',
+        monthlyBudgetCent: 0,
         reportsToName: 'CTO',
         skills: [{
           name: 'Backend Engineering',
-          beschreibung: 'Node.js, APIs, Datenbanken — Production-Ready',
-          inhalt: `# Backend Engineering Standards
+          description: 'Node.js, APIs, Datenbanken — Production-Ready',
+          content: `# Backend Engineering Standards
 
 ## API Design
 - RESTful mit OpenAPI/Swagger Spec
@@ -1132,18 +1132,18 @@ WÖCHENTLICHE AUFGABEN:
       },
       {
         name: 'Frontend Dev',
-        rolle: 'Senior Frontend Engineer',
-        titel: 'Frontend-Entwickler',
-        faehigkeiten: 'React, TypeScript, CSS, UX/UI, Performance, Accessibility, Component Libraries, Testing',
-        verbindungsTyp: 'openrouter',
+        role: 'Senior Frontend Engineer',
+        title: 'Frontend-Entwickler',
+        capabilities: 'React, TypeScript, CSS, UX/UI, Performance, Accessibility, Component Libraries, Testing',
+        connectionType: 'openrouter',
         avatar: '🎨',
-        avatarFarbe: '#ec4899',
-        budgetMonatCent: 0,
+        avatarColor: '#ec4899',
+        monthlyBudgetCent: 0,
         reportsToName: 'CTO',
         skills: [{
           name: 'Frontend Engineering',
-          beschreibung: 'React, TypeScript, Performance — Production Standards',
-          inhalt: `# Frontend Engineering Standards
+          description: 'React, TypeScript, Performance — Production Standards',
+          content: `# Frontend Engineering Standards
 
 ## Stack
 - React 18+ mit TypeScript strict mode
@@ -1167,18 +1167,18 @@ WÖCHENTLICHE AUFGABEN:
       },
       {
         name: 'DevOps',
-        rolle: 'DevOps / Platform Engineer',
-        titel: 'DevOps-Ingenieur',
-        faehigkeiten: 'Docker, Kubernetes, GitHub Actions, Terraform, AWS/GCP, Monitoring, Incident Response',
-        verbindungsTyp: 'openrouter',
+        role: 'DevOps / Platform Engineer',
+        title: 'DevOps-Ingenieur',
+        capabilities: 'Docker, Kubernetes, GitHub Actions, Terraform, AWS/GCP, Monitoring, Incident Response',
+        connectionType: 'openrouter',
         avatar: '🔧',
-        avatarFarbe: '#f97316',
-        budgetMonatCent: 0,
+        avatarColor: '#f97316',
+        monthlyBudgetCent: 0,
         reportsToName: 'CTO',
         skills: [{
           name: 'Platform Engineering',
-          beschreibung: 'CI/CD, Cloud, Monitoring — Zero-Downtime Deployments',
-          inhalt: `# Platform Engineering
+          description: 'CI/CD, Cloud, Monitoring — Zero-Downtime Deployments',
+          content: `# Platform Engineering
 
 ## CI/CD Pipeline
 1. Lint + Type Check (< 2 min)
@@ -1204,13 +1204,13 @@ WÖCHENTLICHE AUFGABEN:
       },
       {
         name: 'CMO',
-        rolle: 'Chief Marketing Officer',
-        titel: 'Marketing-Direktor',
-        faehigkeiten: 'Demand Generation, Content Strategy, SEO, Paid Ads, Brand, Community, Analytics, Growth',
-        verbindungsTyp: 'openrouter',
+        role: 'Chief Marketing Officer',
+        title: 'Marketing-Direktor',
+        capabilities: 'Demand Generation, Content Strategy, SEO, Paid Ads, Brand, Community, Analytics, Growth',
+        connectionType: 'openrouter',
         avatar: '📣',
-        avatarFarbe: '#a855f7',
-        budgetMonatCent: 0,
+        avatarColor: '#a855f7',
+        monthlyBudgetCent: 0,
         reportsToName: 'CEO',
         systemPrompt: `Du bist der CMO von {{company_name}}.
 
@@ -1227,8 +1227,8 @@ WÖCHENTLICHE AUFGABEN:
 - Freitag: Weekly Marketing Report an CEO`,
         skills: [{
           name: 'Growth Marketing',
-          beschreibung: 'SaaS Growth Playbook — CAC, LTV, Funnel',
-          inhalt: `# Growth Marketing Playbook
+          description: 'SaaS Growth Playbook — CAC, LTV, Funnel',
+          content: `# Growth Marketing Playbook
 
 ## Demand Generation Channels
 1. Content/SEO — organischer Traffic (langfristig)
@@ -1252,18 +1252,18 @@ WÖCHENTLICHE AUFGABEN:
       },
       {
         name: 'SEO Writer',
-        rolle: 'SEO Content Writer',
-        titel: 'SEO-Autor',
-        faehigkeiten: 'SEO Copywriting, Keyword Research, Long-Form Content, Meta Optimization, Internal Linking',
-        verbindungsTyp: 'openrouter',
+        role: 'SEO Content Writer',
+        title: 'SEO-Autor',
+        capabilities: 'SEO Copywriting, Keyword Research, Long-Form Content, Meta Optimization, Internal Linking',
+        connectionType: 'openrouter',
         avatar: '✍️',
-        avatarFarbe: '#22c55e',
-        budgetMonatCent: 0,
+        avatarColor: '#22c55e',
+        monthlyBudgetCent: 0,
         reportsToName: 'CMO',
         skills: [{
           name: 'SEO Writing',
-          beschreibung: 'Artikel die ranken und konvertieren',
-          inhalt: `# SEO Writing Standards
+          description: 'Artikel die ranken und konvertieren',
+          content: `# SEO Writing Standards
 
 ## Artikel-Struktur
 - H1: Haupt-Keyword (einmal)
@@ -1289,13 +1289,13 @@ WÖCHENTLICHE AUFGABEN:
       },
       {
         name: 'Customer Success',
-        rolle: 'Customer Success Manager',
-        titel: 'Kundenerfolgs-Manager',
-        faehigkeiten: 'Onboarding, Churn Prevention, NPS, Support, Feature Requests, User Interviews',
-        verbindungsTyp: 'openrouter',
+        role: 'Customer Success Manager',
+        title: 'Kundenerfolgs-Manager',
+        capabilities: 'Onboarding, Churn Prevention, NPS, Support, Feature Requests, User Interviews',
+        connectionType: 'openrouter',
         avatar: '🤝',
-        avatarFarbe: '#10b981',
-        budgetMonatCent: 0,
+        avatarColor: '#10b981',
+        monthlyBudgetCent: 0,
         reportsToName: 'CEO',
         systemPrompt: `Du bist der Customer Success Manager von {{company_name}}.
 
@@ -1312,8 +1312,8 @@ WÖCHENTLICHE AUFGABEN:
 - Wöchentlicher CS-Report an CEO`,
         skills: [{
           name: 'Customer Success Playbook',
-          beschreibung: 'Churn Prevention und NPS-Optimierung für SaaS',
-          inhalt: `# Customer Success Playbook
+          description: 'Churn Prevention und NPS-Optimierung für SaaS',
+          content: `# Customer Success Playbook
 
 ## Onboarding Framework
 - Tag 1: Welcome Email + Quick Start Guide
@@ -1334,46 +1334,46 @@ WÖCHENTLICHE AUFGABEN:
         }]
       },
     ],
-    routinen: [
+    routines: [
       {
-        titel: 'CEO Weekly Kickoff',
-        beschreibung: 'Jeden Montag: Wochenprioritäten setzen, Tasks an Team delegieren',
+        title: 'CEO Weekly Kickoff',
+        description: 'Jeden Montag: Wochenprioritäten setzen, Tasks an Team delegieren',
         assignedToName: 'CEO',
         cronExpression: '0 8 * * 1',
         timezone: 'Europe/Berlin',
-        prioritaet: 'high',
+        priority: 'high',
       },
       {
-        titel: 'CEO Weekly Report',
-        beschreibung: 'Jeden Freitag: Wochenbericht — KPIs, Fortschritt, Risiken',
+        title: 'CEO Weekly Report',
+        description: 'Jeden Freitag: Wochenbericht — KPIs, Fortschritt, Risiken',
         assignedToName: 'CEO',
         cronExpression: '0 17 * * 5',
         timezone: 'Europe/Berlin',
-        prioritaet: 'high',
+        priority: 'high',
       },
       {
-        titel: 'CMO Content Plan',
-        beschreibung: 'Jeden Montag: Content-Plan erstellen und an SEO Writer + Social Manager delegieren',
+        title: 'CMO Content Plan',
+        description: 'Jeden Montag: Content-Plan erstellen und an SEO Writer + Social Manager delegieren',
         assignedToName: 'CMO',
         cronExpression: '0 9 * * 1',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       },
       {
-        titel: 'Tech Status Update',
-        beschreibung: 'Jeden Mittwoch: Technischen Fortschritt berichten, Blocker melden',
+        title: 'Tech Status Update',
+        description: 'Jeden Mittwoch: Technischen Fortschritt berichten, Blocker melden',
         assignedToName: 'CTO',
         cronExpression: '0 10 * * 3',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       },
       {
-        titel: 'Customer Success Weekly',
-        beschreibung: 'Jeden Donnerstag: At-Risk Accounts prüfen, NPS analysieren',
+        title: 'Customer Success Weekly',
+        description: 'Jeden Donnerstag: At-Risk Accounts prüfen, NPS analysieren',
         assignedToName: 'Customer Success',
         cronExpression: '0 9 * * 4',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       },
     ],
     configFields: [
@@ -1386,24 +1386,24 @@ WÖCHENTLICHE AUFGABEN:
   {
     id: 'digital-agency',
     name: 'Digital Agency',
-    beschreibung: 'Vollständige Agentur-Struktur: Agency Lead, Projektmanager, Designer, Developer, SEO-Spezialist, Account Manager. Für Agenturen die Kundenprojekte mit KI-Agents abwickeln wollen.',
+    description: 'Vollständige Agentur-Struktur: Agency Lead, Projektmanager, Designer, Developer, SEO-Spezialist, Account Manager. Für Agenturen die Kundenprojekte mit KI-Agents abwickeln wollen.',
     version: '1.0.0',
-    kategorie: 'company',
+    category: 'company',
     icon: '🎯',
     accentColor: '#f59e0b',
     tags: ['agency', 'company', 'design', 'development', 'seo', 'client', 'project-management'],
     agents: [
       {
         name: 'Agency Lead',
-        rolle: 'Agency Director',
-        titel: 'Geschäftsführer',
-        faehigkeiten: 'Business Development, Kundenakquise, Strategie, Qualitätssicherung, Team-Führung',
-        verbindungsTyp: 'openrouter',
+        role: 'Agency Director',
+        title: 'Geschäftsführer',
+        capabilities: 'Business Development, Kundenakquise, Strategie, Qualitätssicherung, Team-Führung',
+        connectionType: 'openrouter',
         avatar: '🏆',
-        avatarFarbe: '#f59e0b',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 14400,
-        zyklusAktiv: true,
+        avatarColor: '#f59e0b',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 14400,
+        autoCycleActive: true,
         isOrchestrator: true,
         systemPrompt: `Du bist der Agency Director von {{agency_name}}.
 
@@ -1421,8 +1421,8 @@ WÖCHENTLICHE AUFGABEN:
 - Freitag: Kundenstatus-Update, neue Leads prüfen`,
         skills: [{
           name: 'Agency Management',
-          beschreibung: 'Projektsteuerung, Kundenmanagement und Qualitätssicherung',
-          inhalt: `# Agency Management Playbook
+          description: 'Projektsteuerung, Kundenmanagement und Qualitätssicherung',
+          content: `# Agency Management Playbook
 
 ## Projektphasen
 1. Discovery (1 Woche) — Briefing, Zieldefinition
@@ -1445,13 +1445,13 @@ WÖCHENTLICHE AUFGABEN:
       },
       {
         name: 'Projektmanager',
-        rolle: 'Project Manager',
-        titel: 'Projektleiter',
-        faehigkeiten: 'Projektplanung, Scrum, Kundenabstimmung, Deadlines, Budget-Tracking, Risikomanagement',
-        verbindungsTyp: 'openrouter',
+        role: 'Project Manager',
+        title: 'Projektleiter',
+        capabilities: 'Projektplanung, Scrum, Kundenabstimmung, Deadlines, Budget-Tracking, Risikomanagement',
+        connectionType: 'openrouter',
         avatar: '📋',
-        avatarFarbe: '#6366f1',
-        budgetMonatCent: 0,
+        avatarColor: '#6366f1',
+        monthlyBudgetCent: 0,
         reportsToName: 'Agency Lead',
         systemPrompt: `Du bist der Projektmanager bei {{agency_name}}.
 
@@ -1462,8 +1462,8 @@ AUFGABEN:
 - Erstelle wöchentliche Statusberichte für den Agency Lead`,
         skills: [{
           name: 'Project Management',
-          beschreibung: 'Agile Projektsteuerung für Agenturen',
-          inhalt: `# Agile Agency PM
+          description: 'Agile Projektsteuerung für Agenturen',
+          content: `# Agile Agency PM
 
 ## Sprint-Struktur (2 Wochen)
 - Sprint Planning: Tasks mit Stunden-Schätzung
@@ -1484,18 +1484,18 @@ AUFGABEN:
       },
       {
         name: 'Designer',
-        rolle: 'UI/UX Designer',
-        titel: 'Creative Designer',
-        faehigkeiten: 'UI Design, UX Research, Figma, Branding, Design Systems, Prototyping, User Testing',
-        verbindungsTyp: 'openrouter',
+        role: 'UI/UX Designer',
+        title: 'Creative Designer',
+        capabilities: 'UI Design, UX Research, Figma, Branding, Design Systems, Prototyping, User Testing',
+        connectionType: 'openrouter',
         avatar: '🎨',
-        avatarFarbe: '#ec4899',
-        budgetMonatCent: 0,
+        avatarColor: '#ec4899',
+        monthlyBudgetCent: 0,
         reportsToName: 'Projektmanager',
         skills: [{
           name: 'UI/UX Design',
-          beschreibung: 'Human-Centered Design für Web und Apps',
-          inhalt: `# UI/UX Design Standards
+          description: 'Human-Centered Design für Web und Apps',
+          content: `# UI/UX Design Standards
 
 ## Design Process
 1. Research: User Interviews, Competitor Analysis
@@ -1519,18 +1519,18 @@ AUFGABEN:
       },
       {
         name: 'Developer',
-        rolle: 'Full-Stack Developer',
-        titel: 'Entwickler',
-        faehigkeiten: 'React, TypeScript, Node.js, WordPress, Webflow, Performance, SEO-technisch',
-        verbindungsTyp: 'openrouter',
+        role: 'Full-Stack Developer',
+        title: 'Entwickler',
+        capabilities: 'React, TypeScript, Node.js, WordPress, Webflow, Performance, SEO-technisch',
+        connectionType: 'openrouter',
         avatar: '💻',
-        avatarFarbe: '#3b82f6',
-        budgetMonatCent: 0,
+        avatarColor: '#3b82f6',
+        monthlyBudgetCent: 0,
         reportsToName: 'Projektmanager',
         skills: [{
           name: 'Web Development',
-          beschreibung: 'Full-Stack Entwicklung für Kundenprojekte',
-          inhalt: `# Web Dev Agentur-Standards
+          description: 'Full-Stack Entwicklung für Kundenprojekte',
+          content: `# Web Dev Agentur-Standards
 
 ## Tech Stack Auswahl
 - Marketing Sites: Webflow oder Next.js + CMS
@@ -1553,18 +1553,18 @@ AUFGABEN:
       },
       {
         name: 'SEO Spezialist',
-        rolle: 'SEO Specialist',
-        titel: 'SEO-Experte',
-        faehigkeiten: 'Technical SEO, Keyword Research, Link Building, Local SEO, Analytics, Search Console',
-        verbindungsTyp: 'openrouter',
+        role: 'SEO Specialist',
+        title: 'SEO-Experte',
+        capabilities: 'Technical SEO, Keyword Research, Link Building, Local SEO, Analytics, Search Console',
+        connectionType: 'openrouter',
         avatar: '🔍',
-        avatarFarbe: '#22c55e',
-        budgetMonatCent: 0,
+        avatarColor: '#22c55e',
+        monthlyBudgetCent: 0,
         reportsToName: 'Projektmanager',
         skills: [{
           name: 'SEO Strategy',
-          beschreibung: 'Technical und Content SEO für Kundenprojekte',
-          inhalt: `# SEO Agentur-Playbook
+          description: 'Technical und Content SEO für Kundenprojekte',
+          content: `# SEO Agentur-Playbook
 
 ## Monatlicher SEO-Zyklus
 1. Woche 1: Technical Audit (Crawl, Indexierung, Core Web Vitals)
@@ -1588,18 +1588,18 @@ AUFGABEN:
       },
       {
         name: 'Account Manager',
-        rolle: 'Account Manager',
-        titel: 'Kundenberater',
-        faehigkeiten: 'Kundenbeziehungen, Upselling, Vertragsmanagement, Feedback-Sammlung, Eskalationsmanagement',
-        verbindungsTyp: 'openrouter',
+        role: 'Account Manager',
+        title: 'Kundenberater',
+        capabilities: 'Kundenbeziehungen, Upselling, Vertragsmanagement, Feedback-Sammlung, Eskalationsmanagement',
+        connectionType: 'openrouter',
         avatar: '🤝',
-        avatarFarbe: '#10b981',
-        budgetMonatCent: 0,
+        avatarColor: '#10b981',
+        monthlyBudgetCent: 0,
         reportsToName: 'Agency Lead',
         skills: [{
           name: 'Account Management',
-          beschreibung: 'Kundenbindung und Upselling für Agenturen',
-          inhalt: `# Account Management Playbook
+          description: 'Kundenbindung und Upselling für Agenturen',
+          content: `# Account Management Playbook
 
 ## Kundenkommunikation
 - Wöchentlicher Status-Update per Email
@@ -1618,30 +1618,30 @@ AUFGABEN:
         }]
       },
     ],
-    routinen: [
+    routines: [
       {
-        titel: 'Agency Weekly Kickoff',
-        beschreibung: 'Jeden Montag: Projektübersicht, Prioritäten für die Woche',
+        title: 'Agency Weekly Kickoff',
+        description: 'Jeden Montag: Projektübersicht, Prioritäten für die Woche',
         assignedToName: 'Agency Lead',
         cronExpression: '0 8 * * 1',
         timezone: 'Europe/Berlin',
-        prioritaet: 'high',
+        priority: 'high',
       },
       {
-        titel: 'Projektmanager Daily Standup',
-        beschreibung: 'Täglich: Status aller laufenden Projekte prüfen',
+        title: 'Projektmanager Daily Standup',
+        description: 'Täglich: Status aller laufenden Projekte prüfen',
         assignedToName: 'Projektmanager',
         cronExpression: '0 9 * * 1-5',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       },
       {
-        titel: 'SEO Monatsbericht',
-        beschreibung: 'Jeden 1. des Monats: SEO-Performance-Bericht für alle Kunden',
+        title: 'SEO Monatsbericht',
+        description: 'Jeden 1. des Monats: SEO-Performance-Bericht für alle Kunden',
         assignedToName: 'SEO Spezialist',
         cronExpression: '0 9 1 * *',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       },
     ],
     configFields: [
@@ -1653,24 +1653,24 @@ AUFGABEN:
   {
     id: 'ecommerce-company',
     name: 'E-Commerce Company',
-    beschreibung: 'Komplette Online-Shop-Struktur: CEO, Shop Manager, Produktlistung, Customer Support, Marketing, Analytics. Vollautomatische Tagesroutinen für deinen Online-Shop.',
+    description: 'Komplette Online-Shop-Struktur: CEO, Shop Manager, Produktlistung, Customer Support, Marketing, Analytics. Vollautomatische Tagesroutinen für deinen Online-Shop.',
     version: '1.0.0',
-    kategorie: 'company',
+    category: 'company',
     icon: '🛒',
     accentColor: '#22c55e',
     tags: ['ecommerce', 'company', 'shop', 'marketing', 'support', 'analytics'],
     agents: [
       {
         name: 'CEO',
-        rolle: 'Chief Executive Officer',
-        titel: 'Geschäftsführer',
-        faehigkeiten: 'Strategie, E-Commerce, Wachstum, Einkauf, Margen, Lieferantenmanagement',
-        verbindungsTyp: 'openrouter',
+        role: 'Chief Executive Officer',
+        title: 'Geschäftsführer',
+        capabilities: 'Strategie, E-Commerce, Wachstum, Einkauf, Margen, Lieferantenmanagement',
+        connectionType: 'openrouter',
         avatar: '👔',
-        avatarFarbe: '#22c55e',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 14400,
-        zyklusAktiv: true,
+        avatarColor: '#22c55e',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 14400,
+        autoCycleActive: true,
         isOrchestrator: true,
         systemPrompt: `Du bist der CEO von {{shop_name}}, einem Online-Shop im Bereich {{kategorie}}.
 
@@ -1687,8 +1687,8 @@ TÄGLICHE AUFGABEN:
 DEINE DIREKTEN REPORTS: Shop Manager, Marketing Manager, Analytics Agent`,
         skills: [{
           name: 'E-Commerce Strategy',
-          beschreibung: 'Online-Shop Führung und Wachstum',
-          inhalt: `# E-Commerce CEO Playbook
+          description: 'Online-Shop Führung und Wachstum',
+          content: `# E-Commerce CEO Playbook
 
 ## Täglich zu prüfen
 - Umsatz (heute vs. gestern, heute vs. Vorjahr)
@@ -1711,13 +1711,13 @@ DEINE DIREKTEN REPORTS: Shop Manager, Marketing Manager, Analytics Agent`,
       },
       {
         name: 'Shop Manager',
-        rolle: 'E-Commerce Operations Manager',
-        titel: 'Shop-Manager',
-        faehigkeiten: 'Produktmanagement, Bestandsverwaltung, Lieferantenmanagement, Pricing, Produktbeschreibungen',
-        verbindungsTyp: 'openrouter',
+        role: 'E-Commerce Operations Manager',
+        title: 'Shop-Manager',
+        capabilities: 'Produktmanagement, Bestandsverwaltung, Lieferantenmanagement, Pricing, Produktbeschreibungen',
+        connectionType: 'openrouter',
         avatar: '🏪',
-        avatarFarbe: '#06b6d4',
-        budgetMonatCent: 0,
+        avatarColor: '#06b6d4',
+        monthlyBudgetCent: 0,
         reportsToName: 'CEO',
         systemPrompt: `Du bist der Shop Manager von {{shop_name}}.
 
@@ -1728,8 +1728,8 @@ AUFGABEN:
 - Produktseiten auf Vollständigkeit und Qualität prüfen`,
         skills: [{
           name: 'E-Commerce Operations',
-          beschreibung: 'Shop-Betrieb, Produkte und Bestand',
-          inhalt: `# E-Commerce Operations
+          description: 'Shop-Betrieb, Produkte und Bestand',
+          content: `# E-Commerce Operations
 
 ## Produktlisting-Standards
 - Produkttitel: Marke + Produkt + Hauptmerkmal + Größe/Variante
@@ -1752,18 +1752,18 @@ AUFGABEN:
       },
       {
         name: 'Produkt Agent',
-        rolle: 'Product Content Specialist',
-        titel: 'Produkt-Texter',
-        faehigkeiten: 'Produktbeschreibungen, SEO-optimierte Texte, Amazon-Listings, Bullet Points, A+ Content',
-        verbindungsTyp: 'openrouter',
+        role: 'Product Content Specialist',
+        title: 'Produkt-Texter',
+        capabilities: 'Produktbeschreibungen, SEO-optimierte Texte, Amazon-Listings, Bullet Points, A+ Content',
+        connectionType: 'openrouter',
         avatar: '📦',
-        avatarFarbe: '#8b5cf6',
-        budgetMonatCent: 0,
+        avatarColor: '#8b5cf6',
+        monthlyBudgetCent: 0,
         reportsToName: 'Shop Manager',
         skills: [{
           name: 'Product Copywriting',
-          beschreibung: 'Konvertierende Produktbeschreibungen für Online-Shops',
-          inhalt: `# Product Copywriting Standards
+          description: 'Konvertierende Produktbeschreibungen für Online-Shops',
+          content: `# Product Copywriting Standards
 
 ## Struktur einer guten Produktbeschreibung
 1. Headline: Produkt + Hauptbenefit (max 12 Wörter)
@@ -1784,13 +1784,13 @@ AUFGABEN:
       },
       {
         name: 'Marketing Manager',
-        rolle: 'E-Commerce Marketing Manager',
-        titel: 'Marketing-Manager',
-        faehigkeiten: 'Email Marketing, Paid Ads, Social Media, Retargeting, Promotions, Influencer Marketing',
-        verbindungsTyp: 'openrouter',
+        role: 'E-Commerce Marketing Manager',
+        title: 'Marketing-Manager',
+        capabilities: 'Email Marketing, Paid Ads, Social Media, Retargeting, Promotions, Influencer Marketing',
+        connectionType: 'openrouter',
         avatar: '📣',
-        avatarFarbe: '#f97316',
-        budgetMonatCent: 0,
+        avatarColor: '#f97316',
+        monthlyBudgetCent: 0,
         reportsToName: 'CEO',
         systemPrompt: `Du bist der Marketing Manager von {{shop_name}}.
 
@@ -1806,8 +1806,8 @@ WÖCHENTLICH:
 - Freitag: Nächste Woche vorbereiten`,
         skills: [{
           name: 'E-Commerce Marketing',
-          beschreibung: 'Email, Ads, Social — für Online-Shops',
-          inhalt: `# E-Commerce Marketing Playbook
+          description: 'Email, Ads, Social — für Online-Shops',
+          content: `# E-Commerce Marketing Playbook
 
 ## Email Marketing Flows (essentiell)
 1. Welcome Series (3 Mails in 7 Tagen)
@@ -1833,18 +1833,18 @@ WÖCHENTLICH:
       },
       {
         name: 'Customer Support',
-        rolle: 'Customer Support Specialist',
-        titel: 'Kundendienst',
-        faehigkeiten: 'Kundenservice, Reklamationsbearbeitung, Returns, Produktberatung, Eskalation',
-        verbindungsTyp: 'openrouter',
+        role: 'Customer Support Specialist',
+        title: 'Kundendienst',
+        capabilities: 'Kundenservice, Reklamationsbearbeitung, Returns, Produktberatung, Eskalation',
+        connectionType: 'openrouter',
         avatar: '💬',
-        avatarFarbe: '#10b981',
-        budgetMonatCent: 0,
+        avatarColor: '#10b981',
+        monthlyBudgetCent: 0,
         reportsToName: 'Shop Manager',
         skills: [{
           name: 'E-Commerce Customer Support',
-          beschreibung: 'Kundendienst-Playbook für Online-Shops',
-          inhalt: `# Customer Support Playbook
+          description: 'Kundendienst-Playbook für Online-Shops',
+          content: `# Customer Support Playbook
 
 ## Response Times
 - Email: < 24h (Ziel: < 4h)
@@ -1865,30 +1865,30 @@ WÖCHENTLICH:
         }]
       },
     ],
-    routinen: [
+    routines: [
       {
-        titel: 'Täglicher Umsatz-Check',
-        beschreibung: 'Täglich 08:00: Umsatz, Bestellungen, Top-Produkte des Vortags analysieren',
+        title: 'Täglicher Umsatz-Check',
+        description: 'Täglich 08:00: Umsatz, Bestellungen, Top-Produkte des Vortags analysieren',
         assignedToName: 'CEO',
         cronExpression: '0 8 * * *',
         timezone: 'Europe/Berlin',
-        prioritaet: 'high',
+        priority: 'high',
       },
       {
-        titel: 'Shop Operations Daily',
-        beschreibung: 'Täglich: Bestand prüfen, neue Produkte auflisten, Preise aktualisieren',
+        title: 'Shop Operations Daily',
+        description: 'Täglich: Bestand prüfen, neue Produkte auflisten, Preise aktualisieren',
         assignedToName: 'Shop Manager',
         cronExpression: '0 9 * * 1-5',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       },
       {
-        titel: 'Marketing Weekly',
-        beschreibung: 'Jeden Montag: Kampagnenplan für die Woche, Promotionen vorbereiten',
+        title: 'Marketing Weekly',
+        description: 'Jeden Montag: Kampagnenplan für die Woche, Promotionen vorbereiten',
         assignedToName: 'Marketing Manager',
         cronExpression: '0 9 * * 1',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       },
     ],
     configFields: [
@@ -1901,24 +1901,24 @@ WÖCHENTLICH:
   {
     id: 'personal-assistant-team',
     name: 'Personal Assistant Team',
-    beschreibung: 'Dein persönliches KI-Team als Einzelperson oder Freelancer: Chief of Staff koordiniert Email-Management, Research, Content und Kalender. Perfekt für Solopreneure.',
+    description: 'Dein persönliches KI-Team als Einzelperson oder Freelancer: Chief of Staff koordiniert Email-Management, Research, Content und Kalender. Perfekt für Solopreneure.',
     version: '1.0.0',
-    kategorie: 'company',
+    category: 'company',
     icon: '🧑‍💼',
     accentColor: '#8b5cf6',
     tags: ['personal', 'assistant', 'freelancer', 'solopreneur', 'productivity', 'delegation'],
     agents: [
       {
         name: 'Chief of Staff',
-        rolle: 'Chief of Staff / Personal Orchestrator',
-        titel: 'Persönlicher Koordinator',
-        faehigkeiten: 'Koordination, Priorisierung, Delegation, Morgen-Briefing, Wochenplanung, Eskalation',
-        verbindungsTyp: 'openrouter',
+        role: 'Chief of Staff / Personal Orchestrator',
+        title: 'Persönlicher Koordinator',
+        capabilities: 'Koordination, Priorisierung, Delegation, Morgen-Briefing, Wochenplanung, Eskalation',
+        connectionType: 'openrouter',
         avatar: '🧑‍💼',
-        avatarFarbe: '#8b5cf6',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 21600,
-        zyklusAktiv: true,
+        avatarColor: '#8b5cf6',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 21600,
+        autoCycleActive: true,
         isOrchestrator: true,
         systemPrompt: `Du bist mein persönlicher Chief of Staff.
 
@@ -1936,8 +1936,8 @@ MORGEN-BRIEFING (täglich 07:30):
 3. Was du meinen Assistenten heute delegierst`,
         skills: [{
           name: 'Executive Assistance',
-          beschreibung: 'Koordination und Delegation für Solopreneure',
-          inhalt: `# Chief of Staff Playbook
+          description: 'Koordination und Delegation für Solopreneure',
+          content: `# Chief of Staff Playbook
 
 ## Tages-Rhythmus
 07:30 — Morgen-Briefing: Top 3 Prioritäten
@@ -1960,18 +1960,18 @@ MORGEN-BRIEFING (täglich 07:30):
       },
       {
         name: 'Email Manager',
-        rolle: 'Email & Communications Manager',
-        titel: 'Email-Assistent',
-        faehigkeiten: 'Email-Management, Antwort-Entwürfe, Priorisierung, Follow-ups, Newsletter-Abmeldungen',
-        verbindungsTyp: 'openrouter',
+        role: 'Email & Communications Manager',
+        title: 'Email-Assistent',
+        capabilities: 'Email-Management, Antwort-Entwürfe, Priorisierung, Follow-ups, Newsletter-Abmeldungen',
+        connectionType: 'openrouter',
         avatar: '📧',
-        avatarFarbe: '#3b82f6',
-        budgetMonatCent: 0,
+        avatarColor: '#3b82f6',
+        monthlyBudgetCent: 0,
         reportsToName: 'Chief of Staff',
         skills: [{
           name: 'Email Management',
-          beschreibung: 'Inbox Zero und Email-Effizienz',
-          inhalt: `# Email Management System
+          description: 'Inbox Zero und Email-Effizienz',
+          content: `# Email Management System
 
 ## Inbox-Kategorisierung
 🔴 Sofort (< 2h): Client-Anfragen, Zahlungen, Probleme
@@ -1992,18 +1992,18 @@ MORGEN-BRIEFING (täglich 07:30):
       },
       {
         name: 'Research Assistant',
-        rolle: 'Research & Intelligence Analyst',
-        titel: 'Recherche-Assistent',
-        faehigkeiten: 'Recherche, Zusammenfassungen, Competitive Analysis, Marktforschung, Fakten-Checks',
-        verbindungsTyp: 'openrouter',
+        role: 'Research & Intelligence Analyst',
+        title: 'Recherche-Assistent',
+        capabilities: 'Recherche, Zusammenfassungen, Competitive Analysis, Marktforschung, Fakten-Checks',
+        connectionType: 'openrouter',
         avatar: '🔬',
-        avatarFarbe: '#06b6d4',
-        budgetMonatCent: 0,
+        avatarColor: '#06b6d4',
+        monthlyBudgetCent: 0,
         reportsToName: 'Chief of Staff',
         skills: [{
           name: 'Research & Analysis',
-          beschreibung: 'Strukturierte Recherche und Zusammenfassungen',
-          inhalt: `# Research Standards
+          description: 'Strukturierte Recherche und Zusammenfassungen',
+          content: `# Research Standards
 
 ## Research-Prozess
 1. Frage klar formulieren (SMART: spezifisch, messbar)
@@ -2025,18 +2025,18 @@ MORGEN-BRIEFING (täglich 07:30):
       },
       {
         name: 'Content Creator',
-        rolle: 'Personal Brand Content Creator',
-        titel: 'Content-Ersteller',
-        faehigkeiten: 'LinkedIn Posts, Newsletter, Blog-Artikel, Thread-Writing, Personal Branding, Ghostwriting',
-        verbindungsTyp: 'openrouter',
+        role: 'Personal Brand Content Creator',
+        title: 'Content-Ersteller',
+        capabilities: 'LinkedIn Posts, Newsletter, Blog-Artikel, Thread-Writing, Personal Branding, Ghostwriting',
+        connectionType: 'openrouter',
         avatar: '✍️',
-        avatarFarbe: '#a855f7',
-        budgetMonatCent: 0,
+        avatarColor: '#a855f7',
+        monthlyBudgetCent: 0,
         reportsToName: 'Chief of Staff',
         skills: [{
           name: 'Personal Brand Content',
-          beschreibung: 'LinkedIn, Newsletter und Blog für Solopreneure',
-          inhalt: `# Personal Brand Content
+          description: 'LinkedIn, Newsletter und Blog für Solopreneure',
+          content: `# Personal Brand Content
 
 ## LinkedIn Post-Formate
 1. Story-Format: Problem → Journey → Lösung
@@ -2060,18 +2060,18 @@ MORGEN-BRIEFING (täglich 07:30):
       },
       {
         name: 'Kalender & Admin',
-        rolle: 'Calendar & Administrative Assistant',
-        titel: 'Kalender-Assistent',
-        faehigkeiten: 'Terminplanung, Reiseplanung, Rechnungen, Administrative Tasks, Deadline-Tracking',
-        verbindungsTyp: 'openrouter',
+        role: 'Calendar & Administrative Assistant',
+        title: 'Kalender-Assistent',
+        capabilities: 'Terminplanung, Reiseplanung, Rechnungen, Administrative Tasks, Deadline-Tracking',
+        connectionType: 'openrouter',
         avatar: '📅',
-        avatarFarbe: '#f59e0b',
-        budgetMonatCent: 0,
+        avatarColor: '#f59e0b',
+        monthlyBudgetCent: 0,
         reportsToName: 'Chief of Staff',
         skills: [{
           name: 'Administrative Management',
-          beschreibung: 'Kalender, Admin und Deadline-Management',
-          inhalt: `# Administrative Playbook
+          description: 'Kalender, Admin und Deadline-Management',
+          content: `# Administrative Playbook
 
 ## Kalender-Hygiene
 - Fokus-Blöcke: 2-3h täglich, keine Meetings
@@ -2092,38 +2092,38 @@ MORGEN-BRIEFING (täglich 07:30):
         }]
       },
     ],
-    routinen: [
+    routines: [
       {
-        titel: 'Morgen-Briefing',
-        beschreibung: 'Täglich 07:30: Top 3 Prioritäten, Deadlines, Delegations-Plan',
+        title: 'Morgen-Briefing',
+        description: 'Täglich 07:30: Top 3 Prioritäten, Deadlines, Delegations-Plan',
         assignedToName: 'Chief of Staff',
         cronExpression: '30 7 * * 1-5',
         timezone: 'Europe/Berlin',
-        prioritaet: 'high',
+        priority: 'high',
       },
       {
-        titel: 'Email-Zusammenfassung',
-        beschreibung: 'Täglich 10:00: Inbox prüfen, wichtige Mails zusammenfassen',
+        title: 'Email-Zusammenfassung',
+        description: 'Täglich 10:00: Inbox prüfen, wichtige Mails zusammenfassen',
         assignedToName: 'Email Manager',
         cronExpression: '0 10 * * 1-5',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       },
       {
-        titel: 'Wochenplanung',
-        beschreibung: 'Jeden Montag 08:00: Wochenziele, offene Tasks, Delegations-Übersicht',
+        title: 'Wochenplanung',
+        description: 'Jeden Montag 08:00: Wochenziele, offene Tasks, Delegations-Übersicht',
         assignedToName: 'Chief of Staff',
         cronExpression: '0 8 * * 1',
         timezone: 'Europe/Berlin',
-        prioritaet: 'high',
+        priority: 'high',
       },
       {
-        titel: 'Content Wochenplan',
-        beschreibung: 'Jeden Montag: 3 LinkedIn Posts und 1 Newsletter-Entwurf für die Woche',
+        title: 'Content Wochenplan',
+        description: 'Jeden Montag: 3 LinkedIn Posts und 1 Newsletter-Entwurf für die Woche',
         assignedToName: 'Content Creator',
         cronExpression: '0 10 * * 1',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       },
     ],
     configFields: [
@@ -2139,24 +2139,24 @@ MORGEN-BRIEFING (täglich 07:30):
   {
     id: 'dev-studio',
     name: 'Dev Studio',
-    beschreibung: 'Vollständige Software-Engineering-Organisation: CTO als Orchestrator, Backend/Frontend/Mobile Leads, DevOps, Security Engineer, Data Engineer und QA Lead. Für komplexe, enterprise-grade Softwareentwicklung.',
+    description: 'Vollständige Software-Engineering-Organisation: CTO als Orchestrator, Backend/Frontend/Mobile Leads, DevOps, Security Engineer, Data Engineer und QA Lead. Für komplexe, enterprise-grade Softwareentwicklung.',
     version: '1.0.0',
-    kategorie: 'company',
+    category: 'company',
     icon: '⚙️',
     accentColor: '#3b82f6',
     tags: ['dev', 'engineering', 'fullstack', 'devops', 'security', 'enterprise', 'agile'],
     agents: [
       {
         name: 'CTO',
-        rolle: 'Chief Technology Officer',
-        titel: 'CTO',
-        faehigkeiten: 'Systemarchitektur, Technologiestrategie, Team Leadership, Code Review, API Design, Cloud Architecture',
-        verbindungsTyp: 'openrouter',
+        role: 'Chief Technology Officer',
+        title: 'CTO',
+        capabilities: 'Systemarchitektur, Technologiestrategie, Team Leadership, Code Review, API Design, Cloud Architecture',
+        connectionType: 'openrouter',
         avatar: '🏗️',
-        avatarFarbe: '#3b82f6',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 10800,
-        zyklusAktiv: true,
+        avatarColor: '#3b82f6',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 10800,
+        autoCycleActive: true,
         isOrchestrator: true,
         systemPrompt: `Du bist der CTO von {{studio_name}}, einem Software-Engineering-Studio spezialisiert auf {{technologie_schwerpunkt}}.
 
@@ -2180,8 +2180,8 @@ WÖCHENTLICHER RHYTHMUS:
 - Freitag: Engineering Retrospektive — Velocity, Qualitätsmetriken, Incidents`,
         skills: [{
           name: 'CTO Engineering Playbook',
-          beschreibung: 'Architecture Decision Records, Engineering KPIs, Tech Debt Management',
-          inhalt: `# CTO Engineering Playbook
+          description: 'Architecture Decision Records, Engineering KPIs, Tech Debt Management',
+          content: `# CTO Engineering Playbook
 
 ## Architecture Decision Records (ADRs)
 Format jeder Architekturentscheidung:
@@ -2218,15 +2218,15 @@ Format jeder Architekturentscheidung:
       },
       {
         name: 'Backend Lead',
-        rolle: 'Senior Backend Engineer',
-        titel: 'Backend Lead',
-        faehigkeiten: 'Node.js, Go, Python, REST API Design, GraphQL, PostgreSQL, Redis, Microservices, Event-Driven Architecture, gRPC',
-        verbindungsTyp: 'openrouter',
+        role: 'Senior Backend Engineer',
+        title: 'Backend Lead',
+        capabilities: 'Node.js, Go, Python, REST API Design, GraphQL, PostgreSQL, Redis, Microservices, Event-Driven Architecture, gRPC',
+        connectionType: 'openrouter',
         avatar: '🔧',
-        avatarFarbe: '#6366f1',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 21600,
-        zyklusAktiv: false,
+        avatarColor: '#6366f1',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 21600,
+        autoCycleActive: false,
         isOrchestrator: false,
         reportsToName: 'CTO',
         systemPrompt: `Du bist der Backend Lead von {{studio_name}}, spezialisiert auf {{technologie_schwerpunkt}}.
@@ -2251,8 +2251,8 @@ CODE STANDARDS:
 - Logging: strukturiertes JSON-Logging mit Correlation IDs`,
         skills: [{
           name: 'Backend Engineering Playbook',
-          beschreibung: 'API Design Patterns, Database Optimization, Microservices Architecture',
-          inhalt: `# Backend Engineering Playbook
+          description: 'API Design Patterns, Database Optimization, Microservices Architecture',
+          content: `# Backend Engineering Playbook
 
 ## API Design Principles
 - RESTful Resource Naming: Plural Nouns (/users, /orders)
@@ -2288,15 +2288,15 @@ CODE STANDARDS:
       },
       {
         name: 'Frontend Lead',
-        rolle: 'Senior Frontend Engineer',
-        titel: 'Frontend Lead',
-        faehigkeiten: 'React, TypeScript, Next.js, Performance Optimization, Accessibility, Design Systems, State Management, Web Vitals',
-        verbindungsTyp: 'openrouter',
+        role: 'Senior Frontend Engineer',
+        title: 'Frontend Lead',
+        capabilities: 'React, TypeScript, Next.js, Performance Optimization, Accessibility, Design Systems, State Management, Web Vitals',
+        connectionType: 'openrouter',
         avatar: '🎨',
-        avatarFarbe: '#a855f7',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 21600,
-        zyklusAktiv: false,
+        avatarColor: '#a855f7',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 21600,
+        autoCycleActive: false,
         isOrchestrator: false,
         reportsToName: 'CTO',
         systemPrompt: `Du bist der Frontend Lead von {{studio_name}}.
@@ -2321,8 +2321,8 @@ ARCHITEKTUR-PRINZIPIEN:
 - Composition over Configuration für Komponenten`,
         skills: [{
           name: 'Frontend Engineering Playbook',
-          beschreibung: 'React Architecture, Web Performance, Accessibility Standards',
-          inhalt: `# Frontend Engineering Playbook
+          description: 'React Architecture, Web Performance, Accessibility Standards',
+          content: `# Frontend Engineering Playbook
 
 ## Komponenten-Architektur
 ### Ordnerstruktur
@@ -2369,15 +2369,15 @@ src/
       },
       {
         name: 'DevOps Engineer',
-        rolle: 'DevOps / Site Reliability Engineer',
-        titel: 'DevOps Engineer',
-        faehigkeiten: 'Kubernetes, Terraform, CI/CD, AWS/GCP, Docker, Prometheus, Grafana, Incident Response, IaC',
-        verbindungsTyp: 'openrouter',
+        role: 'DevOps / Site Reliability Engineer',
+        title: 'DevOps Engineer',
+        capabilities: 'Kubernetes, Terraform, CI/CD, AWS/GCP, Docker, Prometheus, Grafana, Incident Response, IaC',
+        connectionType: 'openrouter',
         avatar: '🚀',
-        avatarFarbe: '#22c55e',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 21600,
-        zyklusAktiv: false,
+        avatarColor: '#22c55e',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 21600,
+        autoCycleActive: false,
         isOrchestrator: false,
         reportsToName: 'CTO',
         systemPrompt: `Du bist der DevOps/SRE Engineer von {{studio_name}}.
@@ -2404,8 +2404,8 @@ SRE PRINZIPIEN:
 - Toil minimieren: Alles was manuell > 2x passiert wird automatisiert`,
         skills: [{
           name: 'DevOps / SRE Playbook',
-          beschreibung: 'Kubernetes, Terraform, CI/CD, Observability, Incident Response',
-          inhalt: `# DevOps / SRE Playbook
+          description: 'Kubernetes, Terraform, CI/CD, Observability, Incident Response',
+          content: `# DevOps / SRE Playbook
 
 ## Kubernetes Best Practices
 - Namespace pro Environment (dev, staging, prod)
@@ -2449,15 +2449,15 @@ terraform fmt → terraform validate → terraform plan → PR Review → terraf
       },
       {
         name: 'Security Engineer',
-        rolle: 'Application Security Engineer',
-        titel: 'Security Engineer',
-        faehigkeiten: 'OWASP Top 10, Penetration Testing, SAST/DAST, Dependency Audits, Zero Trust, Security Code Review, Threat Modeling',
-        verbindungsTyp: 'openrouter',
+        role: 'Application Security Engineer',
+        title: 'Security Engineer',
+        capabilities: 'OWASP Top 10, Penetration Testing, SAST/DAST, Dependency Audits, Zero Trust, Security Code Review, Threat Modeling',
+        connectionType: 'openrouter',
         avatar: '🔐',
-        avatarFarbe: '#ef4444',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 43200,
-        zyklusAktiv: false,
+        avatarColor: '#ef4444',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 43200,
+        autoCycleActive: false,
         isOrchestrator: false,
         reportsToName: 'CTO',
         systemPrompt: `Du bist der Security Engineer von {{studio_name}}.
@@ -2484,8 +2484,8 @@ SECURITY-BY-DESIGN PRINZIPIEN:
 - Zero Trust: Kein implizites Vertrauen, alles verifizieren`,
         skills: [{
           name: 'Application Security Playbook',
-          beschreibung: 'OWASP, Threat Modeling, Pen Testing, Secure Code Review',
-          inhalt: `# Application Security Playbook
+          description: 'OWASP, Threat Modeling, Pen Testing, Secure Code Review',
+          content: `# Application Security Playbook
 
 ## Threat Modeling (STRIDE)
 Für jedes neue Feature / System:
@@ -2531,15 +2531,15 @@ Für jedes neue Feature / System:
       },
       {
         name: 'Data Engineer',
-        rolle: 'Senior Data Engineer',
-        titel: 'Data Engineer',
-        faehigkeiten: 'Data Pipelines, ETL/ELT, dbt, Apache Spark, Kafka, Data Warehouse, SQL, Python, Airflow, Analytics Engineering',
-        verbindungsTyp: 'openrouter',
+        role: 'Senior Data Engineer',
+        title: 'Data Engineer',
+        capabilities: 'Data Pipelines, ETL/ELT, dbt, Apache Spark, Kafka, Data Warehouse, SQL, Python, Airflow, Analytics Engineering',
+        connectionType: 'openrouter',
         avatar: '📊',
-        avatarFarbe: '#f59e0b',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 43200,
-        zyklusAktiv: false,
+        avatarColor: '#f59e0b',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 43200,
+        autoCycleActive: false,
         isOrchestrator: false,
         reportsToName: 'CTO',
         systemPrompt: `Du bist der Data Engineer von {{studio_name}}.
@@ -2567,8 +2567,8 @@ DATEN-PRINZIPIEN:
 - Observability: Data Quality Checks (Great Expectations / dbt tests)`,
         skills: [{
           name: 'Data Engineering Playbook',
-          beschreibung: 'Data Pipelines, dbt, Kafka, Data Warehouse, Analytics Engineering',
-          inhalt: `# Data Engineering Playbook
+          description: 'Data Pipelines, dbt, Kafka, Data Warehouse, Analytics Engineering',
+          content: `# Data Engineering Playbook
 
 ## Data Architecture Layers
 \`\`\`
@@ -2615,15 +2615,15 @@ expect_table_row_count_to_be_between(min_value=1000)
       },
       {
         name: 'Mobile Engineer',
-        rolle: 'Senior Mobile Engineer',
-        titel: 'Mobile Engineer',
-        faehigkeiten: 'React Native, iOS (Swift), Android (Kotlin), App Store, Performance, Offline-First, Push Notifications, Deep Linking',
-        verbindungsTyp: 'openrouter',
+        role: 'Senior Mobile Engineer',
+        title: 'Mobile Engineer',
+        capabilities: 'React Native, iOS (Swift), Android (Kotlin), App Store, Performance, Offline-First, Push Notifications, Deep Linking',
+        connectionType: 'openrouter',
         avatar: '📱',
-        avatarFarbe: '#06b6d4',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 43200,
-        zyklusAktiv: false,
+        avatarColor: '#06b6d4',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 43200,
+        autoCycleActive: false,
         isOrchestrator: false,
         reportsToName: 'CTO',
         systemPrompt: `Du bist der Mobile Engineer von {{studio_name}}.
@@ -2651,8 +2651,8 @@ PLATFORM-SPEZIFIKA:
 - Performance: 60fps auf Low-End Devices als Ziel`,
         skills: [{
           name: 'Mobile Engineering Playbook',
-          beschreibung: 'React Native, Offline-First, App Store, Performance, Native Bridges',
-          inhalt: `# Mobile Engineering Playbook
+          description: 'React Native, Offline-First, App Store, Performance, Native Bridges',
+          content: `# Mobile Engineering Playbook
 
 ## React Native Architektur
 \`\`\`
@@ -2698,15 +2698,15 @@ src/
       },
       {
         name: 'QA Lead',
-        rolle: 'Quality Assurance Lead',
-        titel: 'QA Lead',
-        faehigkeiten: 'Test Strategy, Automated Testing, Playwright, k6 Load Testing, Test Coverage, Regression Testing, Performance Testing',
-        verbindungsTyp: 'openrouter',
+        role: 'Quality Assurance Lead',
+        title: 'QA Lead',
+        capabilities: 'Test Strategy, Automated Testing, Playwright, k6 Load Testing, Test Coverage, Regression Testing, Performance Testing',
+        connectionType: 'openrouter',
         avatar: '🧪',
-        avatarFarbe: '#84cc16',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 43200,
-        zyklusAktiv: false,
+        avatarColor: '#84cc16',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 43200,
+        autoCycleActive: false,
         isOrchestrator: false,
         reportsToName: 'CTO',
         systemPrompt: `Du bist der QA Lead von {{studio_name}}.
@@ -2737,8 +2737,8 @@ QUALITÄTS-GATES:
 - Prod Deploy: Smoke Tests (< 2min) + Canary Monitoring`,
         skills: [{
           name: 'QA Engineering Playbook',
-          beschreibung: 'Test Strategy, Playwright E2E, k6 Load Testing, Quality Gates',
-          inhalt: `# QA Engineering Playbook
+          description: 'Test Strategy, Playwright E2E, k6 Load Testing, Quality Gates',
+          content: `# QA Engineering Playbook
 
 ## Test-Pyramide
 \`\`\`
@@ -2810,54 +2810,54 @@ export const options = {
         }]
       },
     ],
-    routinen: [
+    routines: [
       {
-        titel: 'Daily Code Quality Scan',
-        beschreibung: 'Täglich 07:00: ESLint, TypeScript Errors, Test Coverage Report — automatischer Qualitäts-Check',
+        title: 'Daily Code Quality Scan',
+        description: 'Täglich 07:00: ESLint, TypeScript Errors, Test Coverage Report — automatischer Qualitäts-Check',
         assignedToName: 'QA Lead',
         cronExpression: '0 7 * * 1-5',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       },
       {
-        titel: 'Security Dependency Audit',
-        beschreibung: 'Täglich 08:00: npm audit, Snyk Scan, CVE-Check auf alle Dependencies',
+        title: 'Security Dependency Audit',
+        description: 'Täglich 08:00: npm audit, Snyk Scan, CVE-Check auf alle Dependencies',
         assignedToName: 'Security Engineer',
         cronExpression: '0 8 * * *',
         timezone: 'Europe/Berlin',
-        prioritaet: 'high',
+        priority: 'high',
       },
       {
-        titel: 'Weekly Architecture Review',
-        beschreibung: 'Mittwoch 10:00: ADR-Status, Tech Debt Inventur, neue Architekturentscheidungen',
+        title: 'Weekly Architecture Review',
+        description: 'Mittwoch 10:00: ADR-Status, Tech Debt Inventur, neue Architekturentscheidungen',
         assignedToName: 'CTO',
         cronExpression: '0 10 * * 3',
         timezone: 'Europe/Berlin',
-        prioritaet: 'high',
+        priority: 'high',
       },
       {
-        titel: 'Performance Audit',
-        beschreibung: 'Freitag 16:00: Core Web Vitals, API Latenz P99, Datenbank Slow Queries — Wochenreport',
+        title: 'Performance Audit',
+        description: 'Freitag 16:00: Core Web Vitals, API Latenz P99, Datenbank Slow Queries — Wochenreport',
         assignedToName: 'DevOps Engineer',
         cronExpression: '0 16 * * 5',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       },
       {
-        titel: 'Sprint Planning Briefing',
-        beschreibung: 'Montag 09:00: Kapazitäten, Prioritäten, Tech Debt Punkte — CTO briefing für die Woche',
+        title: 'Sprint Planning Briefing',
+        description: 'Montag 09:00: Kapazitäten, Prioritäten, Tech Debt Punkte — CTO briefing für die Woche',
         assignedToName: 'CTO',
         cronExpression: '0 9 * * 1',
         timezone: 'Europe/Berlin',
-        prioritaet: 'high',
+        priority: 'high',
       },
       {
-        titel: 'Data Pipeline Health Check',
-        beschreibung: 'Täglich 06:00: dbt run Status, Airflow DAG Failures, Datenpipeline Anomalien',
+        title: 'Data Pipeline Health Check',
+        description: 'Täglich 06:00: dbt run Status, Airflow DAG Failures, Datenpipeline Anomalien',
         assignedToName: 'Data Engineer',
         cronExpression: '0 6 * * *',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       },
     ],
     configFields: [
@@ -2872,24 +2872,24 @@ export const options = {
   {
     id: 'ai-research-lab',
     name: 'AI Research Lab',
-    beschreibung: 'Vollständige KI-Forschungsorganisation: Chief Scientist als Orchestrator, ML Engineer, Data Scientist, Research Engineer, Infrastructure Engineer, Ethics Researcher und Technical Writer. Für cutting-edge AI/ML Projekte.',
+    description: 'Vollständige KI-Forschungsorganisation: Chief Scientist als Orchestrator, ML Engineer, Data Scientist, Research Engineer, Infrastructure Engineer, Ethics Researcher und Technical Writer. Für cutting-edge AI/ML Projekte.',
     version: '1.0.0',
-    kategorie: 'company',
+    category: 'company',
     icon: '🧬',
     accentColor: '#a855f7',
     tags: ['ai', 'ml', 'research', 'deeplearning', 'data-science', 'nlp', 'llm'],
     agents: [
       {
         name: 'Chief Scientist',
-        rolle: 'Head of Research',
-        titel: 'Chief Scientist',
-        faehigkeiten: 'ML Research, Research Direction, LLMs, Scientific Writing, Grant Writing, Team Leadership, Experimental Design',
-        verbindungsTyp: 'openrouter',
+        role: 'Head of Research',
+        title: 'Chief Scientist',
+        capabilities: 'ML Research, Research Direction, LLMs, Scientific Writing, Grant Writing, Team Leadership, Experimental Design',
+        connectionType: 'openrouter',
         avatar: '🔬',
-        avatarFarbe: '#a855f7',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 10800,
-        zyklusAktiv: true,
+        avatarColor: '#a855f7',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 10800,
+        autoCycleActive: true,
         isOrchestrator: true,
         systemPrompt: `Du bist der Chief Scientist von {{lab_name}}, einem AI Research Lab mit Fokus auf {{forschungsgebiet}}.
 
@@ -2913,8 +2913,8 @@ WÖCHENTLICHER RHYTHMUS:
 - Freitag: Results Review — Experiment-Ergebnisse, nächste Richtung`,
         skills: [{
           name: 'Research Leadership Playbook',
-          beschreibung: 'Research Strategy, Experiment Design, Paper Pipeline, Resource Allocation',
-          inhalt: `# Research Leadership Playbook
+          description: 'Research Strategy, Experiment Design, Paper Pipeline, Resource Allocation',
+          content: `# Research Leadership Playbook
 
 ## Research Agenda Framework
 ### Forschungspyramide
@@ -2954,15 +2954,15 @@ result: null
       },
       {
         name: 'ML Engineer',
-        rolle: 'Senior Machine Learning Engineer',
-        titel: 'ML Engineer',
-        faehigkeiten: 'PyTorch, CUDA, LLM Fine-tuning, LoRA/QLoRA, Distributed Training, Model Optimization, TensorRT, ONNX, HuggingFace',
-        verbindungsTyp: 'openrouter',
+        role: 'Senior Machine Learning Engineer',
+        title: 'ML Engineer',
+        capabilities: 'PyTorch, CUDA, LLM Fine-tuning, LoRA/QLoRA, Distributed Training, Model Optimization, TensorRT, ONNX, HuggingFace',
+        connectionType: 'openrouter',
         avatar: '🤖',
-        avatarFarbe: '#6366f1',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 21600,
-        zyklusAktiv: false,
+        avatarColor: '#6366f1',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 21600,
+        autoCycleActive: false,
         isOrchestrator: false,
         reportsToName: 'Chief Scientist',
         systemPrompt: `Du bist der ML Engineer von {{lab_name}}, spezialisiert auf {{forschungsgebiet}}.
@@ -2982,8 +2982,8 @@ EXPERTISE:
 - Evaluierung: MMLU, HellaSwag, HumanEval, domain-spezifische Benchmarks`,
         skills: [{
           name: 'ML Engineering Playbook',
-          beschreibung: 'PyTorch Training, LLM Fine-tuning, Distributed Computing, Model Optimization',
-          inhalt: `# ML Engineering Playbook
+          description: 'PyTorch Training, LLM Fine-tuning, Distributed Computing, Model Optimization',
+          content: `# ML Engineering Playbook
 
 ## LLM Fine-tuning Decision Tree
 \`\`\`
@@ -3029,15 +3029,15 @@ model = FSDP(
       },
       {
         name: 'Data Scientist',
-        rolle: 'Senior Data Scientist',
-        titel: 'Data Scientist',
-        faehigkeiten: 'Python, Statistical Analysis, Experiment Design, A/B Testing, Feature Engineering, scikit-learn, pandas, Causal Inference',
-        verbindungsTyp: 'openrouter',
+        role: 'Senior Data Scientist',
+        title: 'Data Scientist',
+        capabilities: 'Python, Statistical Analysis, Experiment Design, A/B Testing, Feature Engineering, scikit-learn, pandas, Causal Inference',
+        connectionType: 'openrouter',
         avatar: '📈',
-        avatarFarbe: '#22c55e',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 21600,
-        zyklusAktiv: false,
+        avatarColor: '#22c55e',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 21600,
+        autoCycleActive: false,
         isOrchestrator: false,
         reportsToName: 'Chief Scientist',
         systemPrompt: `Du bist der Data Scientist von {{lab_name}}, spezialisiert auf {{forschungsgebiet}}.
@@ -3056,8 +3056,8 @@ EXPERTISE:
 - Python Stack: pandas, polars, numpy, scipy, statsmodels, matplotlib, seaborn, plotly`,
         skills: [{
           name: 'Data Science Playbook',
-          beschreibung: 'Experiment Design, Statistical Testing, Causal Inference, EDA',
-          inhalt: `# Data Science Playbook
+          description: 'Experiment Design, Statistical Testing, Causal Inference, EDA',
+          content: `# Data Science Playbook
 
 ## Experiment Design Checkliste
 Vor jedem A/B Test oder Experiment:
@@ -3100,15 +3100,15 @@ Zeitreihe?
       },
       {
         name: 'Research Engineer',
-        rolle: 'Research Engineer',
-        titel: 'Research Engineer',
-        faehigkeiten: 'Paper Reproduction, Literature Review, arXiv, Experiment Tracking, MLflow, W&B, Benchmark Design, Python',
-        verbindungsTyp: 'openrouter',
+        role: 'Research Engineer',
+        title: 'Research Engineer',
+        capabilities: 'Paper Reproduction, Literature Review, arXiv, Experiment Tracking, MLflow, W&B, Benchmark Design, Python',
+        connectionType: 'openrouter',
         avatar: '📚',
-        avatarFarbe: '#f59e0b',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 43200,
-        zyklusAktiv: false,
+        avatarColor: '#f59e0b',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 43200,
+        autoCycleActive: false,
         isOrchestrator: false,
         reportsToName: 'Chief Scientist',
         systemPrompt: `Du bist der Research Engineer von {{lab_name}}, zuständig für Literatur, Paper-Reproduktion und Experiment-Tracking.
@@ -3126,8 +3126,8 @@ RESEARCH TOOLS:
 - Reproduktion: Fokus auf Tabellen und Hauptergebnisse, nicht jede Kurve`,
         skills: [{
           name: 'Research Engineering Playbook',
-          beschreibung: 'Literature Review, Paper Reproduction, Experiment Tracking, W&B',
-          inhalt: `# Research Engineering Playbook
+          description: 'Literature Review, Paper Reproduction, Experiment Tracking, W&B',
+          content: `# Research Engineering Playbook
 
 ## Systematische Literaturrecherche
 ### Wöchentlicher arXiv-Scan
@@ -3181,15 +3181,15 @@ wandb.log_artifact(artifact)
       },
       {
         name: 'Infrastructure Engineer',
-        rolle: 'ML Infrastructure Engineer',
-        titel: 'Infrastructure Engineer',
-        faehigkeiten: 'GPU Cluster Management, SLURM, Kubernetes, Docker, vLLM, Ray, NCCL, CUDA, Storage Systems, MLOps',
-        verbindungsTyp: 'openrouter',
+        role: 'ML Infrastructure Engineer',
+        title: 'Infrastructure Engineer',
+        capabilities: 'GPU Cluster Management, SLURM, Kubernetes, Docker, vLLM, Ray, NCCL, CUDA, Storage Systems, MLOps',
+        connectionType: 'openrouter',
         avatar: '⚡',
-        avatarFarbe: '#ef4444',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 43200,
-        zyklusAktiv: false,
+        avatarColor: '#ef4444',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 43200,
+        autoCycleActive: false,
         isOrchestrator: false,
         reportsToName: 'Chief Scientist',
         systemPrompt: `Du bist der Infrastructure Engineer von {{lab_name}}, zuständig für die ML-Compute-Infrastruktur.
@@ -3210,8 +3210,8 @@ TECH STACK:
 - Monitoring: Prometheus + DCGM Exporter (GPU Metrics), Grafana`,
         skills: [{
           name: 'ML Infrastructure Playbook',
-          beschreibung: 'GPU Cluster, SLURM, vLLM, Distributed Training, Storage',
-          inhalt: `# ML Infrastructure Playbook
+          description: 'GPU Cluster, SLURM, vLLM, Distributed Training, Storage',
+          content: `# ML Infrastructure Playbook
 
 ## GPU Cluster Konfiguration
 ### SLURM Partition Design
@@ -3276,15 +3276,15 @@ llm = LLM(
       },
       {
         name: 'Ethics Researcher',
-        rolle: 'AI Ethics & Safety Researcher',
-        titel: 'Ethics Researcher',
-        faehigkeiten: 'AI Safety, Bias Detection, Fairness Metrics, Red Teaming, Responsible AI, Model Evaluation, Constitutional AI',
-        verbindungsTyp: 'openrouter',
+        role: 'AI Ethics & Safety Researcher',
+        title: 'Ethics Researcher',
+        capabilities: 'AI Safety, Bias Detection, Fairness Metrics, Red Teaming, Responsible AI, Model Evaluation, Constitutional AI',
+        connectionType: 'openrouter',
         avatar: '⚖️',
-        avatarFarbe: '#06b6d4',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 43200,
-        zyklusAktiv: false,
+        avatarColor: '#06b6d4',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 43200,
+        autoCycleActive: false,
         isOrchestrator: false,
         reportsToName: 'Chief Scientist',
         systemPrompt: `Du bist der Ethics & Safety Researcher von {{lab_name}}, spezialisiert auf Responsible AI im Bereich {{forschungsgebiet}}.
@@ -3303,8 +3303,8 @@ FRAMEWORKS:
 - Constitutional AI: Anthropic's CAI Paper als Framework`,
         skills: [{
           name: 'AI Ethics & Safety Playbook',
-          beschreibung: 'Bias Detection, Red Teaming, Model Cards, Fairness Metrics',
-          inhalt: `# AI Ethics & Safety Playbook
+          description: 'Bias Detection, Red Teaming, Model Cards, Fairness Metrics',
+          content: `# AI Ethics & Safety Playbook
 
 ## Pre-Release Safety Checkliste
 Vor jedem Modell-Release oder Deployment:
@@ -3367,15 +3367,15 @@ Vor jedem Modell-Release oder Deployment:
       },
       {
         name: 'Technical Writer',
-        rolle: 'AI Technical Writer',
-        titel: 'Technical Writer',
-        faehigkeiten: 'Scientific Writing, Paper Drafting, LaTeX, Documentation, arXiv Submission, Blog Posts, Technical Communication',
-        verbindungsTyp: 'openrouter',
+        role: 'AI Technical Writer',
+        title: 'Technical Writer',
+        capabilities: 'Scientific Writing, Paper Drafting, LaTeX, Documentation, arXiv Submission, Blog Posts, Technical Communication',
+        connectionType: 'openrouter',
         avatar: '✍️',
-        avatarFarbe: '#94a3b8',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 86400,
-        zyklusAktiv: false,
+        avatarColor: '#94a3b8',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 86400,
+        autoCycleActive: false,
         isOrchestrator: false,
         reportsToName: 'Chief Scientist',
         systemPrompt: `Du bist der Technical Writer von {{lab_name}}, spezialisiert auf wissenschaftliche Kommunikation im Bereich {{forschungsgebiet}}.
@@ -3394,8 +3394,8 @@ WRITING STANDARDS:
 - Experiments Section: Reproduzierbarkeit durch vollständige Hyperparameter`,
         skills: [{
           name: 'Scientific Writing Playbook',
-          beschreibung: 'Paper Structure, LaTeX, arXiv Submissions, Technical Communication',
-          inhalt: `# Scientific Writing Playbook
+          description: 'Paper Structure, LaTeX, arXiv Submissions, Technical Communication',
+          content: `# Scientific Writing Playbook
 
 ## Paper-Struktur (ML Conference Standard)
 \`\`\`
@@ -3453,46 +3453,46 @@ WRITING STANDARDS:
         }]
       },
     ],
-    routinen: [
+    routines: [
       {
-        titel: 'arXiv Daily Digest',
-        beschreibung: 'Täglich 08:00: Neue Papers in cs.LG, cs.CL, cs.AI scannen, relevante zusammenfassen',
+        title: 'arXiv Daily Digest',
+        description: 'Täglich 08:00: Neue Papers in cs.LG, cs.CL, cs.AI scannen, relevante zusammenfassen',
         assignedToName: 'Research Engineer',
         cronExpression: '0 8 * * 1-5',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       },
       {
-        titel: 'GPU Cluster Health Check',
-        beschreibung: 'Täglich 07:00: Job Queue, GPU Utilization, Fehler in laufenden Training Jobs prüfen',
+        title: 'GPU Cluster Health Check',
+        description: 'Täglich 07:00: Job Queue, GPU Utilization, Fehler in laufenden Training Jobs prüfen',
         assignedToName: 'Infrastructure Engineer',
         cronExpression: '0 7 * * *',
         timezone: 'Europe/Berlin',
-        prioritaet: 'high',
+        priority: 'high',
       },
       {
-        titel: 'Weekly Research Standup',
-        beschreibung: 'Montag 09:00: Fortschritt aller Experimente, Blocker, GPU-Budget-Status, nächste Priorities',
+        title: 'Weekly Research Standup',
+        description: 'Montag 09:00: Fortschritt aller Experimente, Blocker, GPU-Budget-Status, nächste Priorities',
         assignedToName: 'Chief Scientist',
         cronExpression: '0 9 * * 1',
         timezone: 'Europe/Berlin',
-        prioritaet: 'high',
+        priority: 'high',
       },
       {
-        titel: 'Ethics Review Checkpoint',
-        beschreibung: 'Freitag 15:00: Offene Safety-Issues, Bias-Evaluation Status, Red-Teaming Queue prüfen',
+        title: 'Ethics Review Checkpoint',
+        description: 'Freitag 15:00: Offene Safety-Issues, Bias-Evaluation Status, Red-Teaming Queue prüfen',
         assignedToName: 'Ethics Researcher',
         cronExpression: '0 15 * * 5',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       },
       {
-        titel: 'Experiment Tracking Cleanup',
-        beschreibung: 'Sonntag 20:00: W&B/MLflow aufräumen, abgeschlossene Experimente taggen, Ergebnisse konsolidieren',
+        title: 'Experiment Tracking Cleanup',
+        description: 'Sonntag 20:00: W&B/MLflow aufräumen, abgeschlossene Experimente taggen, Ergebnisse konsolidieren',
         assignedToName: 'Research Engineer',
         cronExpression: '0 20 * * 0',
         timezone: 'Europe/Berlin',
-        prioritaet: 'low',
+        priority: 'low',
       },
     ],
     configFields: [
@@ -3507,24 +3507,24 @@ WRITING STANDARDS:
   {
     id: 'product-company',
     name: 'Product Company',
-    beschreibung: 'Produkt-getriebenes Team: CPO als Orchestrator, Product Manager, UX Designer, Growth Analyst, Customer Research und Data Analyst. Für B2C/B2B SaaS mit Product-Led Growth Strategie.',
+    description: 'Produkt-getriebenes Team: CPO als Orchestrator, Product Manager, UX Designer, Growth Analyst, Customer Research und Data Analyst. Für B2C/B2B SaaS mit Product-Led Growth Strategie.',
     version: '1.0.0',
-    kategorie: 'company',
+    category: 'company',
     icon: '🎯',
     accentColor: '#f97316',
     tags: ['product', 'ux', 'growth', 'plg', 'saas', 'analytics', 'customer-research'],
     agents: [
       {
         name: 'CPO',
-        rolle: 'Chief Product Officer',
-        titel: 'CPO',
-        faehigkeiten: 'Product Strategy, Roadmap Planning, OKRs, Stakeholder Management, Jobs-to-be-Done, Product-Led Growth',
-        verbindungsTyp: 'openrouter',
+        role: 'Chief Product Officer',
+        title: 'CPO',
+        capabilities: 'Product Strategy, Roadmap Planning, OKRs, Stakeholder Management, Jobs-to-be-Done, Product-Led Growth',
+        connectionType: 'openrouter',
         avatar: '🎯',
-        avatarFarbe: '#f97316',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 10800,
-        zyklusAktiv: true,
+        avatarColor: '#f97316',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 10800,
+        autoCycleActive: true,
         isOrchestrator: true,
         systemPrompt: `Du bist der CPO von {{produkt_name}}, einem {{produkt_typ}} mit Fokus auf {{zielgruppe}}.
 
@@ -3545,8 +3545,8 @@ PRODUCT-LED GROWTH PRINZIPIEN:
 NORTH STAR METRIC: {{north_star_metric}} — alles andere ist Input- oder Health-Metric`,
         skills: [{
           name: 'Product Leadership Playbook',
-          beschreibung: 'Product Strategy, Roadmap, OKRs, Prioritization, PLG',
-          inhalt: `# Product Leadership Playbook
+          description: 'Product Strategy, Roadmap, OKRs, Prioritization, PLG',
+          content: `# Product Leadership Playbook
 
 ## Produkt-Strategie Framework
 ### Product Vision (1-Satz, 3 Jahre)
@@ -3584,15 +3584,15 @@ Importance × (Satisfaction unzufrieden) → Heat Map
       },
       {
         name: 'Product Manager',
-        rolle: 'Senior Product Manager',
-        titel: 'Product Manager',
-        faehigkeiten: 'Feature Definition, User Stories, PRDs, Agile, Backlog Management, A/B Testing, Go-to-Market, Launch Planning',
-        verbindungsTyp: 'openrouter',
+        role: 'Senior Product Manager',
+        title: 'Product Manager',
+        capabilities: 'Feature Definition, User Stories, PRDs, Agile, Backlog Management, A/B Testing, Go-to-Market, Launch Planning',
+        connectionType: 'openrouter',
         avatar: '📋',
-        avatarFarbe: '#6366f1',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 21600,
-        zyklusAktiv: false,
+        avatarColor: '#6366f1',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 21600,
+        autoCycleActive: false,
         isOrchestrator: false,
         reportsToName: 'CPO',
         systemPrompt: `Du bist der Product Manager von {{produkt_name}}, zuständig für Feature-Entwicklung für {{zielgruppe}}.
@@ -3611,8 +3611,8 @@ ARBEITSWEISE:
 - Definition of Done: User Story gilt als fertig wenn Acceptance Criteria + Analytics Live`,
         skills: [{
           name: 'Product Management Playbook',
-          beschreibung: 'PRDs, User Stories, Backlog, Launch Planning, A/B Tests',
-          inhalt: `# Product Management Playbook
+          description: 'PRDs, User Stories, Backlog, Launch Planning, A/B Tests',
+          content: `# Product Management Playbook
 
 ## PRD Template (Lean)
 \`\`\`markdown
@@ -3657,15 +3657,15 @@ Acceptance Criteria:
       },
       {
         name: 'UX Designer',
-        rolle: 'Senior UX / Product Designer',
-        titel: 'UX Designer',
-        faehigkeiten: 'User Research, Interaction Design, Prototyping, Figma, Design Systems, Usability Testing, Information Architecture',
-        verbindungsTyp: 'openrouter',
+        role: 'Senior UX / Product Designer',
+        title: 'UX Designer',
+        capabilities: 'User Research, Interaction Design, Prototyping, Figma, Design Systems, Usability Testing, Information Architecture',
+        connectionType: 'openrouter',
         avatar: '🎨',
-        avatarFarbe: '#a855f7',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 21600,
-        zyklusAktiv: false,
+        avatarColor: '#a855f7',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 21600,
+        autoCycleActive: false,
         isOrchestrator: false,
         reportsToName: 'CPO',
         systemPrompt: `Du bist der UX Designer von {{produkt_name}}, zuständig für die Nutzererfahrung für {{zielgruppe}}.
@@ -3684,8 +3684,8 @@ DESIGN PRINZIPIEN:
 - Konsistenz: Gleiches sieht gleich aus, macht das Gleiche`,
         skills: [{
           name: 'UX Design Playbook',
-          beschreibung: 'Design Process, Usability Testing, Design System, UX Writing',
-          inhalt: `# UX Design Playbook
+          description: 'Design Process, Usability Testing, Design System, UX Writing',
+          content: `# UX Design Playbook
 
 ## Design Process (Double Diamond)
 \`\`\`
@@ -3722,15 +3722,15 @@ Deliver:  Hi-Fi Design, Usability Test, Engineering Handoff
       },
       {
         name: 'Growth Analyst',
-        rolle: 'Growth Analyst',
-        titel: 'Growth Analyst',
-        faehigkeiten: 'Product-Led Growth, Funnel Optimization, Virality, Onboarding Optimization, Activation, Retention, Amplitude, Mixpanel',
-        verbindungsTyp: 'openrouter',
+        role: 'Growth Analyst',
+        title: 'Growth Analyst',
+        capabilities: 'Product-Led Growth, Funnel Optimization, Virality, Onboarding Optimization, Activation, Retention, Amplitude, Mixpanel',
+        connectionType: 'openrouter',
         avatar: '📊',
-        avatarFarbe: '#22c55e',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 43200,
-        zyklusAktiv: false,
+        avatarColor: '#22c55e',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 43200,
+        autoCycleActive: false,
         isOrchestrator: false,
         reportsToName: 'CPO',
         systemPrompt: `Du bist der Growth Analyst von {{produkt_name}}, zuständig für Product-Led Growth für {{zielgruppe}}.
@@ -3748,8 +3748,8 @@ PLG FRAMEWORK:
 - Expansion Revenue: Upsell innerhalb des Produkts (Usage-based)`,
         skills: [{
           name: 'Growth Analytics Playbook',
-          beschreibung: 'Funnel Optimization, PLG, Retention Analysis, Viral Loops',
-          inhalt: `# Growth Analytics Playbook
+          description: 'Funnel Optimization, PLG, Retention Analysis, Viral Loops',
+          content: `# Growth Analytics Playbook
 
 ## PLG Funnel Analyse
 \`\`\`
@@ -3800,15 +3800,15 @@ Learning: [Was haben wir gelernt?]
       },
       {
         name: 'Customer Research',
-        rolle: 'Customer & User Research',
-        titel: 'Customer Research',
-        faehigkeiten: 'User Interviews, Jobs-to-be-Done, NPS, CSAT, Churn Analysis, Voice of Customer, Persona Development, Survey Design',
-        verbindungsTyp: 'openrouter',
+        role: 'Customer & User Research',
+        title: 'Customer Research',
+        capabilities: 'User Interviews, Jobs-to-be-Done, NPS, CSAT, Churn Analysis, Voice of Customer, Persona Development, Survey Design',
+        connectionType: 'openrouter',
         avatar: '🔍',
-        avatarFarbe: '#f59e0b',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 43200,
-        zyklusAktiv: false,
+        avatarColor: '#f59e0b',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 43200,
+        autoCycleActive: false,
         isOrchestrator: false,
         reportsToName: 'CPO',
         systemPrompt: `Du bist der Customer Research Specialist von {{produkt_name}}, zuständig für Kundenverständnis bei {{zielgruppe}}.
@@ -3831,8 +3831,8 @@ GRUNDSÄTZE:
 - Silence is data: Pausen aushalten, User sprechen lassen`,
         skills: [{
           name: 'Customer Research Playbook',
-          beschreibung: 'User Interviews, JTBD, NPS, Churn Analysis, Persona Development',
-          inhalt: `# Customer Research Playbook
+          description: 'User Interviews, JTBD, NPS, Churn Analysis, Persona Development',
+          content: `# Customer Research Playbook
 
 ## JTBD Interview Guide
 ### Setup (5 min)
@@ -3874,15 +3874,15 @@ Ziel: Verstehen, nicht zurückgewinnen!
       },
       {
         name: 'Data Analyst',
-        rolle: 'Product Data Analyst',
-        titel: 'Data Analyst',
-        faehigkeiten: 'SQL, Python, Amplitude, Mixpanel, Looker, Cohort Analysis, Dashboards, Product Metrics, Self-serve Analytics',
-        verbindungsTyp: 'openrouter',
+        role: 'Product Data Analyst',
+        title: 'Data Analyst',
+        capabilities: 'SQL, Python, Amplitude, Mixpanel, Looker, Cohort Analysis, Dashboards, Product Metrics, Self-serve Analytics',
+        connectionType: 'openrouter',
         avatar: '📉',
-        avatarFarbe: '#06b6d4',
-        budgetMonatCent: 0,
-        zyklusIntervallSek: 43200,
-        zyklusAktiv: false,
+        avatarColor: '#06b6d4',
+        monthlyBudgetCent: 0,
+        autoCycleIntervalSec: 43200,
+        autoCycleActive: false,
         isOrchestrator: false,
         reportsToName: 'CPO',
         systemPrompt: `Du bist der Data Analyst von {{produkt_name}}, zuständig für Produkt-Metriken und Self-serve Analytics für {{zielgruppe}}.
@@ -3900,8 +3900,8 @@ METRIKEN-HIERARCHIE:
 3. Health Metrics: Error Rate, Latenz, Support Tickets (guardrails)`,
         skills: [{
           name: 'Product Analytics Playbook',
-          beschreibung: 'Product Metrics, SQL, Cohort Analysis, Dashboards, Event Tracking',
-          inhalt: `# Product Analytics Playbook
+          description: 'Product Metrics, SQL, Cohort Analysis, Dashboards, Event Tracking',
+          content: `# Product Analytics Playbook
 
 ## Event Tracking Taxonomy
 ### Event-Naming Konvention
@@ -3976,46 +3976,46 @@ ORDER BY 1, 2
         }]
       },
     ],
-    routinen: [
+    routines: [
       {
-        titel: 'Weekly Product Metrics Report',
-        beschreibung: 'Montag 08:00: North Star, Activation, Retention, Top-Insights — Wochenbericht',
+        title: 'Weekly Product Metrics Report',
+        description: 'Montag 08:00: North Star, Activation, Retention, Top-Insights — Wochenbericht',
         assignedToName: 'Data Analyst',
         cronExpression: '0 8 * * 1',
         timezone: 'Europe/Berlin',
-        prioritaet: 'high',
+        priority: 'high',
       },
       {
-        titel: 'Customer Interview Scheduling',
-        beschreibung: 'Dienstag 09:00: 1-2 User-Interviews planen und vorbereiten (JTBD-Framework)',
+        title: 'Customer Interview Scheduling',
+        description: 'Dienstag 09:00: 1-2 User-Interviews planen und vorbereiten (JTBD-Framework)',
         assignedToName: 'Customer Research',
         cronExpression: '0 9 * * 2',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       },
       {
-        titel: 'Growth Experiment Review',
-        beschreibung: 'Donnerstag 10:00: Laufende A/B Tests auswerten, neue Experiment-Hypothesen priorisieren',
+        title: 'Growth Experiment Review',
+        description: 'Donnerstag 10:00: Laufende A/B Tests auswerten, neue Experiment-Hypothesen priorisieren',
         assignedToName: 'Growth Analyst',
         cronExpression: '0 10 * * 4',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       },
       {
-        titel: 'Product Roadmap Update',
-        beschreibung: 'Freitag 14:00: Roadmap mit aktuellen Erkenntnissen aktualisieren, Quartalsprioritäten reviewen',
+        title: 'Product Roadmap Update',
+        description: 'Freitag 14:00: Roadmap mit aktuellen Erkenntnissen aktualisieren, Quartalsprioritäten reviewen',
         assignedToName: 'CPO',
         cronExpression: '0 14 * * 5',
         timezone: 'Europe/Berlin',
-        prioritaet: 'high',
+        priority: 'high',
       },
       {
-        titel: 'NPS & Churn Analyse',
-        beschreibung: 'Montag 10:00: Neue NPS-Responses lesen, Churn-User identifizieren, Prioritäten setzen',
+        title: 'NPS & Churn Analyse',
+        description: 'Montag 10:00: Neue NPS-Responses lesen, Churn-User identifizieren, Prioritäten setzen',
         assignedToName: 'Customer Research',
         cronExpression: '0 10 * * 1',
         timezone: 'Europe/Berlin',
-        prioritaet: 'medium',
+        priority: 'medium',
       },
     ],
     configFields: [
@@ -4040,7 +4040,7 @@ export interface ImportResult {
 }
 
 export function importTemplate(
-  unternehmenId: string,
+  companyId: string,
   template: ClipmartTemplate,
   userConfig?: Record<string, string>,
 ): ImportResult {
@@ -4075,27 +4075,27 @@ export function importTemplate(
         model: userConfig?.model || 'auto:free', // default to free auto-routing
       });
 
-      db.insert(experten).values({
+      db.insert(agents).values({
         id: agentId,
-        unternehmenId,
+        companyId,
         name: agentDef.name,
-        rolle: agentDef.rolle,
-        titel: agentDef.titel || null,
-        faehigkeiten: agentDef.faehigkeiten || null,
-        verbindungsTyp: agentDef.verbindungsTyp || 'openrouter',
-        verbindungsConfig,
+        role: agentDef.role,
+        title: agentDef.title || null,
+        capabilities: agentDef.skills || null,
+        connectionType: agentDef.connectionType || 'openrouter',
+        connectionConfig: verbindungsConfig,
         avatar: agentDef.avatar || null,
-        avatarFarbe: agentDef.avatarFarbe || '#23CDCA',
-        budgetMonatCent: agentDef.budgetMonatCent ?? 0,
-        verbrauchtMonatCent: 0,
+        avatarColor: agentDef.avatarColor || '#23CDCA',
+        monthlyBudgetCent: agentDef.monthlyBudgetCent ?? 0,
+        monthlySpendCent: 0,
         isOrchestrator: agentDef.isOrchestrator || false,
-        zyklusIntervallSek: agentDef.zyklusIntervallSek || 300,
-        zyklusAktiv: agentDef.zyklusAktiv ?? false,
+        autoCycleIntervalSec: agentDef.autoCycleIntervalSec || 300,
+        autoCycleActive: agentDef.autoCycleActive ?? false,
         systemPrompt,
         status: 'idle',
-        nachrichtenCount: 0,
-        erstelltAm: now,
-        aktualisiertAm: now,
+        messageCount: 0,
+        createdAt: now,
+        updatedAt: now,
       }).run();
 
       result.agentsCreated++;
@@ -4111,9 +4111,9 @@ export function importTemplate(
       const agentId = agentIdMap.get(agentDef.name);
       const reportsToId = agentIdMap.get(agentDef.reportsToName);
       if (agentId && reportsToId) {
-        db.update(experten)
-          .set({ reportsTo: reportsToId, aktualisiertAm: now })
-          .where(eq(experten.id, agentId))
+        db.update(agents)
+          .set({ reportsTo: reportsToId, updatedAt: now })
+          .where(eq(agents.id, agentId))
           .run();
       }
     }
@@ -4132,21 +4132,21 @@ export function importTemplate(
 
         db.insert(skillsLibrary).values({
           id: skillId,
-          unternehmenId,
+          companyId,
           name: skillDef.name,
-          beschreibung: skillDef.beschreibung || null,
-          inhalt: skillDef.inhalt,
+          description: skillDef.description || null,
+          content: skillDef.content,
           tags: JSON.stringify(tags),
-          erstelltVon: 'clipmart',
-          erstelltAm: now,
-          aktualisiertAm: now,
+          createdBy: 'clipmart',
+          createdAt: now,
+          updatedAt: now,
         }).run();
 
-        db.insert(expertenSkills).values({
+        db.insert(agentSkills).values({
           id: uuid(),
-          expertId: agentId,
+          agentId: agentId,
           skillId,
-          erstelltAm: now,
+          createdAt: now,
         }).run();
 
         result.skillsCreated++;
@@ -4157,43 +4157,43 @@ export function importTemplate(
   }
 
   // Phase 4: Routinen anlegen
-  if (template.routinen) {
-    for (const routineDef of template.routinen) {
+  if (template.routines) {
+    for (const routineDef of template.routines) {
       try {
         const agentId = agentIdMap.get(routineDef.assignedToName);
         const routineId = uuid();
 
-        db.insert(routinen).values({
+        db.insert(routines).values({
           id: routineId,
-          unternehmenId,
-          titel: routineDef.titel,
-          beschreibung: routineDef.beschreibung || null,
-          zugewiesenAn: agentId || null,
-          prioritaet: routineDef.prioritaet || 'medium',
+          companyId,
+          title: routineDef.title,
+          description: routineDef.description || null,
+          assignedTo: agentId || null,
+          priority: routineDef.priority || 'medium',
           status: 'active',
           concurrencyPolicy: 'skip_if_active',
           catchUpPolicy: 'skip_missed',
-          variablen: userConfig ? JSON.stringify(userConfig) : null,
-          erstelltAm: now,
-          aktualisiertAm: now,
+          variables: userConfig ? JSON.stringify(userConfig) : null,
+          createdAt: now,
+          updatedAt: now,
         }).run();
 
         // Cron-Trigger anlegen
         const triggerId = uuid();
         db.insert(routineTrigger).values({
           id: triggerId,
-          unternehmenId,
+          companyId,
           routineId,
           kind: 'schedule',
-          aktiv: true,
+          active: true,
           cronExpression: routineDef.cronExpression,
           timezone: routineDef.timezone || 'Europe/Berlin',
-          erstelltAm: now,
+          createdAt: now,
         }).run();
 
         result.routinenCreated++;
       } catch (err: any) {
-        result.errors.push(`Routine "${routineDef.titel}": ${err.message}`);
+        result.errors.push(`Routine "${routineDef.title}": ${err.message}`);
       }
     }
   }
@@ -4205,14 +4205,14 @@ export function getAvailableTemplates() {
   return BUILTIN_TEMPLATES.map(t => ({
     id: t.id,
     name: t.name,
-    beschreibung: t.beschreibung,
+    description: t.description,
     version: t.version,
-    kategorie: t.kategorie,
+    category: t.category,
     icon: t.icon,
     accentColor: t.accentColor,
     tags: t.tags,
     agentCount: t.agents.length,
-    routinenCount: t.routinen?.length || 0,
+    routinesCount: t.routines?.length || 0,
     configFields: t.configFields || [],
     agentRoles: t.agents.slice(0, 6).map(a => ({ name: a.name, isOrchestrator: a.isOrchestrator || false })),
   }));

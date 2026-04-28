@@ -40,10 +40,10 @@ interface ImportResult {
 
 const AGENT_CATEGORIES: Record<string, { label: string; labelDe: string; color: string }> = {
   all:          { label: 'All',          labelDe: 'Alle',          color: '#94a3b8' },
-  integrations: { label: 'Integrations', labelDe: 'Integrationen', color: '#23CDCB' },
+  integrations: { label: 'Integrations', labelDe: 'Integrationen', color: '#c5a059' },
   automation:   { label: 'Automation',   labelDe: 'Automation',    color: '#06b6d4' },
   team:         { label: 'Teams',        labelDe: 'Teams',         color: '#6366f1' },
-  content:      { label: 'Content',      labelDe: 'Content',       color: '#a855f7' },
+  content:      { label: 'Content',      labelDe: 'Content',       color: '#9b87c8' },
   dev:          { label: 'Dev',          labelDe: 'Entwicklung',   color: '#3b82f6' },
   research:     { label: 'Research',     labelDe: 'Research',      color: '#f97316' },
   ecommerce:    { label: 'E-Commerce',   labelDe: 'E-Commerce',    color: '#22c55e' },
@@ -80,10 +80,10 @@ function InstallModal({
         setResult(data);
         onSuccess(data);
       } else {
-        setError(data.error || 'Import fehlgeschlagen');
+        setError(data.error || 'Import failed');
       }
     } catch {
-      setError('Verbindungsfehler');
+      setError('Connection error');
     } finally {
       setImporting(false);
     }
@@ -98,13 +98,13 @@ function InstallModal({
         width: 520, maxHeight: '85vh', overflow: 'auto',
         background: 'rgba(18,18,24,0.98)',
         border: `1px solid ${template.accentColor}40`,
-        borderRadius: 20, padding: '2rem',
+        borderRadius: 0, padding: '2rem',
         boxShadow: `0 0 60px ${template.accentColor}20`,
       }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
           <div style={{
-            width: 56, height: 56, borderRadius: 16, fontSize: 28,
+            width: 56, height: 56, borderRadius: 0, fontSize: 28,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: template.accentColor + '18', border: `1px solid ${template.accentColor}30`,
           }}>
@@ -127,17 +127,17 @@ function InstallModal({
 
             {/* Was wird installiert */}
             <div style={{ display: 'flex', gap: 10, marginBottom: 24 }}>
-              <div style={{ flex: 1, padding: '12px 14px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', textAlign: 'center' }}>
+              <div style={{ flex: 1, padding: '12px 14px', borderRadius: 0, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', textAlign: 'center' }}>
                 <Bot size={18} style={{ color: template.accentColor, margin: '0 auto 6px' }} />
                 <div style={{ fontSize: 20, fontWeight: 800, color: '#f1f5f9' }}>{template.agentCount}</div>
                 <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Agents</div>
               </div>
-              <div style={{ flex: 1, padding: '12px 14px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', textAlign: 'center' }}>
+              <div style={{ flex: 1, padding: '12px 14px', borderRadius: 0, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', textAlign: 'center' }}>
                 <Clock size={18} style={{ color: '#f59e0b', margin: '0 auto 6px' }} />
                 <div style={{ fontSize: 20, fontWeight: 800, color: '#f1f5f9' }}>{template.routinenCount}</div>
                 <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Routinen</div>
               </div>
-              <div style={{ flex: 1, padding: '12px 14px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', textAlign: 'center' }}>
+              <div style={{ flex: 1, padding: '12px 14px', borderRadius: 0, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', textAlign: 'center' }}>
                 <Zap size={18} style={{ color: '#22c55e', margin: '0 auto 6px' }} />
                 <div style={{ fontSize: 20, fontWeight: 800, color: '#f1f5f9' }}>1-Click</div>
                 <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Install</div>
@@ -153,7 +153,7 @@ function InstallModal({
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {template.agentRoles.map(role => (
                     <span key={role.name} style={{
-                      fontSize: 11, padding: '3px 10px', borderRadius: 20,
+                      fontSize: 11, padding: '3px 10px', borderRadius: 0,
                       background: role.isOrchestrator ? template.accentColor + '22' : 'rgba(255,255,255,0.04)',
                       border: `1px solid ${role.isOrchestrator ? template.accentColor + '50' : 'rgba(255,255,255,0.08)'}`,
                       color: role.isOrchestrator ? template.accentColor : '#64748b',
@@ -186,7 +186,7 @@ function InstallModal({
                         style={{
                           width: '100%', padding: '8px 12px',
                           background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
-                          borderRadius: 8, color: '#f1f5f9', fontSize: 13, outline: 'none',
+                          borderRadius: 0, color: '#f1f5f9', fontSize: 13, outline: 'none',
                           fontFamily: field.isSecret ? 'monospace' : 'inherit',
                         }}
                       />
@@ -197,20 +197,20 @@ function InstallModal({
             )}
 
             {error && (
-              <div style={{ marginBottom: 16, padding: '10px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#fca5a5', fontSize: 13 }}>
+              <div style={{ marginBottom: 16, padding: '10px 12px', borderRadius: 0, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#fca5a5', fontSize: 13 }}>
                 {error}
               </div>
             )}
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button onClick={onClose} style={{ padding: '9px 18px', borderRadius: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', cursor: 'pointer', fontSize: 13 }}>
+              <button onClick={onClose} style={{ padding: '9px 18px', borderRadius: 0, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', cursor: 'pointer', fontSize: 13 }}>
                 Abbrechen
               </button>
               <button
                 onClick={handleInstall}
                 disabled={importing || template.configFields.some(f => f.required && !config[f.key]?.trim())}
                 style={{
-                  padding: '9px 20px', borderRadius: 10, fontWeight: 700, fontSize: 13,
+                  padding: '9px 20px', borderRadius: 0, fontWeight: 700, fontSize: 13,
                   background: `linear-gradient(135deg, ${template.accentColor}, ${template.accentColor}99)`,
                   border: 'none', color: '#000', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', gap: 8,
@@ -240,7 +240,7 @@ function InstallModal({
                 {result.errors.map((e, i) => <div key={i}>• {e}</div>)}
               </div>
             )}
-            <button onClick={onClose} style={{ padding: '9px 24px', borderRadius: 10, background: `${template.accentColor}22`, border: `1px solid ${template.accentColor}40`, color: template.accentColor, cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
+            <button onClick={onClose} style={{ padding: '9px 24px', borderRadius: 0, background: `${template.accentColor}22`, border: `1px solid ${template.accentColor}40`, color: template.accentColor, cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
               Schließen
             </button>
           </div>
@@ -256,7 +256,7 @@ function BlueprintCard({ template, onInstall, de }: { template: TemplateInfo; on
   return (
     <div
       style={{
-        borderRadius: 20, padding: '24px',
+        borderRadius: 0, padding: '24px',
         background: `linear-gradient(135deg, ${template.accentColor}08 0%, rgba(255,255,255,0.02) 100%)`,
         border: `1px solid ${template.accentColor}25`,
         display: 'flex', flexDirection: 'column', gap: 16,
@@ -284,7 +284,7 @@ function BlueprintCard({ template, onInstall, de }: { template: TemplateInfo; on
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
         <div style={{
-          width: 56, height: 56, borderRadius: 16, fontSize: 28, flexShrink: 0,
+          width: 56, height: 56, borderRadius: 0, fontSize: 28, flexShrink: 0,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: template.accentColor + '20', border: `1px solid ${template.accentColor}40`,
         }}>
@@ -315,7 +315,7 @@ function BlueprintCard({ template, onInstall, de }: { template: TemplateInfo; on
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
           {template.agentRoles.map(role => (
             <span key={role.name} style={{
-              fontSize: 10, padding: '2px 9px', borderRadius: 20,
+              fontSize: 10, padding: '2px 9px', borderRadius: 0,
               background: role.isOrchestrator ? template.accentColor + '20' : 'rgba(255,255,255,0.04)',
               border: `1px solid ${role.isOrchestrator ? template.accentColor + '45' : 'rgba(255,255,255,0.08)'}`,
               color: role.isOrchestrator ? template.accentColor : '#475569',
@@ -331,7 +331,7 @@ function BlueprintCard({ template, onInstall, de }: { template: TemplateInfo; on
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
         {template.tags.slice(0, 5).map(tag => (
           <span key={tag} style={{
-            fontSize: 10, padding: '2px 7px', borderRadius: 5,
+            fontSize: 10, padding: '2px 7px', borderRadius: 0,
             background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
             color: '#334155',
           }}>
@@ -345,7 +345,7 @@ function BlueprintCard({ template, onInstall, de }: { template: TemplateInfo; on
         <button
           onClick={onInstall}
           style={{
-            width: '100%', padding: '10px', borderRadius: 12, fontWeight: 700, fontSize: 13,
+            width: '100%', padding: '10px', borderRadius: 0, fontWeight: 700, fontSize: 13,
             background: `linear-gradient(135deg, ${template.accentColor}22, ${template.accentColor}10)`,
             border: `1px solid ${template.accentColor}45`,
             color: template.accentColor, cursor: 'pointer',
@@ -377,7 +377,7 @@ function AgentCard({ template, onInstall, de }: { template: TemplateInfo; onInst
   return (
     <div
       style={{
-        borderRadius: 16, padding: '18px',
+        borderRadius: 0, padding: '18px',
         background: 'rgba(255,255,255,0.02)',
         border: '1px solid rgba(255,255,255,0.07)',
         display: 'flex', flexDirection: 'column', gap: 12,
@@ -395,7 +395,7 @@ function AgentCard({ template, onInstall, de }: { template: TemplateInfo; onInst
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
         <div style={{
-          width: 42, height: 42, borderRadius: 12, fontSize: 20, flexShrink: 0,
+          width: 42, height: 42, borderRadius: 0, fontSize: 20, flexShrink: 0,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: template.accentColor + '18', border: `1px solid ${template.accentColor}30`,
         }}>
@@ -404,7 +404,7 @@ function AgentCard({ template, onInstall, de }: { template: TemplateInfo; onInst
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9', marginBottom: 3 }}>{template.name}</div>
           <span style={{
-            fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 20,
+            fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 0,
             background: cat.color + '18', color: cat.color, border: `1px solid ${cat.color}30`,
             textTransform: 'uppercase', letterSpacing: '0.08em',
           }}>
@@ -422,7 +422,7 @@ function AgentCard({ template, onInstall, de }: { template: TemplateInfo; onInst
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
         {template.tags.slice(0, 4).map(tag => (
           <span key={tag} style={{
-            fontSize: 10, padding: '2px 7px', borderRadius: 5,
+            fontSize: 10, padding: '2px 7px', borderRadius: 0,
             background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
             color: '#475569',
           }}>
@@ -444,7 +444,7 @@ function AgentCard({ template, onInstall, de }: { template: TemplateInfo; onInst
         <button
           onClick={onInstall}
           style={{
-            marginLeft: 'auto', padding: '6px 14px', borderRadius: 9, fontWeight: 700, fontSize: 11,
+            marginLeft: 'auto', padding: '6px 14px', borderRadius: 0, fontWeight: 700, fontSize: 11,
             background: `${template.accentColor}18`, border: `1px solid ${template.accentColor}40`,
             color: template.accentColor, cursor: 'pointer',
             display: 'flex', alignItems: 'center', gap: 5,
@@ -510,18 +510,18 @@ export function Clipmart() {
 
       {/* ── Hero ── */}
       <div style={{
-        borderRadius: 24, padding: '2.5rem', marginBottom: '2rem',
-        background: 'linear-gradient(135deg, rgba(35,205,203,0.08) 0%, rgba(168,85,247,0.06) 100%)',
+        borderRadius: 0, padding: '2.5rem', marginBottom: '2rem',
+        background: 'linear-gradient(135deg, rgba(35,205,203,0.08) 0%, rgba(155,135,200,0.06) 100%)',
         border: '1px solid rgba(35,205,203,0.15)',
         position: 'relative', overflow: 'hidden',
       }}>
         <div style={{ position: 'absolute', top: -60, right: -60, width: 200, height: 200, borderRadius: '50%', background: 'radial-gradient(circle, rgba(35,205,203,0.12) 0%, transparent 70%)', pointerEvents: 'none' }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(35,205,203,0.15)', border: '1px solid rgba(35,205,203,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Package size={22} style={{ color: '#23CDCB' }} />
+          <div style={{ width: 48, height: 48, borderRadius: 0, background: 'rgba(35,205,203,0.15)', border: '1px solid rgba(35,205,203,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Package size={22} style={{ color: '#c5a059' }} />
           </div>
           <div>
-            <h1 style={{ fontSize: 28, fontWeight: 900, margin: 0, background: 'linear-gradient(135deg, #23CDCB, #a855f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            <h1 style={{ fontSize: 28, fontWeight: 900, margin: 0, background: 'linear-gradient(135deg, #c5a059, #9b87c8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               CognitHub
             </h1>
             <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>
@@ -540,10 +540,10 @@ export function Clipmart() {
           {[
             { icon: <Building2 size={13} />, label: de ? 'Komplette Teams' : 'Full teams', color: '#f59e0b' },
             { icon: <Zap size={13} />, label: de ? 'Sofort einsatzbereit' : 'Ready to run', color: '#22c55e' },
-            { icon: <Bot size={13} />, label: de ? 'Agents vorkonfiguriert' : 'Agents pre-configured', color: '#23CDCB' },
-            { icon: <Sparkles size={13} />, label: de ? 'Skills & Prompts optimiert' : 'Skills & prompts optimized', color: '#a855f7' },
+            { icon: <Bot size={13} />, label: de ? 'Agents vorkonfiguriert' : 'Agents pre-configured', color: '#c5a059' },
+            { icon: <Sparkles size={13} />, label: de ? 'Skills & Prompts optimiert' : 'Skills & prompts optimized', color: '#9b87c8' },
           ].map((badge, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 20, background: badge.color + '12', border: `1px solid ${badge.color}30`, color: badge.color, fontSize: 12, fontWeight: 600 }}>
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 0, background: badge.color + '12', border: `1px solid ${badge.color}30`, color: badge.color, fontSize: 12, fontWeight: 600 }}>
               {badge.icon} {badge.label}
             </div>
           ))}
@@ -553,7 +553,7 @@ export function Clipmart() {
       {/* ── Last Install Toast ── */}
       {lastResult && lastResult.success && (
         <div style={{
-          marginBottom: '1.5rem', padding: '12px 16px', borderRadius: 12,
+          marginBottom: '1.5rem', padding: '12px 16px', borderRadius: 0,
           background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
           display: 'flex', alignItems: 'center', gap: 10,
         }}>
@@ -570,7 +570,7 @@ export function Clipmart() {
 
       {loading ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4rem', gap: 12 }}>
-          <div style={{ width: 20, height: 20, borderRadius: '50%', border: '2px solid rgba(35,205,202,0.2)', borderTopColor: '#23CDCB', animation: 'spin 0.8s linear infinite' }} />
+          <div style={{ width: 20, height: 20, borderRadius: '50%', border: '2px solid rgba(197,160,89,0.2)', borderTopColor: '#c5a059', animation: 'spin 0.8s linear infinite' }} />
           <span style={{ fontSize: 13, color: '#475569' }}>{de ? 'Lade Templates...' : 'Loading templates...'}</span>
         </div>
       ) : (
@@ -586,7 +586,7 @@ export function Clipmart() {
                     {de ? 'Company Blueprints' : 'Company Blueprints'}
                   </span>
                   <span style={{
-                    fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 20,
+                    fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 0,
                     background: '#f59e0b18', color: '#f59e0b', border: '1px solid #f59e0b30',
                   }}>
                     {filteredCompany.length}
@@ -617,13 +617,13 @@ export function Clipmart() {
             {/* Section header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Bot size={18} style={{ color: '#23CDCB' }} />
+                <Bot size={18} style={{ color: '#c5a059' }} />
                 <span style={{ fontSize: 16, fontWeight: 800, color: '#f1f5f9' }}>
                   {de ? 'Agent Templates' : 'Agent Templates'}
                 </span>
                 <span style={{
-                  fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 20,
-                  background: '#23CDCB18', color: '#23CDCB', border: '1px solid #23CDCB30',
+                  fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 0,
+                  background: '#c5a05918', color: '#c5a059', border: '1px solid #c5a05930',
                 }}>
                   {filteredAgents.length}
                 </span>
@@ -639,7 +639,7 @@ export function Clipmart() {
                     key={key}
                     onClick={() => setActiveKat(key)}
                     style={{
-                      padding: '5px 12px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                      padding: '5px 12px', borderRadius: 0, fontSize: 11, fontWeight: 600, cursor: 'pointer',
                       background: activeKat === key ? cat.color + '22' : 'rgba(255,255,255,0.03)',
                       border: `1px solid ${activeKat === key ? cat.color + '60' : 'rgba(255,255,255,0.07)'}`,
                       color: activeKat === key ? cat.color : '#64748b',
@@ -658,7 +658,7 @@ export function Clipmart() {
                   onChange={e => setSearch(e.target.value)}
                   placeholder={de ? 'Suchen...' : 'Search...'}
                   style={{
-                    padding: '6px 12px 6px 28px', borderRadius: 9, fontSize: 12,
+                    padding: '6px 12px 6px 28px', borderRadius: 0, fontSize: 12,
                     background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
                     color: '#f1f5f9', outline: 'none', width: 180,
                   }}
@@ -682,7 +682,7 @@ export function Clipmart() {
 
           {/* ── Coming Soon ── */}
           <div style={{
-            marginTop: '2.5rem', padding: '1.5rem', borderRadius: 16,
+            marginTop: '2.5rem', padding: '1.5rem', borderRadius: 0,
             background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.08)',
             textAlign: 'center',
           }}>

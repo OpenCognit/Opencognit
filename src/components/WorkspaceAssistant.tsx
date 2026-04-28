@@ -107,10 +107,10 @@ export function WorkspaceAssistant() {
         style={{
           position: 'fixed', bottom: '1.5rem', right: '1.5rem',
           width: 52, height: 52, borderRadius: '50%',
-          background: open ? 'rgba(35,205,202,0.2)' : 'rgba(35,205,202,0.12)',
-          border: '1px solid rgba(35,205,202,0.4)',
-          boxShadow: `0 8px 32px rgba(35,205,202,0.25)${open ? ', 0 0 0 4px rgba(35,205,202,0.08)' : ''}`,
-          color: '#23CDCB',
+          background: open ? 'rgba(197,160,89,0.2)' : 'rgba(197,160,89,0.12)',
+          border: '1px solid rgba(197,160,89,0.4)',
+          boxShadow: `0 8px 32px rgba(197,160,89,0.25)${open ? ', 0 0 0 4px rgba(197,160,89,0.08)' : ''}`,
+          color: '#c5a059',
           cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           zIndex: 9000,
@@ -132,7 +132,7 @@ export function WorkspaceAssistant() {
             backdropFilter: 'blur(40px)',
             WebkitBackdropFilter: 'blur(40px)',
             border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: 18,
+            borderRadius: 0,
             boxShadow: '0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)',
             display: 'flex', flexDirection: 'column',
             zIndex: 9000,
@@ -149,9 +149,9 @@ export function WorkspaceAssistant() {
             flexShrink: 0,
           }}>
             <div style={{
-              width: 30, height: 30, borderRadius: 9,
-              background: 'rgba(35,205,202,0.12)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#23CDCB',
+              width: 30, height: 30, borderRadius: 0,
+              background: 'rgba(197,160,89,0.12)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#c5a059',
             }}>
               <Sparkles size={14} />
             </div>
@@ -180,9 +180,9 @@ export function WorkspaceAssistant() {
               }}>
                 {msg.role === 'assistant' && (
                   <div style={{
-                    width: 22, height: 22, borderRadius: 7, flexShrink: 0,
-                    background: 'rgba(35,205,202,0.12)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#23CDCB',
+                    width: 22, height: 22, borderRadius: 0, flexShrink: 0,
+                    background: 'rgba(197,160,89,0.12)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#c5a059',
                   }}>
                     <Sparkles size={11} />
                   </div>
@@ -190,17 +190,17 @@ export function WorkspaceAssistant() {
                 <div style={{
                   maxWidth: '85%',
                   padding: '0.5rem 0.75rem',
-                  borderRadius: msg.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-                  background: msg.role === 'user' ? 'rgba(35,205,202,0.12)' : 'rgba(255,255,255,0.04)',
-                  border: `1px solid ${msg.role === 'user' ? 'rgba(35,205,202,0.25)' : 'rgba(255,255,255,0.06)'}`,
+                  borderRadius: 0,
+                  background: msg.role === 'user' ? 'rgba(197,160,89,0.12)' : 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${msg.role === 'user' ? 'rgba(197,160,89,0.25)' : 'rgba(255,255,255,0.06)'}`,
                   fontSize: '0.8125rem',
-                  color: msg.role === 'user' ? '#23CDCB' : '#d4d4d8',
+                  color: msg.role === 'user' ? '#c5a059' : '#d4d4d8',
                   lineHeight: 1.5,
                 }}>
                   {msg.text}
                   {msg.source === 'ai' && msg.role === 'assistant' && (
                     <span style={{
-                      display: 'block', fontSize: '0.5625rem', color: '#23CDCB',
+                      display: 'block', fontSize: '0.5625rem', color: '#c5a059',
                       marginTop: 3, letterSpacing: '0.05em',
                     }}>✦ AI</span>
                   )}
@@ -209,17 +209,17 @@ export function WorkspaceAssistant() {
             ))}
             {loading && (
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
-                <div style={{ width: 22, height: 22, borderRadius: 7, background: 'rgba(35,205,202,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#23CDCB', flexShrink: 0 }}>
+                <div style={{ width: 22, height: 22, borderRadius: 0, background: 'rgba(197,160,89,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#c5a059', flexShrink: 0 }}>
                   <Sparkles size={11} />
                 </div>
                 <div style={{
-                  padding: '0.5rem 0.875rem', borderRadius: '14px 14px 14px 4px',
+                  padding: '0.5rem 0.875rem', borderRadius: '0',
                   background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)',
                   display: 'flex', gap: 4, alignItems: 'center',
                 }}>
                   {[0, 1, 2].map(i => (
                     <div key={i} style={{
-                      width: 5, height: 5, borderRadius: '50%', background: '#23CDCB',
+                      width: 5, height: 5, borderRadius: '50%', background: '#c5a059',
                       animation: `typingDot 1.2s ease-in-out ${i * 0.2}s infinite`,
                     }} />
                   ))}
@@ -237,12 +237,12 @@ export function WorkspaceAssistant() {
                   key={s}
                   onClick={() => ask(s)}
                   style={{
-                    padding: '0.25rem 0.625rem', borderRadius: 999,
+                    padding: '0.25rem 0.625rem', borderRadius: 0,
                     background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
                     color: '#71717a', cursor: 'pointer', fontSize: '0.6875rem',
                     transition: 'all 0.15s',
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(35,205,202,0.3)'; e.currentTarget.style.color = '#23CDCB'; }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(197,160,89,0.3)'; e.currentTarget.style.color = '#c5a059'; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#71717a'; }}
                 >
                   {s}
@@ -268,19 +268,19 @@ export function WorkspaceAssistant() {
                 flex: 1, padding: '0.5rem 0.75rem',
                 background: 'rgba(255,255,255,0.04)',
                 border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 10, fontSize: '0.8125rem', color: '#f4f4f5',
+                borderRadius: 0, fontSize: '0.8125rem', color: '#f4f4f5',
                 outline: 'none',
               }}
-              onFocus={e => e.target.style.borderColor = 'rgba(35,205,202,0.35)'}
+              onFocus={e => e.target.style.borderColor = 'rgba(197,160,89,0.35)'}
               onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.08)'}
             />
             <button
               onClick={() => ask(input)}
               disabled={!input.trim() || loading}
               style={{
-                width: 36, height: 36, borderRadius: 10, border: 'none',
-                background: input.trim() && !loading ? 'rgba(35,205,202,0.15)' : 'rgba(255,255,255,0.04)',
-                color: input.trim() && !loading ? '#23CDCB' : '#3f3f46',
+                width: 36, height: 36, borderRadius: 0, border: 'none',
+                background: input.trim() && !loading ? 'rgba(197,160,89,0.15)' : 'rgba(255,255,255,0.04)',
+                color: input.trim() && !loading ? '#c5a059' : '#3f3f46',
                 cursor: input.trim() && !loading ? 'pointer' : 'not-allowed',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 transition: 'all 0.15s', flexShrink: 0,

@@ -59,7 +59,7 @@ function Legend({ items }: { items: { color: string; label: string }[] }) {
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px 8px', marginTop: 8 }}>
       {items.map(item => (
         <span key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: 'var(--color-text-muted)', opacity: 0.75 }}>
-          <span style={{ width: 7, height: 7, borderRadius: 2, background: item.color, flexShrink: 0 }} />
+          <span style={{ width: 7, height: 7, borderRadius: 0, background: item.color, flexShrink: 0 }} />
           {item.label}
         </span>
       ))}
@@ -77,13 +77,13 @@ export function ChartCard({ title, subtitle, badge, children }: {
     <div style={{
       background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)',
       border: '1px solid rgba(255,255,255,0.07)',
-      borderRadius: 14,
+      borderRadius: 0,
       padding: '14px 16px',
       position: 'relative',
       overflow: 'hidden',
     }}>
       {/* Subtle top-left accent */}
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'linear-gradient(90deg, rgba(35,205,202,0.3), transparent)', borderRadius: '14px 14px 0 0' }} />
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'linear-gradient(90deg, rgba(197,160,89,0.3), transparent)', borderRadius: '0' }} />
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{title}</div>
@@ -108,7 +108,7 @@ function EmptyChart({ label }: { label: string }) {
         {Array.from({ length: 14 }, (_, i) => (
           <div key={i} style={{
             flex: 1, height: `${8 + Math.sin(i * 0.9) * 6 + Math.random() * 4}%`,
-            background: 'rgba(255,255,255,0.04)', borderRadius: '2px 2px 0 0',
+            background: 'rgba(255,255,255,0.04)', borderRadius: '0',
           }} />
         ))}
       </div>
@@ -152,20 +152,20 @@ export function RunActivityChart({ runs, emptyLabel = 'No runs yet' }: { runs: R
           return (
             <div key={day} style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }} title={`${day}: ${total} runs`}>
               {total > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 1, overflow: 'hidden', height: `${heightPct}%`, minHeight: 3, borderRadius: '2px 2px 0 0' }}>
-                  {e.failed > 0 && <div style={{ flex: e.failed, background: 'rgba(239,68,68,0.85)', borderRadius: '2px 2px 0 0' }} />}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 1, overflow: 'hidden', height: `${heightPct}%`, minHeight: 3, borderRadius: '0' }}>
+                  {e.failed > 0 && <div style={{ flex: e.failed, background: 'rgba(239,68,68,0.85)', borderRadius: '0' }} />}
                   {e.other > 0 && <div style={{ flex: e.other, background: 'rgba(107,114,128,0.7)' }} />}
-                  {e.succeeded > 0 && <div style={{ flex: e.succeeded, background: 'rgba(35,205,202,0.85)' }} />}
+                  {e.succeeded > 0 && <div style={{ flex: e.succeeded, background: 'rgba(197,160,89,0.85)' }} />}
                 </div>
               ) : (
-                <div style={{ height: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 1 }} />
+                <div style={{ height: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 0 }} />
               )}
             </div>
           );
         })}
       </div>
       <DateLabels days={days} />
-      <Legend items={[{ color: '#23CDCB', label: 'OK' }, { color: '#ef4444', label: 'Error' }, { color: '#6b7280', label: 'Other' }]} />
+      <Legend items={[{ color: '#c5a059', label: 'OK' }, { color: '#ef4444', label: 'Error' }, { color: '#6b7280', label: 'Other' }]} />
     </div>
   );
 }
@@ -204,8 +204,8 @@ export function PriorityChart({ tasks, emptyLabel = 'No tasks' }: { tasks: TaskS
                 <span style={{ fontSize: 9, textTransform: 'capitalize', color: 'var(--color-text-muted)', opacity: 0.7 }}>{p}</span>
                 <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--color-text-secondary)' }}>{counts[p]}</span>
               </div>
-              <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)' }}>
-                <div style={{ height: '100%', width: `${pct}%`, borderRadius: 2, background: priorityColors[p], transition: 'width 0.5s ease' }} />
+              <div style={{ height: 4, borderRadius: 0, background: 'rgba(255,255,255,0.06)' }}>
+                <div style={{ height: '100%', width: `${pct}%`, borderRadius: 0, background: priorityColors[p], transition: 'width 0.5s ease' }} />
               </div>
             </div>
           );
@@ -220,10 +220,10 @@ export function PriorityChart({ tasks, emptyLabel = 'No tasks' }: { tasks: TaskS
 const statusColors: Record<string, string> = {
   todo: 'rgba(59,130,246,0.85)',
   offen: 'rgba(59,130,246,0.85)',
-  in_progress: 'rgba(139,92,246,0.85)',
-  in_review: 'rgba(168,85,247,0.85)',
-  done: 'rgba(35,205,202,0.85)',
-  abgeschlossen: 'rgba(35,205,202,0.85)',
+  in_progress: 'rgba(155,135,200,0.85)',
+  in_review: 'rgba(155,135,200,0.85)',
+  done: 'rgba(197,160,89,0.85)',
+  abgeschlossen: 'rgba(197,160,89,0.85)',
   blocked: 'rgba(239,68,68,0.85)',
   cancelled: 'rgba(107,114,128,0.6)',
   backlog: 'rgba(100,116,139,0.6)',
@@ -251,8 +251,8 @@ export function StatusChart({ tasks, emptyLabel = 'No tasks' }: { tasks: TaskSta
         {completionRate}% <span style={{ fontSize: 10, fontWeight: 500, opacity: 0.6 }}>done</span>
       </div>
       {/* Progress bar */}
-      <div style={{ height: 5, borderRadius: 3, background: 'rgba(255,255,255,0.06)', marginBottom: 10, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${completionRate}%`, background: 'linear-gradient(90deg, rgba(35,205,202,0.6), rgba(35,205,202,0.9))', borderRadius: 3, transition: 'width 0.5s ease' }} />
+      <div style={{ height: 5, borderRadius: 0, background: 'rgba(255,255,255,0.06)', marginBottom: 10, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${completionRate}%`, background: 'linear-gradient(90deg, rgba(197,160,89,0.6), rgba(197,160,89,0.9))', borderRadius: 0, transition: 'width 0.5s ease' }} />
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {statuses.map(s => {
@@ -263,8 +263,8 @@ export function StatusChart({ tasks, emptyLabel = 'No tasks' }: { tasks: TaskSta
                 <span style={{ fontSize: 9, color: 'var(--color-text-muted)', opacity: 0.7 }}>{statusLabels[s] ?? s}</span>
                 <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--color-text-secondary)' }}>{counts[s]}</span>
               </div>
-              <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)' }}>
-                <div style={{ height: '100%', width: `${pct}%`, borderRadius: 2, background: statusColors[s] ?? 'rgba(107,114,128,0.7)', transition: 'width 0.5s ease' }} />
+              <div style={{ height: 4, borderRadius: 0, background: 'rgba(255,255,255,0.06)' }}>
+                <div style={{ height: '100%', width: `${pct}%`, borderRadius: 0, background: statusColors[s] ?? 'rgba(107,114,128,0.7)', transition: 'width 0.5s ease' }} />
               </div>
             </div>
           );
@@ -295,7 +295,7 @@ export function SuccessRateChart({ runs, emptyLabel = 'No runs yet' }: { runs: R
   const totalRuns = runs.length;
   const totalSucceeded = runs.filter(r => r.status === 'succeeded').length;
   const globalRate = totalRuns > 0 ? Math.round((totalSucceeded / totalRuns) * 100) : 0;
-  const rateColor = globalRate >= 80 ? '#23CDCB' : globalRate >= 50 ? '#eab308' : '#ef4444';
+  const rateColor = globalRate >= 80 ? '#c5a059' : globalRate >= 50 ? '#eab308' : '#ef4444';
 
   return (
     <div>
@@ -306,16 +306,16 @@ export function SuccessRateChart({ runs, emptyLabel = 'No runs yet' }: { runs: R
         {days.map(day => {
           const e = grouped.get(day)!;
           const rate = e.total > 0 ? e.succeeded / e.total : 0;
-          const color = e.total === 0 ? undefined : rate >= 0.8 ? 'rgba(35,205,202,0.85)' : rate >= 0.5 ? 'rgba(234,179,8,0.85)' : 'rgba(239,68,68,0.85)';
+          const color = e.total === 0 ? undefined : rate >= 0.8 ? 'rgba(197,160,89,0.85)' : rate >= 0.5 ? 'rgba(234,179,8,0.85)' : 'rgba(239,68,68,0.85)';
           return (
             <div key={day} style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}
               title={`${day}: ${e.total > 0 ? Math.round(rate * 100) : 0}% (${e.succeeded}/${e.total})`}>
               {e.total > 0 ? (
-                <div style={{ height: `${Math.max(rate * 100, 4)}%`, background: color, borderRadius: '2px 2px 0 0', minHeight: 3, position: 'relative' }}>
-                  {rate >= 0.8 && <div style={{ position: 'absolute', inset: 0, background: 'rgba(35,205,202,0.2)', borderRadius: '2px 2px 0 0', filter: 'blur(3px)' }} />}
+                <div style={{ height: `${Math.max(rate * 100, 4)}%`, background: color, borderRadius: '0', minHeight: 3, position: 'relative' }}>
+                  {rate >= 0.8 && <div style={{ position: 'absolute', inset: 0, background: 'rgba(197,160,89,0.2)', borderRadius: '0', filter: 'blur(3px)' }} />}
                 </div>
               ) : (
-                <div style={{ height: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 1 }} />
+                <div style={{ height: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 0 }} />
               )}
             </div>
           );

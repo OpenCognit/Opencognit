@@ -25,19 +25,19 @@ const EBENE_OPTIONS = ['company', 'team', 'agent'] as const;
 const STATUS_CFG: Record<string, { color: string; bg: string; label: { de: string; en: string } }> = {
   planned:   { color: '#94a3b8', bg: 'rgba(148,163,184,0.1)', label: { de: 'Geplant',     en: 'Planned'   } },
   active:    { color: '#22c55e', bg: 'rgba(34,197,94,0.1)',   label: { de: 'Aktiv',       en: 'Active'    } },
-  achieved:  { color: '#23CDCB', bg: 'rgba(35,205,202,0.1)', label: { de: 'Erreicht',    en: 'Achieved'  } },
+  achieved:  { color: '#c5a059', bg: 'rgba(197,160,89,0.1)', label: { de: 'Erreicht',    en: 'Achieved'  } },
   cancelled: { color: '#475569', bg: 'rgba(71,85,105,0.1)',  label: { de: 'Abgebrochen', en: 'Cancelled' } },
 };
 
 const EBENE_CFG: Record<string, { color: string; label: { de: string; en: string } }> = {
-  company: { color: '#a855f7', label: { de: 'Unternehmen', en: 'Company' } },
+  company: { color: '#9b87c8', label: { de: 'Unternehmen', en: 'Company' } },
   team:    { color: '#3b82f6', label: { de: 'Team',        en: 'Team'    } },
-  agent:   { color: '#23CDCB', label: { de: 'Agent',       en: 'Agent'   } },
+  agent:   { color: '#c5a059', label: { de: 'Agent',       en: 'Agent'   } },
   task:    { color: '#f59e0b', label: { de: 'Aufgabe',     en: 'Task'    } },
 };
 
 function progressColor(pct: number): string {
-  if (pct >= 100) return '#23CDCB';
+  if (pct >= 100) return '#c5a059';
   if (pct >= 70)  return '#22c55e';
   if (pct >= 40)  return '#3b82f6';
   return '#94a3b8';
@@ -81,8 +81,8 @@ function GoalRow({
     return (
       <div style={{ marginLeft: indent }}>
         <div style={{
-          padding: '1rem', borderRadius: '14px',
-          background: 'rgba(35,205,202,0.04)', border: '1px solid rgba(35,205,202,0.2)',
+          padding: '1rem', borderRadius: 0,
+          background: 'rgba(197,160,89,0.04)', border: '1px solid rgba(197,160,89,0.2)',
           marginBottom: '0.5rem',
         }}>
           <input
@@ -92,7 +92,7 @@ function GoalRow({
             onKeyDown={e => e.key === 'Enter' && save()}
             style={{
               width: '100%', boxSizing: 'border-box', marginBottom: '0.5rem',
-              padding: '0.5rem 0.75rem', borderRadius: '8px', fontSize: '0.9375rem', fontWeight: 600,
+              padding: '0.5rem 0.75rem', borderRadius: 0, fontSize: '0.9375rem', fontWeight: 600,
               background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
               color: '#f1f5f9', outline: 'none',
             }}
@@ -103,7 +103,7 @@ function GoalRow({
             placeholder={de ? 'Beschreibung (optional)' : 'Description (optional)'}
             style={{
               width: '100%', boxSizing: 'border-box', marginBottom: '0.75rem',
-              padding: '0.5rem 0.75rem', borderRadius: '8px', fontSize: '0.8125rem',
+              padding: '0.5rem 0.75rem', borderRadius: 0, fontSize: '0.8125rem',
               background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
               color: '#a1a1aa', outline: 'none',
             }}
@@ -130,7 +130,7 @@ function GoalRow({
 
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <select value={status} onChange={e => setStatus(e.target.value as any)} style={{
-              padding: '0.375rem 0.625rem', borderRadius: '7px', fontSize: '0.8125rem',
+              padding: '0.375rem 0.625rem', borderRadius: 0, fontSize: '0.8125rem',
               background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
               color: '#e4e4e7', cursor: 'pointer',
             }}>
@@ -138,15 +138,15 @@ function GoalRow({
             </select>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.375rem' }}>
               <button onClick={() => setEditing(false)} style={{
-                padding: '0.375rem 0.75rem', borderRadius: '7px', cursor: 'pointer', fontSize: '0.8125rem',
+                padding: '0.375rem 0.75rem', borderRadius: 0, cursor: 'pointer', fontSize: '0.8125rem',
                 background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: '#64748b',
                 display: 'flex', alignItems: 'center', gap: '0.25rem',
               }}>
                 <X size={13} /> {de ? 'Abbrechen' : 'Cancel'}
               </button>
               <button onClick={save} disabled={saving || !titel.trim()} style={{
-                padding: '0.375rem 0.875rem', borderRadius: '7px', cursor: 'pointer', fontSize: '0.8125rem',
-                background: 'rgba(35,205,202,0.1)', border: '1px solid rgba(35,205,202,0.3)', color: '#23CDCB',
+                padding: '0.375rem 0.875rem', borderRadius: 0, cursor: 'pointer', fontSize: '0.8125rem',
+                background: 'rgba(197,160,89,0.1)', border: '1px solid rgba(197,160,89,0.3)', color: '#c5a059',
                 fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem',
                 opacity: saving || !titel.trim() ? 0.6 : 1,
               }}>
@@ -164,15 +164,15 @@ function GoalRow({
   return (
     <div style={{ marginLeft: indent }}>
       <GlassCard
-        style={{ padding: '0.875rem 1rem', borderRadius: '16px', marginBottom: '0.375rem', opacity: goal.status === 'cancelled' ? 0.5 : 1 }}
-        accent={goal.status === 'active' ? '#22c55e' : goal.status === 'achieved' ? '#23CDCB' : '#94a3b8'}
+        style={{ padding: '0.875rem 1rem', borderRadius: 0, marginBottom: '0.375rem', opacity: goal.status === 'cancelled' ? 0.5 : 1 }}
+        accent={goal.status === 'active' ? '#22c55e' : goal.status === 'achieved' ? '#c5a059' : '#94a3b8'}
       >
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.875rem' }}>
         {/* Expand/collapse toggle */}
         <button
           onClick={() => hasChildren && setExpanded(v => !v)}
           style={{
-            width: 18, height: 18, borderRadius: '4px', flexShrink: 0, marginTop: '0.2rem',
+            width: 18, height: 18, borderRadius: 0, flexShrink: 0, marginTop: '0.2rem',
             background: 'transparent', border: 'none', cursor: hasChildren ? 'pointer' : 'default',
             color: hasChildren ? '#475569' : 'transparent',
             display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
@@ -190,7 +190,7 @@ function GoalRow({
             <span style={{ fontSize: '0.9375rem', fontWeight: 600, color: goal.status === 'achieved' ? '#94a3b8' : '#f1f5f9', textDecoration: goal.status === 'cancelled' ? 'line-through' : 'none' }}>
               {goal.titel}
             </span>
-            {goal.status === 'achieved' && <Award size={13} style={{ color: '#23CDCB', flexShrink: 0 }} />}
+            {goal.status === 'achieved' && <Award size={13} style={{ color: '#c5a059', flexShrink: 0 }} />}
           </div>
 
           {goal.beschreibung && (
@@ -203,9 +203,9 @@ function GoalRow({
           {goal.status !== 'cancelled' && (
             <div style={{ marginBottom: '0.5rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <div style={{ flex: 1, height: 5, borderRadius: 3, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+                <div style={{ flex: 1, height: 5, borderRadius: 0, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
                   <div style={{
-                    height: '100%', borderRadius: 3,
+                    height: '100%', borderRadius: 0,
                     width: `${pct}%`, background: pColor,
                     transition: 'width 0.6s ease',
                     boxShadow: pct > 0 ? `0 0 6px ${pColor}60` : 'none',
@@ -220,13 +220,13 @@ function GoalRow({
 
           <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{
-              padding: '0.1rem 0.4rem', borderRadius: '5px', fontSize: '0.625rem', fontWeight: 700,
+              padding: '0.1rem 0.4rem', borderRadius: 0, fontSize: '0.625rem', fontWeight: 700,
               background: cfg.bg, color: cfg.color, letterSpacing: '0.03em',
             }}>
               {cfg.label[de ? 'de' : 'en']}
             </span>
             <span style={{
-              padding: '0.1rem 0.4rem', borderRadius: '5px', fontSize: '0.625rem', fontWeight: 700,
+              padding: '0.1rem 0.4rem', borderRadius: 0, fontSize: '0.625rem', fontWeight: 700,
               background: ebene.color + '15', color: ebene.color, letterSpacing: '0.03em',
             }}>
               {ebene.label[de ? 'de' : 'en']}
@@ -237,16 +237,16 @@ function GoalRow({
         {/* Actions */}
         <div style={{ display: 'flex', gap: '0.25rem', flexShrink: 0 }}>
           <button onClick={() => setEditing(true)} style={{
-            width: 28, height: 28, borderRadius: '7px', border: 'none', cursor: 'pointer',
+            width: 28, height: 28, borderRadius: 0, border: 'none', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: 'rgba(255,255,255,0.04)', color: '#475569', transition: 'color 0.15s',
           }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#23CDCB'; }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#c5a059'; }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#475569'; }}>
             <Edit2 size={12} />
           </button>
           <button onClick={() => onDelete(goal.id)} style={{
-            width: 28, height: 28, borderRadius: '7px', border: 'none', cursor: 'pointer',
+            width: 28, height: 28, borderRadius: 0, border: 'none', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: 'rgba(239,68,68,0.06)', color: '#3f3f46', transition: 'color 0.15s',
           }}
@@ -292,13 +292,13 @@ function CreateGoalForm({ unternehmenId, onCreated, de }: { unternehmenId: strin
     return (
       <button onClick={() => setOpen(true)} style={{
         display: 'flex', alignItems: 'center', gap: '0.5rem',
-        padding: '0.75rem 1.25rem', borderRadius: '12px',
-        background: 'rgba(35,205,202,0.08)', border: '1px dashed rgba(35,205,202,0.25)',
-        color: '#23CDCB', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600,
+        padding: '0.75rem 1.25rem', borderRadius: 0,
+        background: 'rgba(197,160,89,0.08)', border: '1px dashed rgba(197,160,89,0.25)',
+        color: '#c5a059', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600,
         width: '100%', justifyContent: 'center', transition: 'all 0.15s',
       }}
-        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(35,205,202,0.12)'; }}
-        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(35,205,202,0.08)'; }}
+        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(197,160,89,0.12)'; }}
+        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(197,160,89,0.08)'; }}
       >
         <Plus size={15} /> {de ? 'Neues Ziel hinzufügen' : 'Add new goal'}
       </button>
@@ -307,10 +307,10 @@ function CreateGoalForm({ unternehmenId, onCreated, de }: { unternehmenId: strin
 
   return (
     <div style={{
-      padding: '1.25rem', borderRadius: '14px',
-      background: 'rgba(35,205,202,0.04)', border: '1px solid rgba(35,205,202,0.2)',
+      padding: '1.25rem', borderRadius: 0,
+      background: 'rgba(197,160,89,0.04)', border: '1px solid rgba(197,160,89,0.2)',
     }}>
-      <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#23CDCB', marginBottom: '1rem' }}>
+      <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#c5a059', marginBottom: '1rem' }}>
         {de ? 'Neues Ziel' : 'New Goal'}
       </div>
       <input
@@ -321,7 +321,7 @@ function CreateGoalForm({ unternehmenId, onCreated, de }: { unternehmenId: strin
         onKeyDown={e => e.key === 'Enter' && save()}
         style={{
           width: '100%', boxSizing: 'border-box', marginBottom: '0.625rem',
-          padding: '0.625rem 0.75rem', borderRadius: '8px', fontSize: '0.9375rem', fontWeight: 600,
+          padding: '0.625rem 0.75rem', borderRadius: 0, fontSize: '0.9375rem', fontWeight: 600,
           background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
           color: '#f1f5f9', outline: 'none',
         }}
@@ -332,21 +332,21 @@ function CreateGoalForm({ unternehmenId, onCreated, de }: { unternehmenId: strin
         placeholder={de ? 'Beschreibung (optional)' : 'Description (optional)'}
         style={{
           width: '100%', boxSizing: 'border-box', marginBottom: '0.625rem',
-          padding: '0.625rem 0.75rem', borderRadius: '8px', fontSize: '0.8125rem',
+          padding: '0.625rem 0.75rem', borderRadius: 0, fontSize: '0.8125rem',
           background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
           color: '#a1a1aa', outline: 'none',
         }}
       />
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
         <select value={ebene} onChange={e => setEbene(e.target.value as any)} style={{
-          padding: '0.375rem 0.625rem', borderRadius: '7px', fontSize: '0.8125rem',
+          padding: '0.375rem 0.625rem', borderRadius: 0, fontSize: '0.8125rem',
           background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
           color: '#e4e4e7', cursor: 'pointer',
         }}>
           {EBENE_OPTIONS.map(e => <option key={e} value={e}>{EBENE_CFG[e].label[de ? 'de' : 'en']}</option>)}
         </select>
         <select value={status} onChange={e => setStatus(e.target.value as any)} style={{
-          padding: '0.375rem 0.625rem', borderRadius: '7px', fontSize: '0.8125rem',
+          padding: '0.375rem 0.625rem', borderRadius: 0, fontSize: '0.8125rem',
           background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
           color: '#e4e4e7', cursor: 'pointer',
         }}>
@@ -356,14 +356,14 @@ function CreateGoalForm({ unternehmenId, onCreated, de }: { unternehmenId: strin
       </div>
       <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
         <button onClick={() => setOpen(false)} style={{
-          padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8125rem',
+          padding: '0.5rem 1rem', borderRadius: 0, cursor: 'pointer', fontSize: '0.8125rem',
           background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: '#64748b',
         }}>
           {de ? 'Abbrechen' : 'Cancel'}
         </button>
         <button onClick={save} disabled={saving || !titel.trim()} style={{
-          padding: '0.5rem 1.125rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 700,
-          background: 'rgba(35,205,202,0.1)', border: '1px solid rgba(35,205,202,0.3)', color: '#23CDCB',
+          padding: '0.5rem 1.125rem', borderRadius: 0, cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 700,
+          background: 'rgba(197,160,89,0.1)', border: '1px solid rgba(197,160,89,0.3)', color: '#c5a059',
           display: 'flex', alignItems: 'center', gap: '0.375rem',
           opacity: saving || !titel.trim() ? 0.6 : 1,
         }}>
@@ -465,7 +465,7 @@ export function Goals() {
   if (loading || !data) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' }}>
-        <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', color: '#23CDCB' }} />
+        <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', color: '#c5a059' }} />
       </div>
     );
   }
@@ -483,7 +483,7 @@ export function Goals() {
           </div>
           <h1 style={{
             fontSize: '2rem', fontWeight: 700, margin: 0,
-            background: 'linear-gradient(135deg, #22c55e 0%, #23CDCB 100%)',
+            background: 'linear-gradient(135deg, #22c55e 0%, #c5a059 100%)',
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
           }}>
             {de ? 'Unternehmensziele' : 'Goals & OKRs'}
@@ -498,9 +498,9 @@ export function Goals() {
           {[
             { label: de ? 'Gesamt'   : 'Total',    value: stats.total,       color: '#94a3b8' },
             { label: de ? 'Aktiv'    : 'Active',   value: stats.active,      color: '#22c55e' },
-            { label: de ? 'Erreicht' : 'Achieved', value: stats.achieved,    color: '#23CDCB' },
+            { label: de ? 'Erreicht' : 'Achieved', value: stats.achieved,    color: '#c5a059' },
           ].map(s => (
-            <GlassCard key={s.label} style={{ padding: '0.875rem 1.25rem', borderRadius: '16px', textAlign: 'center' }} accent={s.color}>
+            <GlassCard key={s.label} style={{ padding: '0.875rem 1.25rem', borderRadius: 0, textAlign: 'center' }} accent={s.color}>
               <div style={{ fontSize: '1.5rem', fontWeight: 800, color: s.color }}>{s.value}</div>
               <div style={{ fontSize: '0.6875rem', color: '#475569', fontWeight: 500 }}>{s.label}</div>
             </GlassCard>
@@ -508,7 +508,7 @@ export function Goals() {
 
           {/* Average progress card */}
           {stats.active > 0 && (
-            <GlassCard style={{ padding: '0.875rem 1.25rem', borderRadius: '16px', textAlign: 'center', minWidth: 100 }} accent="#22c55e">
+            <GlassCard style={{ padding: '0.875rem 1.25rem', borderRadius: 0, textAlign: 'center', minWidth: 100 }} accent="#22c55e">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', marginBottom: '0.25rem' }}>
                 <TrendingUp size={12} style={{ color: progressColor(stats.avgProgress) }} />
                 <span style={{ fontSize: '1.5rem', fontWeight: 800, color: progressColor(stats.avgProgress) }}>
@@ -532,16 +532,16 @@ export function Goals() {
             <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569', flexShrink: 0 }}>
               {de ? 'Gesamtfortschritt' : 'Overall Progress'}
             </div>
-            <div style={{ flex: 1, height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+            <div style={{ flex: 1, height: 8, borderRadius: 0, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
               <div style={{
-                height: '100%', borderRadius: 4,
+                height: '100%', borderRadius: 0,
                 width: `${stats.avgProgress}%`,
-                background: `linear-gradient(90deg, #22c55e, #23CDCB)`,
+                background: `linear-gradient(90deg, #22c55e, #c5a059)`,
                 transition: 'width 0.8s ease',
-                boxShadow: '0 0 10px rgba(35,205,202,0.4)',
+                boxShadow: '0 0 10px rgba(197,160,89,0.4)',
               }} />
             </div>
-            <div style={{ fontSize: '0.875rem', fontWeight: 800, color: '#23CDCB', flexShrink: 0 }}>
+            <div style={{ fontSize: '0.875rem', fontWeight: 800, color: '#c5a059', flexShrink: 0 }}>
               {stats.avgProgress}%
             </div>
           </div>

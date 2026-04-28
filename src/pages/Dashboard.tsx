@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-  Users, ListTodo, Wallet, Gauge, ArrowRight, ShieldCheck,
+  Users, ListTodo, ArrowRight, ShieldCheck,
   Loader2, Plus, MessageSquare, Zap, ZapOff, CheckCircle2,
   AlertCircle, Clock, Radio, Activity, Building2,
   Target, FolderOpen, Cpu, TrendingUp, TrendingDown, Minus,
@@ -18,6 +18,7 @@ import { StandupPanel } from '../components/StandupPanel';
 import { SetupWizard } from '../components/SetupWizard';
 import { authFetch } from '../utils/api';
 import { translateTrace } from '../utils/translateTrace';
+import { translateActivity } from '../utils/activityTranslator';
 import { BentoGrid, type BentoItem } from '../components/BentoGrid';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -38,7 +39,7 @@ function reltime(iso: string, lang: string) {
 }
 
 const STATUS_CFG: Record<string, { color: string; bg: string; label: { de: string; en: string } }> = {
-  running:    { color: '#23CDCB', bg: 'rgba(35,205,202,0.12)',  label: { de: 'Arbeitet', en: 'Working' } },
+  running:    { color: '#c5a059', bg: 'rgba(197,160,89,0.12)',  label: { de: 'Arbeitet', en: 'Working' } },
   active:     { color: '#22c55e', bg: 'rgba(34,197,94,0.12)',   label: { de: 'Aktiv',    en: 'Active'  } },
   idle:       { color: '#94a3b8', bg: 'rgba(148,163,184,0.10)', label: { de: 'Bereit',   en: 'Idle'    } },
   paused:     { color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  label: { de: 'Pausiert', en: 'Paused'  } },
@@ -46,13 +47,13 @@ const STATUS_CFG: Record<string, { color: string; bg: string; label: { de: strin
   terminated: { color: '#6b7280', bg: 'rgba(107,114,128,0.10)', label: { de: 'Beendet',  en: 'Off'     } },
 };
 
-const TRACE_CFG: Record<string, { color: string; bg: string }> = {
-  thinking: { color: '#a855f7', bg: 'rgba(168,85,247,0.08)' },
-  action:   { color: '#23CDCB', bg: 'rgba(35,205,202,0.08)' },
-  result:   { color: '#22c55e', bg: 'rgba(34,197,94,0.08)'  },
-  error:    { color: '#ef4444', bg: 'rgba(239,68,68,0.08)'  },
-  warning:  { color: '#f59e0b', bg: 'rgba(245,158,11,0.08)' },
-  info:     { color: '#94a3b8', bg: 'rgba(148,163,184,0.06)'},
+const TRACE_CFG: Record<string, { color: string; bg: string; label: string }> = {
+  thinking: { color: '#9b87c8', bg: 'rgba(155,135,200,0.08)', label: '💭 Think' },
+  action:   { color: '#c5a059', bg: 'rgba(197,160,89,0.08)',  label: '⚡ Act'   },
+  result:   { color: '#22c55e', bg: 'rgba(34,197,94,0.08)',   label: '✓ Result' },
+  error:    { color: '#ef4444', bg: 'rgba(239,68,68,0.08)',   label: '✗ Error'  },
+  warning:  { color: '#f59e0b', bg: 'rgba(245,158,11,0.08)',  label: '⚠ Warn'   },
+  info:     { color: '#94a3b8', bg: 'rgba(148,163,184,0.06)', label: 'ℹ Info'   },
 };
 
 // ── Daily Briefing Widget ─────────────────────────────────────────────────────
@@ -91,6 +92,7 @@ function DailyBriefingWidget({ unternehmenId, lang }: { unternehmenId: string; l
       const token = localStorage.getItem('opencognit_token');
       const resp = await fetch(`/api/unternehmen/${unternehmenId}/briefing`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ language: lang }),
       });
@@ -107,19 +109,19 @@ function DailyBriefingWidget({ unternehmenId, lang }: { unternehmenId: string; l
   return (
     <div style={{
       padding: '1.125rem 1.5rem',
-      background: 'rgba(35,205,202,0.03)',
-      backdropFilter: 'blur(20px)',
-      borderRadius: '16px',
-      border: '1px solid rgba(35,205,202,0.1)',
+      background: 'rgba(197,160,89,0.03)',
+      // backdropFilter removed
+      borderRadius: 0,
+      border: '1px solid rgba(197,160,89,0.1)',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: briefing ? '0.75rem' : 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <div style={{
-            width: 28, height: 28, borderRadius: '8px',
-            background: 'rgba(35,205,202,0.12)', border: '1px solid rgba(35,205,202,0.2)',
+            width: 28, height: 28, borderRadius: 0,
+            background: 'rgba(197,160,89,0.12)', border: '1px solid rgba(197,160,89,0.2)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
-            <Sparkles size={14} style={{ color: '#23CDCB' }} />
+            <Sparkles size={14} style={{ color: '#c5a059' }} />
           </div>
           <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#d4d4d8' }}>
             {de ? 'CEO Tagesbriefing' : 'CEO Daily Briefing'}
@@ -128,8 +130,8 @@ function DailyBriefingWidget({ unternehmenId, lang }: { unternehmenId: string; l
             <span style={{
               padding: '0.1rem 0.5rem', borderRadius: '9999px', fontSize: '0.5625rem',
               fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
-              background: 'rgba(35,205,202,0.1)', color: '#23CDCB',
-              border: '1px solid rgba(35,205,202,0.2)',
+              background: 'rgba(197,160,89,0.1)', color: '#c5a059',
+              border: '1px solid rgba(197,160,89,0.2)',
             }}>AI</span>
           )}
         </div>
@@ -138,9 +140,9 @@ function DailyBriefingWidget({ unternehmenId, lang }: { unternehmenId: string; l
           disabled={loading}
           style={{
             display: 'flex', alignItems: 'center', gap: '0.375rem',
-            padding: '0.375rem 0.875rem', borderRadius: '10px', cursor: loading ? 'wait' : 'pointer',
-            background: 'rgba(35,205,202,0.08)', border: '1px solid rgba(35,205,202,0.2)',
-            color: '#23CDCB', fontSize: '0.75rem', fontWeight: 600,
+            padding: '0.375rem 0.875rem', borderRadius: 0, cursor: loading ? 'wait' : 'pointer',
+            background: 'rgba(197,160,89,0.08)', border: '1px solid rgba(197,160,89,0.2)',
+            color: '#c5a059', fontSize: '0.75rem', fontWeight: 600,
             opacity: loading ? 0.7 : 1, transition: 'all 0.2s',
           }}
         >
@@ -158,7 +160,7 @@ function DailyBriefingWidget({ unternehmenId, lang }: { unternehmenId: string; l
         }}>
           {displayed}
           {displayed.length < (briefing?.length ?? 0) && (
-            <span style={{ display: 'inline-block', width: 2, height: '1em', background: '#23CDCB', animation: 'blink 1s step-end infinite', verticalAlign: 'text-bottom', marginLeft: 2 }} />
+            <span style={{ display: 'inline-block', width: 2, height: '1em', background: '#c5a059', animation: 'blink 1s step-end infinite', verticalAlign: 'text-bottom', marginLeft: 2 }} />
           )}
         </p>
       )}
@@ -223,14 +225,14 @@ function VelocityChart({ completedPerDay, lang }: { completedPerDay: number[]; l
               +{today} {de ? 'heute' : 'today'}
             </span>
           )}
-          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#23CDCB' }}>{total}</span>
+          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#c5a059' }}>{total}</span>
         </div>
       </div>
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', overflow: 'visible' }}>
         <defs>
           <linearGradient id="velocity-fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#23CDCB" stopOpacity="0.3" />
-            <stop offset="100%" stopColor="#23CDCB" stopOpacity="0.02" />
+            <stop offset="0%" stopColor="#c5a059" stopOpacity="0.3" />
+            <stop offset="100%" stopColor="#c5a059" stopOpacity="0.02" />
           </linearGradient>
         </defs>
         {/* Horizontal grid lines */}
@@ -244,14 +246,14 @@ function VelocityChart({ completedPerDay, lang }: { completedPerDay: number[]; l
         {/* Area */}
         <path d={areaD} fill="url(#velocity-fill)" />
         {/* Line */}
-        <path d={pathD} fill="none" stroke="#23CDCB" strokeWidth={1.5} strokeLinejoin="round" />
+        <path d={pathD} fill="none" stroke="#c5a059" strokeWidth={1.5} strokeLinejoin="round" />
         {/* Today dot */}
         {points.length > 0 && (
           <circle
             cx={points[points.length - 1].x}
             cy={points[points.length - 1].y}
             r={3}
-            fill="#23CDCB"
+            fill="#c5a059"
           />
         )}
         {/* Day labels: show Mon and first of month only */}
@@ -271,7 +273,7 @@ function VelocityChart({ completedPerDay, lang }: { completedPerDay: number[]; l
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function Card({ children, style = {}, accent = '#23CDCB', onClick }: {
+function Card({ children, style = {}, accent = '#c5a059', onClick }: {
   children: React.ReactNode;
   style?: React.CSSProperties;
   accent?: string;
@@ -287,8 +289,8 @@ function Card({ children, style = {}, accent = '#23CDCB', onClick }: {
         position: 'relative',
         overflow: 'hidden',
         background: hovered ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.04)',
-        backdropFilter: 'blur(24px) saturate(160%)',
-        borderRadius: '20px',
+        // backdropFilter removed
+        borderRadius: 0,
         border: `1px solid ${hovered ? `${accent}30` : 'rgba(255,255,255,0.09)'}`,
         transform: hovered ? 'translateY(-2px)' : 'none',
         boxShadow: hovered
@@ -308,7 +310,7 @@ function Card({ children, style = {}, accent = '#23CDCB', onClick }: {
       }} />
       {/* Gradient glow */}
       <div style={{
-        position: 'absolute', inset: 0, borderRadius: '20px', pointerEvents: 'none',
+        position: 'absolute', inset: 0, borderRadius: 0, pointerEvents: 'none',
         background: `linear-gradient(135deg, ${accent}12, transparent 60%, ${accent}08)`,
         opacity: hovered ? 1 : 0, transition: 'opacity 0.3s',
       }} />
@@ -326,11 +328,11 @@ function SectionHeader({ title, to, linkLabel }: { title: string; to: string; li
       <Link to={to} style={{
         display: 'flex', alignItems: 'center', gap: '0.375rem',
         fontSize: '0.8125rem', color: '#64748b', textDecoration: 'none',
-        padding: '0.375rem 0.75rem', borderRadius: '8px',
+        padding: '0.375rem 0.75rem', borderRadius: 0,
         border: '1px solid rgba(255,255,255,0.07)',
         transition: 'color 0.15s, border-color 0.15s',
       }}
-        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#23CDCB'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(35,205,202,0.3)'; }}
+        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#c5a059'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(197,160,89,0.3)'; }}
         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#64748b'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.07)'; }}
       >
         {linkLabel} <ArrowRight size={12} />
@@ -359,7 +361,7 @@ function KpiCard({
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           {trend && <TrendIcon size={13} style={{ color: trendColor }} />}
           <div style={{
-            width: 36, height: 36, borderRadius: '10px',
+            width: 36, height: 36, borderRadius: 0,
             background: `${accent}18`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
@@ -370,9 +372,9 @@ function KpiCard({
       <div style={{ fontSize: '2.25rem', fontWeight: 800, color: '#f8fafc', lineHeight: 1 }}>{value}</div>
       {sub && <div style={{ fontSize: '0.75rem', color: '#475569', marginTop: '0.375rem' }}>{sub}</div>}
       {bar && (
-        <div style={{ marginTop: '0.875rem', height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+        <div style={{ marginTop: '0.875rem', height: 4, borderRadius: 0, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
           <div style={{
-            height: '100%', borderRadius: 2, transition: 'width 0.6s ease',
+            height: '100%', borderRadius: 0, transition: 'width 0.6s ease',
             width: `${Math.min(bar.pct, 100)}%`, background: bar.color,
           }} />
         </div>
@@ -398,12 +400,12 @@ function AgentRow({
       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
       style={{
         display: 'flex', alignItems: 'center', gap: '0.875rem',
-        padding: '0.75rem 0.875rem', borderRadius: '12px',
+        padding: '0.75rem 0.875rem', borderRadius: 0,
         cursor: 'pointer', transition: 'background 0.15s',
       }}
     >
       <div style={{
-        width: 38, height: 38, borderRadius: '10px', flexShrink: 0,
+        width: 38, height: 38, borderRadius: 0, flexShrink: 0,
         background: expert.avatarFarbe + '20',
         border: `1px solid ${expert.avatarFarbe}35`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -421,7 +423,7 @@ function AgentRow({
       </div>
       <div style={{
         display: 'flex', alignItems: 'center', gap: 5,
-        padding: '0.25rem 0.625rem', borderRadius: '999px',
+        padding: '0.25rem 0.625rem', borderRadius: 0,
         background: cfg.bg, flexShrink: 0,
       }}>
         {expert.status === 'running'
@@ -439,12 +441,12 @@ function AgentRow({
       )}
       <button
         onClick={ev => { ev.stopPropagation(); onChat(expert); }}
-        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(35,205,202,0.2)')}
-        onMouseLeave={e => (e.currentTarget.style.background = 'rgba(35,205,202,0.07)')}
+        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(197,160,89,0.2)')}
+        onMouseLeave={e => (e.currentTarget.style.background = 'rgba(197,160,89,0.07)')}
         style={{
-          width: 28, height: 28, borderRadius: '8px', flexShrink: 0,
-          background: 'rgba(35,205,202,0.07)', border: 'none',
-          color: '#23CDCB', cursor: 'pointer',
+          width: 28, height: 28, borderRadius: 0, flexShrink: 0,
+          background: 'rgba(197,160,89,0.07)', border: 'none',
+          color: '#c5a059', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           transition: 'background 0.15s',
         }}
@@ -462,12 +464,14 @@ function ActivityItem({ item, lang }: { item: any; lang: string }) {
     item.entitaetTyp === 'aufgabe'     ? '#3b82f6' :
     item.entitaetTyp === 'kosten'      ? '#22c55e' :
     item.entitaetTyp === 'genehmigung' ? '#f59e0b' :
-    item.entitaetTyp === 'experte'     ? '#23CDCB' : '#475569';
+    item.entitaetTyp === 'experte'     ? '#c5a059' : '#475569';
+
+  const actionText = translateActivity(item.aktion, lang);
 
   return (
     <div style={{ display: 'flex', gap: '0.875rem', alignItems: 'flex-start' }}>
       <div style={{
-        width: 28, height: 28, borderRadius: '8px', flexShrink: 0, marginTop: 1,
+        width: 28, height: 28, borderRadius: 0, flexShrink: 0, marginTop: 1,
         background: dotColor + '15', display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         <div style={{ width: 7, height: 7, borderRadius: '50%', background: dotColor }} />
@@ -475,7 +479,7 @@ function ActivityItem({ item, lang }: { item: any; lang: string }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ fontSize: '0.8125rem', color: '#cbd5e1', lineHeight: 1.5, margin: 0 }}>
           <strong style={{ color: '#f1f5f9', fontWeight: 600 }}>{item.akteurName}</strong>
-          {' '}{item.aktion}
+          {' '}{actionText}
         </p>
         <p style={{ fontSize: '0.6875rem', color: '#475569', marginTop: '0.1875rem' }}>
           {reltime(item.erstelltAm, lang)}
@@ -496,9 +500,9 @@ function ProjectsWidget({ projects, lang }: { projects: any[]; lang: string }) {
         {lang === 'de' ? 'Noch keine Projekte' : 'No projects yet'}
       </p>
       <button onClick={() => navigate('/projects')} style={{
-        marginTop: '0.75rem', padding: '0.375rem 0.875rem', borderRadius: '8px',
-        background: 'rgba(35,205,202,0.08)', border: '1px solid rgba(35,205,202,0.2)',
-        color: '#23CDCB', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
+        marginTop: '0.75rem', padding: '0.375rem 0.875rem', borderRadius: 0,
+        background: 'rgba(197,160,89,0.08)', border: '1px solid rgba(197,160,89,0.2)',
+        color: '#c5a059', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
       }}>
         {lang === 'de' ? 'Projekt anlegen' : 'Create project'}
       </button>
@@ -509,29 +513,29 @@ function ProjectsWidget({ projects, lang }: { projects: any[]; lang: string }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
       {projects.map((p: any) => (
         <div key={p.id} onClick={() => navigate('/projects')} style={{
-          padding: '0.75rem 0.875rem', borderRadius: '12px',
+          padding: '0.75rem 0.875rem', borderRadius: 0,
           background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)',
           cursor: 'pointer', transition: 'all 0.15s',
         }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${p.farbe || '#23CDCB'}40`; }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${p.farbe || '#c5a059'}40`; }}
           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.05)'; }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.farbe || '#23CDCB', flexShrink: 0 }} />
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.farbe || '#c5a059', flexShrink: 0 }} />
               <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>
                 {p.name}
               </span>
             </div>
-            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: p.fortschritt >= 80 ? '#22c55e' : p.fortschritt >= 40 ? '#23CDCB' : '#94a3b8' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: p.fortschritt >= 80 ? '#22c55e' : p.fortschritt >= 40 ? '#c5a059' : '#94a3b8' }}>
               {p.fortschritt}%
             </span>
           </div>
-          <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+          <div style={{ height: 4, borderRadius: 0, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
             <div style={{
-              height: '100%', borderRadius: 2, transition: 'width 0.6s ease',
+              height: '100%', borderRadius: 0, transition: 'width 0.6s ease',
               width: `${p.fortschritt}%`,
-              background: p.fortschritt >= 80 ? '#22c55e' : p.fortschritt >= 40 ? p.farbe || '#23CDCB' : '#475569',
+              background: p.fortschritt >= 80 ? '#22c55e' : p.fortschritt >= 40 ? p.farbe || '#c5a059' : '#475569',
             }} />
           </div>
           {p.deadline && (
@@ -557,7 +561,7 @@ function GoalsWidget({ goals, lang }: { goals: any[]; lang: string }) {
         {lang === 'de' ? 'Noch keine Ziele definiert' : 'No goals defined yet'}
       </p>
       <button onClick={() => navigate('/goals')} style={{
-        marginTop: '0.75rem', padding: '0.375rem 0.875rem', borderRadius: '8px',
+        marginTop: '0.75rem', padding: '0.375rem 0.875rem', borderRadius: 0,
         background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)',
         color: '#22c55e', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
       }}>
@@ -569,12 +573,12 @@ function GoalsWidget({ goals, lang }: { goals: any[]; lang: string }) {
   const statusColor: Record<string, string> = {
     active:   '#22c55e',
     planned:  '#94a3b8',
-    achieved: '#23CDCB',
+    achieved: '#c5a059',
     cancelled:'#475569',
   };
 
   function progressColor(pct: number): string {
-    if (pct >= 100) return '#23CDCB';
+    if (pct >= 100) return '#c5a059';
     if (pct >= 70)  return '#22c55e';
     if (pct >= 40)  return '#3b82f6';
     return '#94a3b8';
@@ -587,7 +591,7 @@ function GoalsWidget({ goals, lang }: { goals: any[]; lang: string }) {
         const pColor = progressColor(pct);
         return (
           <div key={g.id} onClick={() => navigate('/goals')} style={{
-            padding: '0.625rem 0.875rem', borderRadius: '10px',
+            padding: '0.625rem 0.875rem', borderRadius: 0,
             background: 'rgba(255,255,255,0.02)', border: `1px solid ${g.status === 'active' ? 'rgba(34,197,94,0.1)' : 'rgba(255,255,255,0.05)'}`,
             cursor: 'pointer', transition: 'border-color 0.15s',
           }}
@@ -606,9 +610,9 @@ function GoalsWidget({ goals, lang }: { goals: any[]; lang: string }) {
               )}
             </div>
             {pct > 0 && (
-              <div style={{ height: 3, borderRadius: 2, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+              <div style={{ height: 3, borderRadius: 0, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
                 <div style={{
-                  height: '100%', borderRadius: 2, background: pColor,
+                  height: '100%', borderRadius: 0, background: pColor,
                   width: `${pct}%`, transition: 'width 0.6s ease',
                 }} />
               </div>
@@ -632,32 +636,37 @@ interface TraceEvent {
 }
 
 const PULSE_CFG: Record<string, { color: string; bg: string; symbol: string }> = {
-  thinking:       { color: '#a855f7', bg: 'rgba(168,85,247,0.07)', symbol: '💭' },
-  action:         { color: '#23CDCB', bg: 'rgba(35,205,202,0.07)', symbol: '⚡' },
+  thinking:       { color: '#9b87c8', bg: 'rgba(155,135,200,0.07)', symbol: '💭' },
+  action:         { color: '#c5a059', bg: 'rgba(197,160,89,0.07)', symbol: '⚡' },
   result:         { color: '#22c55e', bg: 'rgba(34,197,94,0.07)',  symbol: '✓'  },
   error:          { color: '#ef4444', bg: 'rgba(239,68,68,0.07)',  symbol: '✗'  },
   warning:        { color: '#f59e0b', bg: 'rgba(245,158,11,0.07)', symbol: '⚠'  },
-  task_started:   { color: '#23CDCB', bg: 'rgba(35,205,202,0.05)', symbol: '▶'  },
+  task_started:   { color: '#c5a059', bg: 'rgba(197,160,89,0.05)', symbol: '▶'  },
   task_completed: { color: '#22c55e', bg: 'rgba(34,197,94,0.05)',  symbol: '✔'  },
   info:           { color: '#475569', bg: 'rgba(71,85,105,0.06)',  symbol: '·'  },
 };
 
-function SystemPulse({ unternehmenId, initialTrace, lang }: { unternehmenId: string; initialTrace: TraceEvent[]; lang: string }) {
-  const [events, setEvents] = useState<TraceEvent[]>(initialTrace.slice(0, 12));
+function SystemPulse({ unternehmenId, lang }: { unternehmenId: string; lang: string }) {
+  const [events, setEvents] = useState<TraceEvent[]>([]);
+  const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
-  useEffect(() => {
-    setEvents(initialTrace.slice(0, 12));
-  }, [initialTrace]);
-
-  // Subscribe to real-time WS updates
+  // Subscribe to real-time WS updates ONLY — no historical data
   useEffect(() => {
     if (!unternehmenId) return;
+    let destroyed = false;
     const tok = localStorage.getItem('opencognit_token') || '';
-    const wsUrl = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws' + (tok ? `?token=${tok}` : '');
+    const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProto}//${window.location.host}/ws${tok ? `?token=${tok}` : ''}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
+
+    ws.onopen = () => { if (!destroyed) setConnected(true); };
+    ws.onclose = () => { if (!destroyed) setConnected(false); };
+    ws.onerror = () => { if (!destroyed) setConnected(false); };
+
     ws.onmessage = ev => {
+      if (destroyed) return;
       try {
         const msg = JSON.parse(ev.data);
         if (msg.unternehmenId && msg.unternehmenId !== unternehmenId) return;
@@ -694,22 +703,57 @@ function SystemPulse({ unternehmenId, initialTrace, lang }: { unternehmenId: str
         }
       } catch { /* ignore */ }
     };
-    return () => { ws.close(); wsRef.current = null; };
+    return () => {
+      destroyed = true;
+      // Avoid "closed before connection established" warning in StrictMode
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
+        ws.close();
+      }
+      wsRef.current = null;
+    };
   }, [unternehmenId, lang]);
-
-  if (events.length === 0) return null;
 
   return (
     <Card style={{ padding: '1.25rem 1.5rem' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-        <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#23CDCB', boxShadow: '0 0 8px #23CDCB80', animation: 'pulse 2s ease-in-out infinite' }} />
-        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#23CDCB', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+        <div style={{
+          width: 7, height: 7, borderRadius: '50%',
+          background: connected ? '#c5a059' : '#475569',
+          boxShadow: connected ? '0 0 8px #c5a05980' : 'none',
+          animation: connected ? 'pulse 2s ease-in-out infinite' : 'none',
+        }} />
+        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: connected ? '#c5a059' : '#475569', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
           {lang === 'de' ? 'Live-Aktivität' : 'Live Activity'}
         </span>
+        {events.length > 0 && (
+          <span style={{
+            padding: '0.1rem 0.4rem', borderRadius: 0,
+            background: 'rgba(197,160,89,0.1)', border: '1px solid rgba(197,160,89,0.2)',
+            fontSize: '0.625rem', fontWeight: 700, color: '#c5a059',
+          }}>
+            {events.length}
+          </span>
+        )}
         <span style={{ fontSize: '0.6875rem', color: '#334155', marginLeft: 'auto' }}>
-          {lang === 'de' ? 'Echtzeit-Log aller Agenten' : 'Real-time agent log'}
+          {connected
+            ? (lang === 'de' ? 'Verbunden — warte auf Events' : 'Connected — waiting for events')
+            : (lang === 'de' ? 'Verbinde…' : 'Connecting…')
+          }
         </span>
       </div>
+
+      {events.length === 0 ? (
+        <div style={{
+          textAlign: 'center', padding: '2rem 1rem',
+          color: '#334155', fontSize: '0.8125rem',
+        }}>
+          <Radio size={24} style={{ opacity: 0.2, marginBottom: '0.5rem', display: 'block', margin: '0 auto 0.5rem' }} />
+          {lang === 'de'
+            ? 'Noch keine Live-Events. Aktivitäten erscheinen hier, sobald Agenten arbeiten.'
+            : 'No live events yet. Activity will appear here once agents start working.'
+          }
+        </div>
+      ) : (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
         {events.map(ev => {
           const cfg = PULSE_CFG[ev.typ] ?? PULSE_CFG.info;
@@ -717,7 +761,7 @@ function SystemPulse({ unternehmenId, initialTrace, lang }: { unternehmenId: str
           return (
             <div key={ev.id} style={{
               display: 'flex', alignItems: 'center', gap: '0.625rem',
-              padding: '0.4rem 0.75rem', borderRadius: '8px',
+              padding: '0.4rem 0.75rem', borderRadius: 0,
               background: cfg.bg,
               border: `1px solid ${cfg.color}${isTask ? '30' : '15'}`,
             }}>
@@ -739,6 +783,7 @@ function SystemPulse({ unternehmenId, initialTrace, lang }: { unternehmenId: str
           );
         })}
       </div>
+      )}
     </Card>
   );
 }
@@ -806,7 +851,7 @@ function computeHealthScore(
     factors.push({
       label: de ? `${experten.running} Agenten laufen gerade` : `${experten.running} agents running now`,
       delta: 5,
-      color: '#23CDCB',
+      color: '#c5a059',
     });
   }
 
@@ -857,7 +902,7 @@ function computeHealthScore(
     : score >= 50
     ? (de ? 'Mittel' : 'Fair')
     : (de ? 'Kritisch' : 'Critical');
-  const gradeColor = score >= 90 ? '#22c55e' : score >= 70 ? '#23CDCB' : score >= 50 ? '#f59e0b' : '#ef4444';
+  const gradeColor = score >= 90 ? '#22c55e' : score >= 70 ? '#c5a059' : score >= 50 ? '#f59e0b' : '#ef4444';
 
   return { score, grade, gradeColor, factors };
 }
@@ -926,7 +971,7 @@ function HealthScoreCard({ experten, aufgaben, kosten, pendingApprovals, zyklen,
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
             {factors.slice(0, 3).map((f, i) => (
               <span key={i} style={{
-                fontSize: '0.6875rem', padding: '0.15rem 0.5rem', borderRadius: '999px',
+                fontSize: '0.6875rem', padding: '0.15rem 0.5rem', borderRadius: 0,
                 background: `${f.color}18`, border: `1px solid ${f.color}30`, color: f.color,
               }}>
                 {f.delta < 0 ? `${f.delta}` : '+'} {f.label}
@@ -934,7 +979,7 @@ function HealthScoreCard({ experten, aufgaben, kosten, pendingApprovals, zyklen,
             ))}
             {factors.length > 3 && (
               <button onClick={() => setExpanded(e => !e)} style={{
-                fontSize: '0.6875rem', padding: '0.15rem 0.5rem', borderRadius: '999px',
+                fontSize: '0.6875rem', padding: '0.15rem 0.5rem', borderRadius: 0,
                 background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
                 color: '#94a3b8', cursor: 'pointer',
               }}>
@@ -946,7 +991,7 @@ function HealthScoreCard({ experten, aufgaben, kosten, pendingApprovals, zyklen,
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem', marginTop: '0.375rem' }}>
               {factors.slice(3).map((f, i) => (
                 <span key={i} style={{
-                  fontSize: '0.6875rem', padding: '0.15rem 0.5rem', borderRadius: '999px',
+                  fontSize: '0.6875rem', padding: '0.15rem 0.5rem', borderRadius: 0,
                   background: `${f.color}18`, border: `1px solid ${f.color}30`, color: f.color,
                 }}>
                   {f.delta < 0 ? `${f.delta}` : ''} {f.label}
@@ -994,7 +1039,7 @@ function CompanyBrief({
       ? `${pendingApprovals} Genehmigung${pendingApprovals > 1 ? 'en' : ''} ausstehend`
       : `${pendingApprovals} approval${pendingApprovals > 1 ? 's' : ''} pending` };
   } else if (experten.running > 0) {
-    insight = { color: '#23CDCB', text: de
+    insight = { color: '#c5a059', text: de
       ? `${experten.running} Agent${experten.running > 1 ? 'en' : ''} arbeitet gerade`
       : `${experten.running} agent${experten.running > 1 ? 's' : ''} working right now` };
   } else if (aufgaben.erledigt > 0) {
@@ -1004,7 +1049,7 @@ function CompanyBrief({
   }
 
   const metrics: { label: string; value: string | number; color: string }[] = [
-    { label: de ? 'Heute aktiv' : 'Events today',    value: todayEvents.length, color: '#23CDCB' },
+    { label: de ? 'Heute aktiv' : 'Events today',    value: todayEvents.length, color: '#c5a059' },
     { label: de ? 'Laufende Agenten' : 'Running',     value: experten.running,   color: '#22c55e' },
     { label: de ? 'Offene Aufgaben' : 'Open tasks',  value: aufgaben.offen,     color: '#94a3b8' },
     { label: de ? 'Budget genutzt' : 'Budget used',  value: `${kosten.prozent}%`, color: kosten.prozent > 80 ? '#ef4444' : '#22c55e' },
@@ -1013,9 +1058,9 @@ function CompanyBrief({
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap',
-      padding: '0.875rem 1.5rem', borderRadius: '16px',
+      padding: '0.875rem 1.5rem', borderRadius: 0,
       background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)',
-      backdropFilter: 'blur(20px)',
+      // backdropFilter removed
     }}>
       {/* Date label */}
       <div style={{ flexShrink: 0 }}>
@@ -1043,7 +1088,7 @@ function CompanyBrief({
           <div style={{ width: 1, height: 32, background: 'rgba(255,255,255,0.07)', flexShrink: 0, marginLeft: 'auto' }} />
           <div style={{
             display: 'flex', alignItems: 'center', gap: '0.375rem',
-            padding: '0.3rem 0.75rem', borderRadius: '999px',
+            padding: '0.3rem 0.75rem', borderRadius: 0,
             background: insight.color + '12', border: `1px solid ${insight.color}30`,
             fontSize: '0.75rem', fontWeight: 600, color: insight.color, flexShrink: 0,
           }}>
@@ -1065,7 +1110,9 @@ interface LiveAgent {
   budgetPct: number;
   currentTask: { id: string; titel: string; status: string } | null;
   lastTrace: { typ: string; titel: string } | null;
+  traceEvents: { typ: string; titel: string }[];
   isOrchestrator?: boolean;
+  principles?: string[];
 }
 
 function AgentMissionCard({
@@ -1079,25 +1126,31 @@ function AgentMissionCard({
   pausing: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
+  const [showTrace, setShowTrace] = useState(false);
   const isRunning = agent.status === 'running';
   const isError   = agent.status === 'error';
   const isCEO     = agent.isOrchestrator === true;
   const isPaused = agent.status === 'paused';
-  const statusColor = isRunning ? '#23CDCB' : isError ? '#ef4444' : isPaused ? '#eab308' : agent.status === 'active' || agent.status === 'idle' ? '#22c55e' : '#475569';
+  const isReady = agent.status === 'active' || agent.status === 'idle';
+  const statusColor = isRunning ? '#c5a059' : isError ? '#ef4444' : isPaused ? '#eab308' : isReady ? '#22c55e' : '#475569';
   const statusLabel = isRunning ? (lang === 'de' ? 'Arbeitet' : 'Working') : isError ? (lang === 'de' ? 'Fehler' : 'Error') : isPaused ? (lang === 'de' ? 'Pausiert' : 'Paused') : (lang === 'de' ? 'Bereit' : 'Ready');
+  const traceEvents = agent.traceEvents || [];
   const traceCfg = agent.lastTrace ? (TRACE_CFG[agent.lastTrace.typ] || TRACE_CFG.info) : null;
 
   const borderColor = isCEO
-    ? (hovered ? 'rgba(255,215,0,0.6)' : 'rgba(255,215,0,0.3)')
-    : isRunning ? 'rgba(35,205,202,0.35)'
+    ? (hovered ? 'rgba(255,215,0,0.5)' : 'rgba(255,215,0,0.25)')
+    : isRunning ? 'rgba(197,160,89,0.35)'
     : isError ? 'rgba(239,68,68,0.25)'
-    : hovered ? `${agent.avatarFarbe}35` : 'rgba(255,255,255,0.09)';
+    : hovered ? `${agent.avatarFarbe}30` : 'rgba(255,255,255,0.07)';
 
   const shadowStyle = isCEO
-    ? (hovered ? 'inset 0 1px 0 rgba(255,255,255,0.15), 0 10px 40px rgba(255,215,0,0.15)' : 'inset 0 1px 0 rgba(255,255,255,0.08), 0 0 20px rgba(255,215,0,0.05)')
-    : isRunning ? 'inset 0 1px 0 rgba(255,255,255,0.15), 0 0 40px rgba(35,205,202,0.1), 0 8px 32px rgba(0,0,0,0.3)'
-    : hovered ? 'inset 0 1px 0 rgba(255,255,255,0.18), 0 12px 40px rgba(0,0,0,0.35)'
-    : 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)';
+    ? (hovered ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 8px 32px rgba(255,215,0,0.12)' : 'inset 0 1px 0 rgba(255,255,255,0.06), 0 0 16px rgba(255,215,0,0.04)')
+    : isRunning ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 0 32px rgba(197,160,89,0.08), 0 6px 24px rgba(0,0,0,0.25)'
+    : hovered ? 'inset 0 1px 0 rgba(255,255,255,0.15), 0 8px 32px rgba(0,0,0,0.3)'
+    : 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.15)';
+
+  const hasTask = !!agent.currentTask;
+  const hasPrinciples = agent.principles && agent.principles.length > 0;
 
   return (
     <div
@@ -1105,206 +1158,308 @@ function AgentMissionCard({
       onMouseLeave={() => setHovered(false)}
       style={{
         position: 'relative', overflow: 'hidden',
-        borderRadius: '24px', padding: '1.5rem',
-        background: hovered ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.04)',
+        borderRadius: 0, padding: '1.25rem',
+        background: hovered ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.035)',
         border: `1px solid ${borderColor}`,
-        backdropFilter: 'blur(24px) saturate(160%)',
+        // backdropFilter removed
         boxShadow: shadowStyle,
-        transform: hovered ? 'translateY(-4px)' : 'none',
-        transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)',
+        transform: hovered ? 'translateY(-3px)' : 'none',
+        transition: 'all 0.25s cubic-bezier(0.4,0,0.2,1)',
         cursor: 'pointer',
       }}
     >
       {/* CEO gold left bar */}
       {isCEO && (
         <div style={{
-          position: 'absolute', top: 0, left: 0, width: 4, height: '100%',
+          position: 'absolute', top: 0, left: 0, width: 3, height: '100%',
           background: 'linear-gradient(to bottom, #FFD700, #FFA500)',
-          borderRadius: '24px 0 0 24px',
         }} />
-      )}
-
-      {/* CEO crown badge */}
-      {isCEO && (
-        <div style={{
-          position: 'absolute', top: '0.875rem', right: '3.5rem',
-          background: 'rgba(255,215,0,0.1)', border: '1px solid rgba(255,215,0,0.25)',
-          padding: '3px 8px', borderRadius: '6px',
-          display: 'flex', alignItems: 'center', gap: 5,
-          boxShadow: '0 4px 12px rgba(255,215,0,0.1)',
-        }}>
-          <Crown size={11} color="#FFD700" />
-          <span style={{ fontSize: '9px', color: '#FFD700', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>CEO</span>
-        </div>
       )}
 
       {/* Running pulse ring */}
       {isRunning && (
         <div style={{
-          position: 'absolute', inset: -1, borderRadius: '25px',
-          border: '1px solid rgba(35,205,202,0.4)',
+          position: 'absolute', inset: -1, borderRadius: 0,
+          border: '1px solid rgba(197,160,89,0.35)',
           animation: 'aura 3s ease-in-out infinite', pointerEvents: 'none',
         }} />
       )}
 
-      {/* Dot pattern */}
-      <div style={{
-        position: 'absolute', inset: 0, pointerEvents: 'none',
-        opacity: hovered || isRunning ? 1 : 0, transition: 'opacity 0.3s',
-        backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.03) 1px, transparent 1px)',
-        backgroundSize: '16px 16px',
-      }} />
-
-      {/* Header */}
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+      {/* ── HEADER ── */}
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: '0.875rem', marginBottom: '0.875rem' }}>
+        {/* Avatar */}
         <div style={{
-          width: 48, height: 48, borderRadius: '12px', flexShrink: 0,
-          background: isCEO ? 'rgba(255,215,0,0.1)' : `${agent.avatarFarbe}22`,
-          border: `1px solid ${isCEO ? 'rgba(255,215,0,0.3)' : `${agent.avatarFarbe}40`}`,
+          width: 44, height: 44, borderRadius: 0, flexShrink: 0,
+          background: isCEO ? 'rgba(255,215,0,0.08)' : `${agent.avatarFarbe}18`,
+          border: `1px solid ${isCEO ? 'rgba(255,215,0,0.25)' : `${agent.avatarFarbe}35`}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '1.125rem', fontWeight: 600,
+          fontSize: '1rem', fontWeight: 700,
           color: isCEO ? '#FFD700' : agent.avatarFarbe,
-          boxShadow: isRunning ? `0 0 16px ${agent.avatarFarbe}30` : isCEO ? '0 0 16px rgba(255,215,0,0.15)' : 'none',
-          transition: 'box-shadow 0.3s',
+          boxShadow: isRunning ? `0 0 12px ${agent.avatarFarbe}25` : isCEO ? '0 0 12px rgba(255,215,0,0.1)' : 'none',
           position: 'relative',
         }}>
           {agent.avatar || agent.name.slice(0, 2).toUpperCase()}
           <div style={{
-            position: 'absolute', bottom: -3, right: -3,
-            width: 11, height: 11, borderRadius: '50%',
+            position: 'absolute', bottom: -2, right: -2,
+            width: 10, height: 10, borderRadius: '50%',
             background: statusColor, border: '2px solid rgba(4,4,10,0.95)',
-            boxShadow: isRunning ? `0 0 8px ${statusColor}` : 'none',
+            boxShadow: isRunning ? `0 0 6px ${statusColor}` : 'none',
             animation: isRunning ? 'pulse 2s ease-in-out infinite' : 'none',
           }} />
         </div>
 
+        {/* Name + Role + Status */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-            <span style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.125rem' }}>
+            <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#f1f5f9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {agent.name}
             </span>
-            {/* Status badge */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '0.3rem', flexShrink: 0,
-              padding: '0.2rem 0.5rem', borderRadius: '999px',
-              background: `${statusColor}18`, border: `1px solid ${statusColor}35`,
-            }}>
-              {isRunning
-                ? <Loader2 size={9} style={{ color: statusColor, animation: 'spin 1s linear infinite' }} />
-                : <div style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor }} />
-              }
-              <span style={{ fontSize: '0.5625rem', fontWeight: 700, color: statusColor, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                {statusLabel}
-              </span>
-            </div>
+            {isCEO && (
+              <Crown size={12} color="#FFD700" style={{ flexShrink: 0, opacity: 0.9 }} />
+            )}
           </div>
-          <div style={{ fontSize: '0.875rem', color: '#71717a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ fontSize: '0.8125rem', color: '#71717a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: '0.375rem' }}>
             {agent.titel || agent.rolle}
           </div>
-        </div>
-
-        {/* Action buttons top-right */}
-        <div style={{ display: 'flex', gap: '0.375rem', flexShrink: 0 }}>
-          <button onClick={(e) => { e.stopPropagation(); onChat(agent.id); }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#23CDCB'; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#71717a'; }}
-            title={lang === 'de' ? 'Chatten' : 'Chat'}
-            style={{ padding: '0.25rem', background: 'none', border: 'none', color: '#71717a', cursor: 'pointer', display: 'flex', alignItems: 'center', transition: 'color 0.2s' }}>
-            <MessageSquare size={14} />
-          </button>
-          <button onClick={(e) => { e.stopPropagation(); onPause(agent.id, agent.status === 'paused'); }} disabled={pausing}
-            onMouseEnter={e => { if (!pausing) (e.currentTarget as HTMLElement).style.color = agent.status === 'paused' ? '#22c55e' : '#eab308'; }}
-            onMouseLeave={e => { if (!pausing) (e.currentTarget as HTMLElement).style.color = '#71717a'; }}
-            title={agent.status === 'paused' ? (lang === 'de' ? 'Fortsetzen' : 'Resume') : (lang === 'de' ? 'Pausieren' : 'Pause')}
-            style={{ padding: '0.25rem', background: 'none', border: 'none', color: agent.status === 'paused' ? '#eab308' : '#71717a', cursor: pausing ? 'default' : 'pointer', display: 'flex', alignItems: 'center', transition: 'color 0.2s' }}>
-            {pausing ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : agent.status === 'paused' ? <Play size={14} /> : <Pause size={14} />}
-          </button>
-          <button onClick={(e) => { e.stopPropagation(); onWakeup(agent.id); }} disabled={waking}
-            onMouseEnter={e => { if (!waking) (e.currentTarget as HTMLElement).style.color = '#22c55e'; }}
-            onMouseLeave={e => { if (!waking) (e.currentTarget as HTMLElement).style.color = '#71717a'; }}
-            title={lang === 'de' ? 'Jetzt ausführen' : 'Run now'}
-            style={{ padding: '0.25rem', background: 'none', border: 'none', color: waking ? '#22c55e' : '#71717a', cursor: waking ? 'default' : 'pointer', display: 'flex', alignItems: 'center', transition: 'color 0.2s' }}>
-            {waking ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Radio size={14} />}
-          </button>
-        </div>
-      </div>
-
-      {/* Info rows */}
-      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: '0.625rem', fontSize: '0.8125rem', marginBottom: '0.875rem' }}>
-        {/* Current task */}
-        <div style={{
-          padding: '0.5rem 0.75rem', borderRadius: '10px',
-          background: isRunning ? 'rgba(35,205,202,0.05)' : 'rgba(255,255,255,0.03)',
-          border: `1px solid ${isRunning ? 'rgba(35,205,202,0.15)' : 'rgba(255,255,255,0.06)'}`,
-          display: 'flex', alignItems: 'center', gap: '0.5rem',
-        }}>
-          {isRunning
-            ? <Loader2 size={11} style={{ color: '#23CDCB', animation: 'spin 1s linear infinite', flexShrink: 0 }} />
-            : <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#334155', flexShrink: 0 }} />
-          }
-          <span style={{ color: isRunning ? '#e2e8f0' : '#52525b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.8125rem' }}>
-            {agent.currentTask ? agent.currentTask.titel : (lang === 'de' ? 'Keine aktive Aufgabe' : 'No active task')}
-          </span>
-        </div>
-
-        {/* Last trace */}
-        {agent.lastTrace && traceCfg && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', paddingLeft: '0.25rem' }}>
-            <div style={{ width: 5, height: 5, borderRadius: '50%', flexShrink: 0, background: traceCfg.color }} />
-            <span style={{ color: '#52525b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.75rem' }}>
-              {agent.lastTrace.titel}
+          {/* Status badge — compact pill */}
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+            padding: '0.15rem 0.5rem', borderRadius: 0,
+            background: `${statusColor}12`, border: `1px solid ${statusColor}28`,
+          }}>
+            {isRunning
+              ? <Loader2 size={8} style={{ color: statusColor, animation: 'spin 1s linear infinite' }} />
+              : <div style={{ width: 5, height: 5, borderRadius: '50%', background: statusColor }} />
+            }
+            <span style={{ fontSize: '0.5625rem', fontWeight: 700, color: statusColor, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              {statusLabel}
             </span>
           </div>
-        )}
+        </div>
 
-        {/* Last cycle */}
-        {agent.letzterZyklus && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ color: '#52525b' }}>{lang === 'de' ? 'Letzter Zyklus' : 'Last cycle'}</span>
-            <span style={{ color: '#d4d4d8' }}>{reltime(agent.letzterZyklus, lang)}</span>
-          </div>
-        )}
+        {/* Action buttons */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flexShrink: 0 }}>
+          <ActionBtn
+            icon={<MessageSquare size={13} />}
+            label={lang === 'de' ? 'Chat' : 'Chat'}
+            color="#c5a059"
+            onClick={(e) => { e.stopPropagation(); onChat(agent.id); }}
+          />
+          <ActionBtn
+            icon={pausing ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : agent.status === 'paused' ? <Play size={13} /> : <Pause size={13} />}
+            label={agent.status === 'paused' ? (lang === 'de' ? 'Start' : 'Start') : (lang === 'de' ? 'Pause' : 'Pause')}
+            color={agent.status === 'paused' ? '#22c55e' : '#eab308'}
+            onClick={(e) => { e.stopPropagation(); onPause(agent.id, agent.status === 'paused'); }}
+            disabled={pausing}
+          />
+          <ActionBtn
+            icon={waking ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Radio size={13} />}
+            label={lang === 'de' ? 'Run' : 'Run'}
+            color="#22c55e"
+            onClick={(e) => { e.stopPropagation(); onWakeup(agent.id); }}
+            disabled={waking}
+          />
+        </div>
+      </div>
 
-        {/* Budget bar */}
-        {agent.budgetPct > 0 && (
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.375rem' }}>
-              <span style={{ color: '#52525b' }}>Budget</span>
-              <span style={{ color: agent.budgetPct > 90 ? '#ef4444' : agent.budgetPct > 70 ? '#eab308' : '#71717a', fontWeight: 600 }}>
-                {agent.budgetPct}%
-              </span>
-            </div>
-            <div style={{ height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden' }}>
-              <div style={{
-                height: '100%', borderRadius: 3, transition: 'width 0.3s',
-                width: `${Math.min(agent.budgetPct, 100)}%`,
-                background: agent.budgetPct > 90 ? '#ef4444' : agent.budgetPct > 70 ? '#eab308' : '#22c55e',
-              }} />
-            </div>
+      {/* ── PRINCIPLES ── compact horizontal chips */}
+      {hasPrinciples && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginBottom: '0.75rem' }}>
+          {agent.principles!.slice(0, 3).map((p, i) => (
+            <span key={i} style={{
+              padding: '0.15rem 0.5rem', borderRadius: 0,
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              fontSize: '0.625rem', color: '#52525b',
+              whiteSpace: 'nowrap',
+            }}>
+              {p.replace(/^[-•*\d]+\.?\s*/, '').slice(0, 40)}{p.length > 40 ? '…' : ''}
+            </span>
+          ))}
+          {agent.principles!.length > 3 && (
+            <span style={{ fontSize: '0.625rem', color: '#3f3f46', padding: '0.15rem 0' }}>
+              +{agent.principles!.length - 3}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* ── TASK ── */}
+      <div style={{
+        padding: '0.5rem 0.625rem', borderRadius: 0,
+        background: isRunning ? 'rgba(197,160,89,0.06)' : 'rgba(255,255,255,0.02)',
+        border: `1px solid ${isRunning ? 'rgba(197,160,89,0.15)' : 'rgba(255,255,255,0.05)'}`,
+        marginBottom: '0.625rem',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: hasTask ? '0.375rem' : 0 }}>
+          {isRunning
+            ? <Loader2 size={10} style={{ color: '#c5a059', animation: 'spin 1s linear infinite', flexShrink: 0 }} />
+            : <div style={{ width: 5, height: 5, borderRadius: '50%', background: hasTask ? '#22c55e' : '#334155', flexShrink: 0 }} />
+          }
+          <span style={{ fontSize: '0.8125rem', color: hasTask ? '#e2e8f0' : '#52525b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: hasTask ? 500 : 400 }}>
+            {hasTask ? agent.currentTask!.titel : (lang === 'de' ? 'Keine aktive Aufgabe' : 'No active task')}
+          </span>
+          {hasTask && agent.currentTask!.status && (
+            <span style={{
+              fontSize: '0.5625rem', fontWeight: 700, color: '#52525b',
+              textTransform: 'uppercase', letterSpacing: '0.04em',
+              padding: '0.1rem 0.35rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)',
+              flexShrink: 0,
+            }}>
+              {agent.currentTask!.status}
+            </span>
+          )}
+        </div>
+        {/* Simulated task progress bar (placeholder — could be wired to real data) */}
+        {hasTask && (
+          <div style={{ height: 3, background: 'rgba(255,255,255,0.08)', borderRadius: 0, overflow: 'hidden', marginTop: '0.25rem' }}>
+            <div style={{
+              height: '100%', borderRadius: 0,
+              width: isRunning ? '60%' : '100%',
+              background: isRunning ? '#c5a059' : '#22c55e',
+              transition: 'width 0.6s ease',
+              animation: isRunning ? 'shimmer 2s ease-in-out infinite' : 'none',
+            }} />
           </div>
         )}
       </div>
 
-      {/* Autonomy row */}
+      {/* ── LIVE TRACE ── */}
+      {traceEvents.length > 0 && (
+        <div style={{ marginBottom: '0.625rem' }}>
+          {/* Latest trace + toggle */}
+          <div
+            onClick={(e) => { e.stopPropagation(); setShowTrace(v => !v); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '0.5rem',
+              cursor: 'pointer', padding: '0.25rem 0.375rem',
+              borderRadius: 0, background: showTrace ? 'rgba(197,160,89,0.06)' : 'transparent',
+              border: `1px solid ${showTrace ? 'rgba(197,160,89,0.15)' : 'transparent'}`,
+              transition: 'all 0.15s',
+            }}
+          >
+            <div style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: isRunning ? '#c5a059' : '#52525b',
+              animation: isRunning ? 'pulse 2s ease-in-out infinite' : 'none',
+              flexShrink: 0,
+            }} />
+            <span style={{
+              fontSize: '0.6875rem', fontWeight: 600, color: isRunning ? '#c5a059' : '#71717a',
+              letterSpacing: '0.03em', textTransform: 'uppercase', flexShrink: 0,
+            }}>
+              {lang === 'de' ? 'Live' : 'Live'}
+            </span>
+            <span style={{ fontSize: '0.75rem', color: '#52525b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+              {agent.lastTrace?.titel}
+            </span>
+            <span style={{ fontSize: '0.6875rem', color: '#3f3f46', flexShrink: 0 }}>
+              {showTrace ? '▲' : '▼'} {traceEvents.length}
+            </span>
+          </div>
+
+          {/* Expanded trace list */}
+          {showTrace && (
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: '0.25rem',
+              marginTop: '0.375rem', padding: '0.5rem 0.625rem',
+              background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.05)',
+              maxHeight: '160px', overflow: 'auto',
+            }}>
+              {traceEvents.map((ev, i) => {
+                const cfg = TRACE_CFG[ev.typ] || TRACE_CFG.info;
+                return (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'center', gap: '0.375rem',
+                    fontSize: '0.6875rem', lineHeight: 1.4,
+                  }}>
+                    <span style={{
+                      width: 5, height: 5, borderRadius: '50%', background: cfg.color, flexShrink: 0,
+                    }} />
+                    <span style={{ color: '#71717a', flexShrink: 0, fontWeight: 600, minWidth: '3.5rem' }}>
+                      {cfg.label}
+                    </span>
+                    <span style={{ color: '#a1a1aa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {ev.titel}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── FOOTER ── compact meta row */}
       <div style={{
-        position: 'relative',
-        display: 'flex', alignItems: 'center', gap: '0.5rem',
-        padding: '0.5rem 0.75rem', borderRadius: '10px',
-        background: agent.zyklusAktiv ? 'rgba(35,205,202,0.06)' : 'rgba(255,255,255,0.02)',
-        border: `1px solid ${agent.zyklusAktiv ? 'rgba(35,205,202,0.2)' : 'rgba(255,255,255,0.06)'}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        paddingTop: '0.625rem',
+        borderTop: '1px solid rgba(255,255,255,0.05)',
+        fontSize: '0.6875rem', color: '#52525b',
       }}>
-        {agent.zyklusAktiv
-          ? <Zap size={13} color="#23CDCB" />
-          : <ZapOff size={13} color="#52525b" />
-        }
-        <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: agent.zyklusAktiv ? '#23CDCB' : '#71717a' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {/* Budget */}
+          {agent.budgetPct > 0 && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              <span style={{
+                color: agent.budgetPct > 90 ? '#ef4444' : agent.budgetPct > 70 ? '#eab308' : '#71717a',
+                fontWeight: 600,
+              }}>{agent.budgetPct}%</span>
+              <span>Budget</span>
+            </span>
+          )}
+          {/* Last cycle */}
+          {agent.letzterZyklus && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              <Clock size={9} />
+              {reltime(agent.letzterZyklus, lang)}
+            </span>
+          )}
+        </div>
+        {/* Auto-cycle indicator */}
+        <span style={{
+          display: 'flex', alignItems: 'center', gap: '0.25rem',
+          color: agent.zyklusAktiv ? '#c5a059' : '#3f3f46',
+        }}>
+          {agent.zyklusAktiv ? <Zap size={10} /> : <ZapOff size={10} />}
           {agent.zyklusAktiv
-            ? (lang === 'de' ? 'Auto-Zyklus aktiv' : 'Auto-cycle active')
-            : (lang === 'de' ? 'Auto-Zyklus inaktiv' : 'Auto-cycle inactive')
+            ? (lang === 'de' ? 'Auto' : 'Auto')
+            : (lang === 'de' ? 'Manuell' : 'Manual')
           }
         </span>
       </div>
     </div>
+  );
+}
+
+// Compact action button helper
+function ActionBtn({ icon, label, color, onClick, disabled }: {
+  icon: React.ReactNode; label: string; color: string;
+  onClick: (e: React.MouseEvent) => void; disabled?: boolean;
+}) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      title={label}
+      style={{
+        display: 'flex', alignItems: 'center', gap: '0.25rem',
+        padding: '0.2rem 0.5rem', borderRadius: 0,
+        background: hovered ? `${color}12` : 'transparent',
+        border: `1px solid ${hovered ? `${color}30` : 'rgba(255,255,255,0.06)'}`,
+        color: hovered ? color : '#52525b',
+        cursor: disabled ? 'default' : 'pointer',
+        fontSize: '0.625rem', fontWeight: 600,
+        transition: 'all 0.15s',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
   );
 }
 
@@ -1319,16 +1474,18 @@ function MissionControl({
   const [pausing, setPausing] = useState<Set<string>>(new Set());
   const wsRef = useRef<WebSocket | null>(null);
 
-  // Sync when parent reloads
-  useEffect(() => { setAgents(initialAgents); }, [initialAgents]);
+  // Sync when parent reloads — ensure traceEvents array exists
+  useEffect(() => {
+    setAgents(initialAgents.map(a => ({ ...a, traceEvents: a.traceEvents || [] })));
+  }, [initialAgents]);
 
   // Live WS updates for agent status changes
   useEffect(() => {
     if (!unternehmenId) return;
     let destroyed = false; // StrictMode guard: prevents errors when React unmounts during WS handshake
     const token = localStorage.getItem('opencognit_token');
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${window.location.hostname}:3201/ws${token ? `?token=${token}` : ''}`);
+    const _proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${_proto}//${window.location.host}/ws${token ? `?token=${token}` : ''}`);
     wsRef.current = ws;
 
     ws.onmessage = ev => {
@@ -1358,11 +1515,16 @@ function MissionControl({
         }
         // Update trace events per agent
         if (msg.type === 'trace' && msg.data?.expertId) {
-          setAgents(prev => prev.map(a =>
-            a.id === msg.data.expertId
-              ? { ...a, lastTrace: { typ: msg.data.typ, titel: msg.data.titel }, status: 'running' }
-              : a
-          ));
+          setAgents(prev => prev.map(a => {
+            if (a.id !== msg.data.expertId) return a;
+            const ev = { typ: msg.data.typ, titel: msg.data.titel };
+            return {
+              ...a,
+              lastTrace: ev,
+              status: 'running',
+              traceEvents: [ev, ...(a.traceEvents || [])].slice(0, 8),
+            };
+          }));
         }
       } catch {}
     };
@@ -1375,7 +1537,10 @@ function MissionControl({
       destroyed = true;
       ws.onerror = null;
       ws.onclose = null;
-      ws.close();
+      // Avoid "closed before connection established" warning in StrictMode
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
+        ws.close();
+      }
       wsRef.current = null;
     };
   }, [unternehmenId]);
@@ -1385,6 +1550,7 @@ function MissionControl({
     const token = localStorage.getItem('opencognit_token');
     await fetch(`/api/experten/${agentId}/wakeup`, {
       method: 'POST',
+      credentials: 'include',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     }).catch(() => {});
     setTimeout(() => {
@@ -1398,6 +1564,7 @@ function MissionControl({
     const endpoint = isPaused ? `/api/mitarbeiter/${agentId}/fortsetzen` : `/api/mitarbeiter/${agentId}/pausieren`;
     await fetch(endpoint, {
       method: 'POST',
+      credentials: 'include',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     }).catch(() => {});
     setAgents(prev => prev.map(a =>
@@ -1418,19 +1585,19 @@ function MissionControl({
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
             <div style={{
               width: 8, height: 8, borderRadius: '50%',
-              background: runningCount > 0 ? '#23CDCB' : '#475569',
-              boxShadow: runningCount > 0 ? '0 0 8px #23CDCB80' : 'none',
+              background: runningCount > 0 ? '#c5a059' : '#475569',
+              boxShadow: runningCount > 0 ? '0 0 8px #c5a05980' : 'none',
               animation: runningCount > 0 ? 'pulse 2s ease-in-out infinite' : 'none',
             }} />
           </div>
           <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#f8fafc', margin: 0 }}>
-            {lang === 'de' ? 'Mission Control' : 'Mission Control'}
+            {lang === 'de' ? 'Mein Team' : 'My Team'}
           </h2>
           {runningCount > 0 && (
             <span style={{
-              padding: '0.2rem 0.625rem', borderRadius: '999px',
-              background: 'rgba(35,205,202,0.1)', border: '1px solid rgba(35,205,202,0.2)',
-              fontSize: '0.6875rem', fontWeight: 700, color: '#23CDCB',
+              padding: '0.2rem 0.625rem', borderRadius: 0,
+              background: 'rgba(197,160,89,0.1)', border: '1px solid rgba(197,160,89,0.2)',
+              fontSize: '0.6875rem', fontWeight: 700, color: '#c5a059',
             }}>
               {runningCount} {lang === 'de' ? 'aktiv' : 'active'}
             </span>
@@ -1439,55 +1606,57 @@ function MissionControl({
         <Link to="/experts" style={{
           display: 'flex', alignItems: 'center', gap: '0.375rem',
           fontSize: '0.8125rem', color: '#64748b', textDecoration: 'none',
-          padding: '0.375rem 0.75rem', borderRadius: '8px',
+          padding: '0.375rem 0.75rem', borderRadius: 0,
           border: '1px solid rgba(255,255,255,0.07)',
           transition: 'color 0.15s, border-color 0.15s',
         }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#23CDCB'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(35,205,202,0.3)'; }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#c5a059'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(197,160,89,0.3)'; }}
           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#64748b'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.07)'; }}
         >
-          {lang === 'de' ? 'Alle Agenten' : 'All agents'} <ArrowRight size={14} />
+          {lang === 'de' ? `Alle Agenten (${agents.length})` : `All agents (${agents.length})`} <ArrowRight size={14} />
         </Link>
       </div>
 
       {agents.length === 0 ? (
         <div style={{
           textAlign: 'center', padding: '3rem 1rem',
-          background: 'rgba(255,255,255,0.02)', borderRadius: '20px',
+          background: 'rgba(255,255,255,0.02)', borderRadius: 0,
           border: '1px solid rgba(255,255,255,0.06)',
         }}>
-          <Cpu size={40} style={{ opacity: 0.15, marginBottom: '0.75rem', color: '#23CDCB' }} />
+          <Cpu size={40} style={{ opacity: 0.15, marginBottom: '0.75rem', color: '#c5a059' }} />
           <p style={{ color: '#475569', fontWeight: 600, margin: '0 0 0.5rem' }}>
             {lang === 'de' ? 'Noch keine Agenten' : 'No agents yet'}
           </p>
           <Link to="/experts" style={{
             display: 'inline-flex', alignItems: 'center', gap: '0.375rem',
-            padding: '0.5rem 1rem', borderRadius: '10px',
-            background: 'rgba(35,205,202,0.08)', border: '1px solid rgba(35,205,202,0.2)',
-            color: '#23CDCB', textDecoration: 'none', fontSize: '0.875rem', fontWeight: 600,
+            padding: '0.5rem 1rem', borderRadius: 0,
+            background: 'rgba(197,160,89,0.08)', border: '1px solid rgba(197,160,89,0.2)',
+            color: '#c5a059', textDecoration: 'none', fontSize: '0.875rem', fontWeight: 600,
           }}>
             <Plus size={14} /> {lang === 'de' ? 'Agent erstellen' : 'Create agent'}
           </Link>
         </div>
       ) : (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-          gap: '1rem',
-        }}>
-          {agents.map(agent => (
-            <AgentMissionCard
-              key={agent.id}
-              agent={agent}
-              lang={lang}
-              onChat={onChat}
-              onWakeup={handleWakeup}
-              waking={waking.has(agent.id)}
-              onPause={handlePause}
-              pausing={pausing.has(agent.id)}
-            />
-          ))}
-        </div>
+        <>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+            gap: '1rem',
+          }}>
+            {agents.slice(0, 4).map(agent => (
+              <AgentMissionCard
+                key={agent.id}
+                agent={agent}
+                lang={lang}
+                onChat={onChat}
+                onWakeup={handleWakeup}
+                waking={waking.has(agent.id)}
+                onPause={handlePause}
+                pausing={pausing.has(agent.id)}
+              />
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
@@ -1557,9 +1726,9 @@ function GettingStartedCard({
       icon: MonitorPlay,
       title: de ? 'Ergebnis beobachten' : 'Watch it run',
       desc: de
-        ? 'Im War Room siehst du live, was deine Agenten gerade tun.'
-        : 'The War Room shows you live what your agents are doing.',
-      action: { label: de ? 'War Room öffnen →' : 'Open War Room →', to: '/war-room' },
+        ? 'Im Live Room siehst du live, was deine Agenten gerade tun.'
+        : 'The Live Room shows you live what your agents are doing.',
+      action: { label: de ? 'Live Room öffnen →' : 'Open Live Room →', to: '/war-room' },
     },
   ];
 
@@ -1622,17 +1791,17 @@ function GettingStartedCard({
 
   return (
     <div style={{
-      background: 'linear-gradient(135deg, rgba(35,205,202,0.04) 0%, rgba(168,85,247,0.04) 100%)',
-      border: '1px solid rgba(35,205,202,0.15)',
-      borderRadius: 20, overflow: 'hidden',
+      background: 'linear-gradient(135deg, rgba(197,160,89,0.04) 0%, rgba(155,135,200,0.04) 100%)',
+      border: '1px solid rgba(197,160,89,0.15)',
+      borderRadius: 0, overflow: 'hidden',
     }}>
       {/* Header */}
       <div style={{ padding: '20px 24px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{
-            width: 36, height: 36, borderRadius: 10,
-            background: 'rgba(35,205,202,0.1)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#23CDCB',
+            width: 36, height: 36, borderRadius: 0,
+            background: 'rgba(197,160,89,0.1)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#c5a059',
           }}>
             <Sparkles size={16} />
           </div>
@@ -1642,7 +1811,7 @@ function GettingStartedCard({
             </div>
             <div style={{ fontSize: 11, color: '#52525b', marginTop: 1 }}>
               {completed}/{steps.length} {de ? 'abgeschlossen' : 'completed'}
-              {allDone && <span style={{ color: '#23CDCB', marginLeft: 6 }}>✓ {de ? 'Alles bereit!' : 'All done!'}</span>}
+              {allDone && <span style={{ color: '#c5a059', marginLeft: 6 }}>✓ {de ? 'Alles bereit!' : 'All done!'}</span>}
             </div>
           </div>
         </div>
@@ -1652,7 +1821,7 @@ function GettingStartedCard({
             style={{
               display: 'flex', alignItems: 'center', gap: 5,
               background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: 8, padding: '5px 10px', cursor: 'pointer',
+              borderRadius: 0, padding: '5px 10px', cursor: 'pointer',
               fontSize: 11, color: '#71717a', fontWeight: 600,
             }}
           >
@@ -1673,8 +1842,8 @@ function GettingStartedCard({
       {/* Progress bar */}
       <div style={{ height: 2, background: 'rgba(255,255,255,0.04)', margin: '0 24px' }}>
         <div style={{
-          height: '100%', borderRadius: 1, width: `${pct}%`,
-          background: allDone ? '#23CDCB' : 'linear-gradient(90deg, #23CDCB, #a855f7)',
+          height: '100%', borderRadius: 0, width: `${pct}%`,
+          background: allDone ? '#c5a059' : 'linear-gradient(90deg, #c5a059, #9b87c8)',
           transition: 'width 0.6s ease',
         }} />
       </div>
@@ -1687,14 +1856,14 @@ function GettingStartedCard({
           return (
             <div key={i} style={{
               display: 'flex', alignItems: 'center', gap: 12,
-              padding: '10px 14px', borderRadius: 12,
+              padding: '10px 14px', borderRadius: 0,
               background: step.done
-                ? 'rgba(35,205,202,0.04)'
+                ? 'rgba(197,160,89,0.04)'
                 : isNext
                   ? 'rgba(255,255,255,0.03)'
                   : 'transparent',
               border: step.done
-                ? '1px solid rgba(35,205,202,0.12)'
+                ? '1px solid rgba(197,160,89,0.12)'
                 : isNext
                   ? '1px solid rgba(255,255,255,0.06)'
                   : '1px solid transparent',
@@ -1703,11 +1872,11 @@ function GettingStartedCard({
             }}>
               {/* Icon / checkmark */}
               <div style={{
-                width: 32, height: 32, borderRadius: 9, flexShrink: 0,
-                background: step.done ? 'rgba(35,205,202,0.1)' : 'rgba(255,255,255,0.04)',
-                border: `1px solid ${step.done ? 'rgba(35,205,202,0.25)' : 'rgba(255,255,255,0.06)'}`,
+                width: 32, height: 32, borderRadius: 0, flexShrink: 0,
+                background: step.done ? 'rgba(197,160,89,0.1)' : 'rgba(255,255,255,0.04)',
+                border: `1px solid ${step.done ? 'rgba(197,160,89,0.25)' : 'rgba(255,255,255,0.06)'}`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: step.done ? '#23CDCB' : '#52525b',
+                color: step.done ? '#c5a059' : '#52525b',
               }}>
                 {step.done ? <CheckCircle2 size={14} /> : <Icon size={14} />}
               </div>
@@ -1727,10 +1896,10 @@ function GettingStartedCard({
                 <button
                   onClick={() => navigate(step.action!.to)}
                   style={{
-                    flexShrink: 0, padding: '5px 12px', borderRadius: 8,
-                    background: isNext ? 'rgba(35,205,202,0.1)' : 'rgba(255,255,255,0.04)',
-                    border: `1px solid ${isNext ? 'rgba(35,205,202,0.3)' : 'rgba(255,255,255,0.08)'}`,
-                    color: isNext ? '#23CDCB' : '#52525b',
+                    flexShrink: 0, padding: '5px 12px', borderRadius: 0,
+                    background: isNext ? 'rgba(197,160,89,0.1)' : 'rgba(255,255,255,0.04)',
+                    border: `1px solid ${isNext ? 'rgba(197,160,89,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                    color: isNext ? '#c5a059' : '#52525b',
                     fontSize: 11, fontWeight: 700, cursor: 'pointer',
                     transition: 'all 0.15s',
                   }}
@@ -1748,13 +1917,13 @@ function GettingStartedCard({
         <div style={{
           margin: '0 24px 20px',
           padding: '16px 18px',
-          borderRadius: 14,
+          borderRadius: 0,
           background: 'rgba(0,0,0,0.3)',
           border: '1px solid rgba(255,255,255,0.06)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-            <BookOpen size={12} style={{ color: '#23CDCB' }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#23CDCB', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            <BookOpen size={12} style={{ color: '#c5a059' }} />
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#c5a059', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
               {de ? 'Wie OpenCognit funktioniert' : 'How OpenCognit works'}
             </span>
           </div>
@@ -1791,6 +1960,7 @@ function CommandBar({ agents, companyId, lang }: { agents: LiveAgent[]; companyI
       const token = localStorage.getItem('opencognit_token');
       const resp = await fetch(`/api/experten/${orchestrator.id}/chat/direct`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
@@ -1815,13 +1985,13 @@ function CommandBar({ agents, companyId, lang }: { agents: LiveAgent[]; companyI
         display: 'flex', alignItems: 'center', gap: '0.625rem',
         padding: '0.625rem 0.875rem',
         background: 'rgba(255,255,255,0.02)',
-        border: `1px solid ${focused ? 'rgba(35,205,202,0.3)' : 'rgba(255,255,255,0.07)'}`,
-        borderRadius: '14px',
+        border: `1px solid ${focused ? 'rgba(197,160,89,0.3)' : 'rgba(255,255,255,0.07)'}`,
+        borderRadius: 0,
         transition: 'border-color 0.2s',
       }}>
         {/* Agent avatar */}
         <div style={{
-          width: 28, height: 28, borderRadius: '8px', flexShrink: 0,
+          width: 28, height: 28, borderRadius: 0, flexShrink: 0,
           background: `${orchestrator.avatarFarbe}18`,
           border: `1px solid ${orchestrator.avatarFarbe}35`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1853,9 +2023,9 @@ function CommandBar({ agents, companyId, lang }: { agents: LiveAgent[]; companyI
           disabled={!command.trim() || loading}
           style={{
             display: 'flex', alignItems: 'center', gap: '0.375rem',
-            padding: '0.375rem 0.875rem', borderRadius: '9px', border: 'none',
-            background: command.trim() && !loading ? 'rgba(35,205,202,0.12)' : 'rgba(255,255,255,0.04)',
-            color: command.trim() && !loading ? '#23CDCB' : '#3f3f46',
+            padding: '0.375rem 0.875rem', borderRadius: 0, border: 'none',
+            background: command.trim() && !loading ? 'rgba(197,160,89,0.12)' : 'rgba(255,255,255,0.04)',
+            color: command.trim() && !loading ? '#c5a059' : '#3f3f46',
             fontSize: '0.75rem', fontWeight: 700, cursor: command.trim() && !loading ? 'pointer' : 'not-allowed',
             transition: 'all 0.2s', flexShrink: 0,
           }}
@@ -1871,14 +2041,14 @@ function CommandBar({ agents, companyId, lang }: { agents: LiveAgent[]; companyI
       {/* Inline result */}
       {result && (
         <div style={{
-          padding: '0.625rem 0.875rem', borderRadius: '10px',
-          background: result.ok ? 'rgba(35,205,202,0.04)' : 'rgba(239,68,68,0.06)',
-          border: `1px solid ${result.ok ? 'rgba(35,205,202,0.15)' : 'rgba(239,68,68,0.15)'}`,
+          padding: '0.625rem 0.875rem', borderRadius: 0,
+          background: result.ok ? 'rgba(197,160,89,0.04)' : 'rgba(239,68,68,0.06)',
+          border: `1px solid ${result.ok ? 'rgba(197,160,89,0.15)' : 'rgba(239,68,68,0.15)'}`,
           fontSize: '0.8125rem', color: result.ok ? '#94a3b8' : '#fca5a5',
           lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
           maxHeight: 200, overflowY: 'auto',
         }}>
-          <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: result.ok ? '#23CDCB' : '#ef4444', display: 'block', marginBottom: '0.25rem' }}>
+          <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: result.ok ? '#c5a059' : '#ef4444', display: 'block', marginBottom: '0.25rem' }}>
             {orchestrator.name}
           </span>
           {result.text}
@@ -1904,9 +2074,9 @@ function QuickActionCard({ item, onClick }: {
       style={{
         position: 'relative', overflow: 'hidden',
         display: 'flex', alignItems: 'center', gap: '0.75rem',
-        padding: '0.875rem 1.125rem', borderRadius: '16px',
+        padding: '0.875rem 1.125rem', borderRadius: 0,
         background: hovered ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.04)',
-        backdropFilter: 'blur(24px) saturate(160%)',
+        // backdropFilter removed
         border: `1px solid ${hovered ? `${accent}30` : 'rgba(255,255,255,0.09)'}`,
         transform: hovered ? 'translateY(-2px)' : 'none',
         boxShadow: hovered
@@ -1923,7 +2093,7 @@ function QuickActionCard({ item, onClick }: {
         backgroundSize: '14px 14px',
       }} />
       <div style={{
-        width: 34, height: 34, borderRadius: '10px', flexShrink: 0,
+        width: 34, height: 34, borderRadius: 0, flexShrink: 0,
         background: hovered ? `${accent}20` : `${accent}15`,
         border: `1px solid ${hovered ? `${accent}35` : `${accent}20`}`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1937,7 +2107,7 @@ function QuickActionCard({ item, onClick }: {
       {item.badge !== undefined && (
         <span style={{
           position: 'absolute', top: '0.5rem', right: '0.5rem',
-          background: '#f59e0b', color: '#0a0a0f', borderRadius: '999px',
+          background: '#f59e0b', color: '#0a0a0f', borderRadius: 0,
           fontSize: '0.625rem', fontWeight: 800, padding: '0.1rem 0.375rem',
           minWidth: 16, textAlign: 'center',
         }}>
@@ -1980,6 +2150,13 @@ export function Dashboard() {
     return () => document.removeEventListener('visibilitychange', handler);
   }, [aktivesUnternehmen, reload]);
 
+  // Refresh when approval status changes (e.g. via Telegram)
+  useEffect(() => {
+    const handler = () => reload();
+    window.addEventListener('opencognit:approval-changed', handler);
+    return () => window.removeEventListener('opencognit:approval-changed', handler);
+  }, [reload]);
+
   useEffect(() => { if (error) console.error('Dashboard:', error); }, [error]);
 
   const { data: channels } = useApi<Array<{
@@ -2007,19 +2184,34 @@ export function Dashboard() {
 
   if (!aktivesUnternehmen) return null;
 
-  if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-      <Loader2 size={28} style={{ color: '#23CDCB', animation: 'spin 1s linear infinite' }} />
-    </div>
+  // Wizard must stay mounted across loading/refresh cycles, otherwise its
+  // internal state (step, description, workDir, plan) resets every 30s.
+  const wizardOverlay = showWizard && (
+    <SetupWizard
+      onClose={() => setShowWizard(false)}
+      onDone={() => { setShowWizard(false); setWizardDismissed(true); localStorage.setItem('oc_wizard_dismissed', '1'); reload(); }}
+    />
+  );
+
+  if (loading && !data) return (
+    <>
+      {wizardOverlay}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <Loader2 size={28} style={{ color: '#c5a059', animation: 'spin 1s linear infinite' }} />
+      </div>
+    </>
   );
 
   if (!data) return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: '0.75rem' }}>
-      <AlertCircle size={32} style={{ color: '#ef4444' }} />
-      <p style={{ color: '#94a3b8', fontSize: '0.9375rem', margin: 0 }}>
-        {error ? (lang === 'de' ? `Fehler: ${error}` : `Error: ${error}`) : (lang === 'de' ? 'Keine Daten verfügbar' : 'No data available')}
-      </p>
-    </div>
+    <>
+      {wizardOverlay}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: '0.75rem' }}>
+        <AlertCircle size={32} style={{ color: '#ef4444' }} />
+        <p style={{ color: '#94a3b8', fontSize: '0.9375rem', margin: 0 }}>
+          {error ? (lang === 'de' ? `Fehler: ${error}` : `Error: ${error}`) : (lang === 'de' ? 'Keine Daten verfügbar' : 'No data available')}
+        </p>
+      </div>
+    </>
   );
 
   const { experten, aufgaben, kosten, pendingApprovals, topExperten, letzteAktivitaet } = data;
@@ -2038,29 +2230,167 @@ export function Dashboard() {
   const taskTrend: 'up' | 'down' | 'neutral' = aufgaben.inBearbeitung > 0 ? 'up' : 'neutral';
   const budgetTrend: 'up' | 'down' | 'neutral' = kosten.prozent > 80 ? 'up' : kosten.prozent < 20 ? 'neutral' : 'neutral';
 
+  const de = lang === 'de';
+
+  // ── Hero KPI data ──
+  const heroKpis = [
+    {
+      value: experten.running > 0 ? experten.running : experten.aktiv,
+      label: experten.running > 0 ? (de ? 'Agenten aktiv' : 'Agents live') : (de ? 'Agenten bereit' : 'Agents ready'),
+      color: experten.running > 0 ? '#c5a059' : '#5c554d',
+      pulse: experten.running > 0,
+      link: '/experts',
+    },
+    {
+      value: aufgaben.inBearbeitung,
+      label: de ? 'In Bearbeitung' : 'In Progress',
+      color: aufgaben.inBearbeitung > 0 ? '#9b87c8' : '#5c554d',
+      pulse: false,
+      link: '/tasks',
+    },
+    {
+      value: aufgaben.offen,
+      label: de ? 'Tasks offen' : 'Tasks open',
+      color: aufgaben.offen > 0 ? '#ede5d8' : '#5c554d',
+      pulse: false,
+      link: '/tasks',
+    },
+    {
+      value: aufgaben.blockiert > 0 ? aufgaben.blockiert : (pendingApprovals > 0 ? pendingApprovals : '✓'),
+      label: aufgaben.blockiert > 0 ? (de ? 'Blockiert' : 'Blocked') : (de ? 'Genehmigungen' : 'Approvals'),
+      color: aufgaben.blockiert > 0 ? '#c97b7b' : pendingApprovals > 0 ? '#d4a373' : '#5c554d',
+      pulse: aufgaben.blockiert > 0 || pendingApprovals > 0,
+      link: aufgaben.blockiert > 0 ? '/tasks' : '/approvals',
+    },
+    {
+      value: `${kosten.prozent}%`,
+      label: de ? 'Budget verbraucht' : 'Budget used',
+      color: budgetColor,
+      pulse: false,
+      link: '/costs',
+    },
+  ];
+
+  // ── Alert conditions ──
+  const alerts: Array<{ msg: string; color: string; link: string }> = [];
+  if (pendingApprovals > 0) alerts.push({ msg: de ? `${pendingApprovals} Genehmigung${pendingApprovals > 1 ? 'en' : ''} ausstehend` : `${pendingApprovals} approval${pendingApprovals > 1 ? 's' : ''} pending`, color: '#d4a373', link: '/approvals' });
+  if (aufgaben.blockiert > 0) alerts.push({ msg: de ? `${aufgaben.blockiert} Tasks blockiert` : `${aufgaben.blockiert} tasks blocked`, color: '#c97b7b', link: '/tasks' });
+  if (kosten.prozent >= 90) alerts.push({ msg: de ? `Budget fast aufgebraucht (${kosten.prozent}%)` : `Budget nearly exhausted (${kosten.prozent}%)`, color: '#c97b7b', link: '/costs' });
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
       {/* ── CEO Setup Wizard Modal ── */}
-      {showWizard && (
-        <SetupWizard
-          onClose={() => setShowWizard(false)}
-          onDone={() => { setShowWizard(false); setWizardDismissed(true); localStorage.setItem('oc_wizard_dismissed', '1'); reload(); }}
-        />
+      {wizardOverlay}
+
+      {/* ── ALERT STRIP — action required, always first ── */}
+      {alerts.length > 0 && (
+        <div style={{
+          display: 'flex', gap: '0.75rem', flexWrap: 'wrap',
+        }}>
+          {alerts.map((a, i) => (
+            <button
+              key={i}
+              onClick={() => navigate(a.link)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.625rem',
+                padding: '0.625rem 1.125rem',
+                background: `${a.color}10`,
+                border: `1px solid ${a.color}40`,
+                color: a.color, cursor: 'pointer',
+                fontSize: '0.875rem', fontWeight: 700,
+                letterSpacing: '0.01em',
+              }}
+            >
+              <div style={{ width: 7, height: 7, borderRadius: '50%', background: a.color, boxShadow: `0 0 8px ${a.color}`, animation: 'pulse 1.5s ease-in-out infinite', flexShrink: 0 }} />
+              {a.msg}
+              <span style={{ opacity: 0.5, fontSize: '0.75rem' }}>→</span>
+            </button>
+          ))}
+        </div>
       )}
+
+      {/* ── HEADER ── */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.375rem' }}>
+            <span style={{ fontSize: '0.625rem', fontWeight: 700, color: '#c5a059', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
+              {aktivesUnternehmen.name}
+            </span>
+            {experten.running > 0 && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.1rem 0.5rem', border: '1px solid rgba(197,160,89,0.2)', fontSize: '0.5625rem', color: '#c5a059', fontWeight: 700, letterSpacing: '0.08em' }}>
+                <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#c5a059', animation: 'pulse 1.5s ease-in-out infinite' }} />
+                {experten.running} LIVE
+              </span>
+            )}
+          </div>
+          <h1 className="page-title" style={{ margin: 0 }}>
+            {t.dashboard.title}
+          </h1>
+          {(aktivesUnternehmen.ziel || aktivesUnternehmen.beschreibung) && (
+            <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-tertiary)', marginTop: '0.375rem', maxWidth: 480, lineHeight: 1.5 }}>
+              {((aktivesUnternehmen.ziel || aktivesUnternehmen.beschreibung) ?? '').slice(0, 100)}
+              {((aktivesUnternehmen.ziel || aktivesUnternehmen.beschreibung) ?? '').length > 100 ? '…' : ''}
+            </p>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexShrink: 0 }}>
+          <button onClick={() => navigate('/war-room')} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.875rem', background: 'rgba(155,135,200,0.08)', border: '1px solid rgba(155,135,200,0.2)', color: '#9b87c8', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>
+            <MonitorPlay size={14} /> {de ? 'War Room' : 'War Room'}
+          </button>
+          <button onClick={() => navigate('/tasks')} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.875rem', background: 'rgba(197,160,89,0.1)', border: '1px solid rgba(197,160,89,0.25)', color: '#c5a059', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>
+            <Plus size={14} /> {de ? 'Neue Aufgabe' : 'New Task'}
+          </button>
+        </div>
+      </div>
+
+      {/* ── HERO KPI STRIP ── */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: `repeat(${heroKpis.length}, 1fr)`,
+        border: '1px solid rgba(197,160,89,0.12)',
+      }}>
+        {heroKpis.map((kpi, i) => (
+          <button
+            key={i}
+            onClick={() => navigate(kpi.link)}
+            style={{
+              display: 'flex', flexDirection: 'column', gap: '0.375rem',
+              padding: '1.375rem 1.5rem',
+              background: 'rgba(8,6,4,0.82)',
+              border: 'none',
+              borderRight: i < heroKpis.length - 1 ? '1px solid rgba(197,160,89,0.10)' : 'none',
+              cursor: 'pointer', textAlign: 'left',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(197,160,89,0.05)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'rgba(8,6,4,0.82)')}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              {kpi.pulse && <div style={{ width: 6, height: 6, borderRadius: '50%', background: kpi.color, boxShadow: `0 0 6px ${kpi.color}`, animation: 'pulse 2s ease-in-out infinite', flexShrink: 0 }} />}
+              <span style={{ fontSize: '2.25rem', fontWeight: 800, color: kpi.color, lineHeight: 1, fontFamily: 'var(--font-mono)', letterSpacing: '-0.03em' }}>
+                {kpi.value}
+              </span>
+            </div>
+            <span style={{ fontSize: '0.625rem', fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'var(--font-mono)' }}>
+              {kpi.label}
+            </span>
+          </button>
+        ))}
+      </div>
 
       {/* ── First-Run Banner ── */}
       {isFirstRun && !wizardDismissed && (
         <div style={{
-          background: 'linear-gradient(135deg, rgba(35,205,202,0.08), rgba(79,70,229,0.08))',
-          border: '1px solid rgba(35,205,202,0.25)',
-          borderRadius: '16px', padding: '1.25rem 1.5rem',
+          background: 'linear-gradient(135deg, rgba(197,160,89,0.08), rgba(79,70,229,0.08))',
+          border: '1px solid rgba(197,160,89,0.25)',
+          borderRadius: 0, padding: '1.25rem 1.5rem',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem',
           flexWrap: 'wrap',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
-            <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(35,205,202,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Sparkles size={22} style={{ color: '#23CDCB' }} />
+            <div style={{ width: 44, height: 44, borderRadius: 0, background: 'rgba(197,160,89,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Sparkles size={22} style={{ color: '#c5a059' }} />
             </div>
             <div>
               <div style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#fff', marginBottom: 3 }}>
@@ -2076,15 +2406,15 @@ export function Dashboard() {
           <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
             <button
               onClick={() => { setWizardDismissed(true); localStorage.setItem('oc_wizard_dismissed', '1'); }}
-              style={{ padding: '0.5rem 0.875rem', borderRadius: 9, background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: '#64748b', fontSize: '0.8rem', cursor: 'pointer' }}
+              style={{ padding: '0.5rem 0.875rem', borderRadius: 0, background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: '#64748b', fontSize: '0.8rem', cursor: 'pointer' }}
             >
               {lang === 'de' ? 'Später' : 'Later'}
             </button>
             <button
               onClick={() => setShowWizard(true)}
               style={{
-                padding: '0.5rem 1.25rem', borderRadius: 9,
-                background: 'rgba(35,205,202,0.9)', border: '1px solid rgba(35,205,202,0.4)',
+                padding: '0.5rem 1.25rem', borderRadius: 0,
+                background: 'rgba(197,160,89,0.9)', border: '1px solid rgba(197,160,89,0.4)',
                 color: '#000', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer',
                 display: 'flex', alignItems: 'center', gap: 6,
               }}
@@ -2095,340 +2425,7 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* ── Header ── */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.375rem' }}>
-            <Building2 size={14} style={{ color: '#23CDCB' }} />
-            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#23CDCB', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-              {aktivesUnternehmen.name}
-            </span>
-            {hasRunningAgents && (
-              <span style={{
-                display: 'flex', alignItems: 'center', gap: '0.3rem',
-                padding: '0.15rem 0.5rem', borderRadius: '9999px',
-                background: 'rgba(35,205,202,0.1)', border: '1px solid rgba(35,205,202,0.2)',
-                fontSize: '0.625rem', color: '#23CDCB', fontWeight: 700,
-              }}>
-                <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#23CDCB', animation: 'pulse 1.5s ease-in-out infinite' }} />
-                {experten.running} {lang === 'de' ? 'aktiv' : 'live'}
-              </span>
-            )}
-          </div>
-          <h1 style={{
-            fontSize: '1.875rem', fontWeight: 800, margin: 0, lineHeight: 1.1,
-            background: 'linear-gradient(135deg, #f8fafc 0%, #94a3b8 100%)',
-            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
-          }}>
-            {t.dashboard.title}
-          </h1>
-          {(aktivesUnternehmen.ziel || aktivesUnternehmen.beschreibung) && (
-            <p style={{ fontSize: '0.8125rem', color: '#475569', marginTop: '0.375rem', maxWidth: 540, lineHeight: 1.5 }}>
-              {(aktivesUnternehmen.ziel || aktivesUnternehmen.beschreibung)?.slice(0, 120)}
-              {((aktivesUnternehmen.ziel || aktivesUnternehmen.beschreibung) ?? '').length > 120 ? '…' : ''}
-            </p>
-          )}
-          {/* Project directory indicator */}
-          {(aktivesUnternehmen as any).workDir ? (
-            <button
-              onClick={async () => {
-                await authFetch(`/api/unternehmen/${aktivesUnternehmen.id}/open-folder`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ path: (aktivesUnternehmen as any).workDir }),
-                });
-              }}
-              title={t.tooltips.openProjectFolder}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '0.375rem',
-                marginTop: '0.5rem', padding: '0.25rem 0.625rem',
-                background: 'rgba(35,205,203,0.08)', border: '1px solid rgba(35,205,203,0.2)',
-                borderRadius: '8px', cursor: 'pointer',
-                fontSize: '0.7rem', color: '#23CDCB', fontFamily: 'monospace',
-                maxWidth: 420, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}
-            >
-              <FolderOpen size={11} />
-              {(aktivesUnternehmen as any).workDir}
-            </button>
-          ) : (
-            <button
-              onClick={() => navigate('/settings')}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '0.375rem',
-                marginTop: '0.5rem', padding: '0.25rem 0.625rem',
-                background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)',
-                borderRadius: '8px', cursor: 'pointer',
-                fontSize: '0.7rem', color: '#f59e0b',
-              }}
-            >
-              <FolderOpen size={11} />
-              {lang === 'de' ? 'Projektverzeichnis einrichten →' : 'Set up project directory →'}
-            </button>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          {pendingApprovals > 0 && (
-            <button onClick={() => navigate('/approvals')} style={{
-              display: 'flex', alignItems: 'center', gap: '0.5rem',
-              padding: '0.625rem 1rem', borderRadius: '12px',
-              background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)',
-              color: '#f59e0b', fontWeight: 700, fontSize: '0.8125rem', cursor: 'pointer',
-            }}>
-              <ShieldCheck size={15} />
-              {pendingApprovals} {lang === 'de' ? 'offene Anfragen' : 'pending approvals'}
-            </button>
-          )}
-          <button onClick={() => setStandupOpen(true)} style={{
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            padding: '0.625rem 1rem', borderRadius: '12px',
-            background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)',
-            color: '#22c55e', fontWeight: 700, fontSize: '0.8125rem', cursor: 'pointer',
-          }}>
-            <Users size={15} />
-            {lang === 'de' ? 'Standup' : 'Standup'}
-          </button>
-          <button onClick={() => setShowWizard(true)} style={{
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            padding: '0.625rem 1rem', borderRadius: '12px',
-            background: 'rgba(35,205,202,0.08)', border: '1px solid rgba(35,205,202,0.2)',
-            color: '#23CDCB', fontWeight: 700, fontSize: '0.8125rem', cursor: 'pointer',
-          }}>
-            <Sparkles size={15} />
-            {lang === 'de' ? 'CEO Setup' : 'CEO Setup'}
-          </button>
-          <button onClick={() => navigate('/war-room')} style={{
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            padding: '0.625rem 1rem', borderRadius: '12px',
-            background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)',
-            color: '#a855f7', fontWeight: 700, fontSize: '0.8125rem', cursor: 'pointer',
-          }}>
-            <MonitorPlay size={15} />
-            {lang === 'de' ? 'War Room' : 'War Room'}
-          </button>
-          <button onClick={() => navigate('/tasks')} style={{
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            padding: '0.625rem 1rem', borderRadius: '12px',
-            background: 'rgba(35,205,202,0.1)', border: '1px solid rgba(35,205,202,0.2)',
-            color: '#23CDCB', fontWeight: 700, fontSize: '0.8125rem', cursor: 'pointer',
-          }}>
-            <Plus size={15} />
-            {lang === 'de' ? 'Neue Aufgabe' : 'New Task'}
-          </button>
-        </div>
-      </div>
-
-      {/* ── Command Bar ── */}
-      {alleExperten.length > 0 && (
-        <CommandBar agents={alleExperten} companyId={aktivesUnternehmen.id} lang={lang} />
-      )}
-
-      {/* ── Onboarding ── */}
-      <GettingStartedCard
-        companyId={aktivesUnternehmen.id}
-        hasAgents={experten.gesamt > 0}
-        hasCycle={alleExperten.some((e: any) => e.zyklusAktiv)}
-        hasTasks={aufgaben.gesamt > 0}
-        hasDoneTasks={aufgaben.erledigt > 0}
-        lang={lang}
-        navigate={navigate}
-      />
-
-      {/* ── Status Bento Grid ── */}
-      {(() => {
-        const de = lang === 'de';
-        const todayEvents = letzteAktivitaet.filter(a => new Date(a.erstelltAm).toDateString() === new Date().toDateString()).length;
-
-        // Time-aware greeting
-        const hour = new Date().getHours();
-        const greeting = de
-          ? hour < 12 ? 'Guten Morgen' : hour < 18 ? 'Guten Nachmittag' : 'Guten Abend'
-          : hour < 12 ? 'Good Morning' : hour < 18 ? 'Good Afternoon' : 'Good Evening';
-
-        // Smart insight sentence
-        let insight = '';
-        if (kosten.prozent >= 90) {
-          insight = de ? `⚠ Budget fast aufgebraucht (${kosten.prozent}%)` : `⚠ Budget nearly exhausted (${kosten.prozent}%)`;
-        } else if (pendingApprovals > 0) {
-          insight = de ? `${pendingApprovals} Genehmigung${pendingApprovals > 1 ? 'en' : ''} warten auf dich` : `${pendingApprovals} approval${pendingApprovals > 1 ? 's' : ''} waiting for you`;
-        } else if (aufgaben.blockiert > 0) {
-          insight = de ? `${aufgaben.blockiert} blockierte Aufgabe${aufgaben.blockiert > 1 ? 'n' : ''} — Eingriff empfohlen` : `${aufgaben.blockiert} blocked task${aufgaben.blockiert > 1 ? 's' : ''} — action recommended`;
-        } else if (experten.running > 0) {
-          insight = de ? `${experten.running} Agent${experten.running > 1 ? 'en' : ''} arbeite${experten.running > 1 ? 'n' : 't'} gerade` : `${experten.running} agent${experten.running > 1 ? 's' : ''} working right now`;
-        } else if (aufgaben.erledigt > 0) {
-          insight = de ? `${aufgaben.erledigt} Aufgaben erledigt — gute Arbeit!` : `${aufgaben.erledigt} tasks completed — great work!`;
-        } else if (experten.gesamt === 0) {
-          insight = de ? 'Starte mit dem CEO Setup um dein Team einzurichten' : 'Start with CEO Setup to configure your team';
-        } else {
-          insight = de ? 'System bereit — keine aktiven Aufgaben' : 'System ready — no active tasks';
-        }
-
-        const bentoItems: BentoItem[] = [
-          // ── Status Overview (wide) ──
-          {
-            icon: <Building2 size={16} style={{ color: '#23CDCB' }} />,
-            title: greeting,
-            meta: new Date().toLocaleDateString(de ? 'de-DE' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' }),
-            colSpan: 2,
-            accent: '#23CDCB',
-            children: (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {/* Metrics row */}
-                <div style={{ display: 'flex', gap: '0', flexWrap: 'wrap' }}>
-                  {[
-                    { label: de ? 'Agenten live' : 'Agents live',     value: experten.running,     color: experten.running > 0 ? '#23CDCB' : '#475569', pulse: experten.running > 0 },
-                    { label: de ? 'Aufgaben offen' : 'Tasks open',     value: aufgaben.offen,       color: aufgaben.offen > 0 ? '#94a3b8' : '#334155',   pulse: false },
-                    { label: de ? 'Budget genutzt' : 'Budget used',    value: `${kosten.prozent}%`, color: budgetColor,                                   pulse: false },
-                    { label: de ? 'Ereignisse heute' : 'Events today', value: todayEvents,          color: todayEvents > 0 ? '#64748b' : '#334155',        pulse: false },
-                  ].map((m, i, arr) => (
-                    <div key={i} style={{
-                      display: 'flex', flexDirection: 'column', gap: '0.25rem',
-                      paddingRight: i < arr.length - 1 ? '1.75rem' : 0,
-                      marginRight: i < arr.length - 1 ? '1.75rem' : 0,
-                      borderRight: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none',
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                        {m.pulse && (
-                          <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#23CDCB', boxShadow: '0 0 6px #23CDCB', animation: 'pulse 2s ease-in-out infinite', flexShrink: 0 }} />
-                        )}
-                        <span style={{ fontSize: '1.75rem', fontWeight: 800, color: m.color, lineHeight: 1 }}>{m.value}</span>
-                      </div>
-                      <span style={{ fontSize: '0.6875rem', color: '#475569', fontWeight: 500 }}>{m.label}</span>
-                    </div>
-                  ))}
-                </div>
-                {/* Insight line */}
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: '0.5rem',
-                  padding: '0.5rem 0.75rem', borderRadius: '8px',
-                  background: pendingApprovals > 0 || aufgaben.blockiert > 0 || kosten.prozent >= 90
-                    ? 'rgba(245,158,11,0.06)' : experten.running > 0
-                    ? 'rgba(35,205,202,0.06)' : 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${pendingApprovals > 0 || aufgaben.blockiert > 0 || kosten.prozent >= 90
-                    ? 'rgba(245,158,11,0.15)' : experten.running > 0
-                    ? 'rgba(35,205,202,0.12)' : 'rgba(255,255,255,0.06)'}`,
-                }}>
-                  <span style={{
-                    fontSize: '0.75rem', fontWeight: 500,
-                    color: pendingApprovals > 0 || aufgaben.blockiert > 0 || kosten.prozent >= 90
-                      ? '#f59e0b' : experten.running > 0 ? '#23CDCB' : '#475569',
-                  }}>
-                    {insight}
-                  </span>
-                </div>
-              </div>
-            ),
-          },
-          // ── Health Score ──
-          {
-            icon: <Gauge size={16} style={{ color: healthColor }} />,
-            title: String(healthScore),
-            meta: healthGrade,
-            status: de ? 'Unternehmensgesundheit' : 'Company Health',
-            statusColor: healthColor,
-            colSpan: 1,
-            accent: healthColor,
-            children: (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.875rem' }}>
-                {/* Gauge */}
-                <div style={{ position: 'relative' }}>
-                  <HealthScoreGauge score={healthScore} color={healthColor} size={96} />
-                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.1rem' }}>
-                    <span style={{ fontSize: 22, fontWeight: 900, color: healthColor, lineHeight: 1 }}>{healthScore}</span>
-                    <span style={{ fontSize: '0.5625rem', fontWeight: 700, color: healthColor, opacity: 0.7, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{healthGrade}</span>
-                  </div>
-                </div>
-                {/* Factors */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', width: '100%' }}>
-                  {healthFactors.length === 0 ? (
-                    <div style={{ textAlign: 'center', fontSize: '0.6875rem', color: '#334155', fontStyle: 'italic' }}>
-                      {de ? 'Keine Probleme erkannt' : 'No issues detected'}
-                    </div>
-                  ) : (
-                    healthFactors.slice(0, 4).map((f, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                        <div style={{ width: 5, height: 5, borderRadius: '50%', background: f.color, flexShrink: 0 }} />
-                        <span style={{ fontSize: '0.6875rem', color: f.color, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {f.delta < 0 ? `${f.delta} ` : ''}{f.label}
-                        </span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            ),
-          },
-          // ── Agents ──
-          {
-            icon: <Users size={16} style={{ color: '#23CDCB' }} />,
-            title: String(experten.aktiv),
-            meta: de ? 'Agenten aktiv' : 'Agents active',
-            description: de
-              ? `${experten.gesamt} gesamt · ${experten.running} laufen gerade`
-              : `${experten.gesamt} total · ${experten.running} running`,
-            status: experten.running > 0 ? 'LIVE' : de ? 'Bereit' : 'Ready',
-            statusColor: experten.running > 0 ? '#23CDCB' : '#475569',
-            accent: '#23CDCB',
-            cta: de ? 'Agenten →' : 'Agents →',
-            hasPersistentHover: experten.running > 0,
-            onClick: () => navigate('/experts'),
-          },
-          // ── Tasks ──
-          {
-            icon: <ListTodo size={16} style={{ color: '#3b82f6' }} />,
-            title: String(aufgaben.offen),
-            meta: de ? 'Aufgaben offen' : 'Tasks open',
-            description: de
-              ? `${aufgaben.inBearbeitung} aktiv · ${aufgaben.blockiert} blockiert · ${aufgaben.erledigt} erledigt`
-              : `${aufgaben.inBearbeitung} active · ${aufgaben.blockiert} blocked · ${aufgaben.erledigt} done`,
-            status: aufgaben.blockiert > 0 ? `${aufgaben.blockiert} blockiert` : 'OK',
-            statusColor: aufgaben.blockiert > 0 ? '#ef4444' : '#22c55e',
-            accent: '#3b82f6',
-            cta: de ? 'Aufgaben →' : 'Tasks →',
-            onClick: () => navigate('/tasks'),
-          },
-          // ── Budget ──
-          {
-            icon: <Wallet size={16} style={{ color: budgetColor }} />,
-            title: euro(kosten.gesamtVerbraucht),
-            meta: `${de ? 'von' : 'of'} ${euro(kosten.gesamtBudget)}`,
-            description: de ? `${kosten.prozent}% des Budgets genutzt` : `${kosten.prozent}% of budget used`,
-            status: kosten.prozent > 90 ? '⚠ Kritisch' : kosten.prozent > 75 ? (de ? 'Hoch' : 'High') : 'OK',
-            statusColor: kosten.prozent > 90 ? '#ef4444' : kosten.prozent > 75 ? '#f59e0b' : '#22c55e',
-            accent: budgetColor,
-            cta: de ? 'Kosten →' : 'Costs →',
-            onClick: () => navigate('/costs'),
-            children: (
-              <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%', borderRadius: 2, background: budgetColor,
-                  width: `${Math.min(kosten.prozent, 100)}%`, transition: 'width 0.6s ease',
-                }} />
-              </div>
-            ),
-          },
-          // ── Approvals ──
-          {
-            icon: <ShieldCheck size={16} style={{ color: pendingApprovals > 0 ? '#f59e0b' : '#22c55e' }} />,
-            title: pendingApprovals > 0 ? String(pendingApprovals) : '✓',
-            meta: de ? 'Genehmigungen' : 'Approvals',
-            description: pendingApprovals > 0
-              ? (de ? 'Anfragen warten auf deine Freigabe' : 'Requests waiting for your approval')
-              : (de ? 'Keine ausstehenden Anfragen' : 'No pending requests'),
-            status: pendingApprovals > 0 ? (de ? 'Aktion nötig' : 'Action needed') : (de ? 'Alles klar' : 'All clear'),
-            statusColor: pendingApprovals > 0 ? '#f59e0b' : '#22c55e',
-            accent: pendingApprovals > 0 ? '#f59e0b' : '#22c55e',
-            hasPersistentHover: pendingApprovals > 0,
-            cta: pendingApprovals > 0 ? (de ? 'Prüfen →' : 'Review →') : undefined,
-            onClick: () => navigate('/approvals'),
-          },
-        ];
-
-        return <BentoGrid items={bentoItems} columns={3} />;
-      })()}
-
-      {/* ── Mission Control ── */}
+      {/* ── My Team ── */}
       <MissionControl
         initialAgents={alleExperten}
         unternehmenId={aktivesUnternehmen.id}
@@ -2479,11 +2476,11 @@ export function Dashboard() {
             <Link to="/tasks" style={{
               display: 'flex', alignItems: 'center', gap: '0.375rem',
               fontSize: '0.8125rem', color: '#64748b', textDecoration: 'none',
-              padding: '0.375rem 0.75rem', borderRadius: '8px',
+              padding: '0.375rem 0.75rem', borderRadius: 0,
               border: '1px solid rgba(255,255,255,0.07)',
               transition: 'color 0.15s, border-color 0.15s',
             }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#23CDCB'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(35,205,202,0.3)'; }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#c5a059'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(197,160,89,0.3)'; }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#64748b'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.07)'; }}
             >
               {lang === 'de' ? 'Alle anzeigen' : 'View all'} <ArrowRight size={12} />
@@ -2497,9 +2494,9 @@ export function Dashboard() {
                 {lang === 'de' ? 'Noch keine Aufgaben' : 'No tasks yet'}
               </p>
               <button onClick={() => navigate('/tasks')} style={{
-                marginTop: '1rem', padding: '0.5rem 1rem', borderRadius: '10px',
-                background: 'rgba(35,205,202,0.1)', border: '1px solid rgba(35,205,202,0.2)',
-                color: '#23CDCB', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600,
+                marginTop: '1rem', padding: '0.5rem 1rem', borderRadius: 0,
+                background: 'rgba(197,160,89,0.1)', border: '1px solid rgba(197,160,89,0.2)',
+                color: '#c5a059', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600,
               }}>
                 {lang === 'de' ? 'Erste Aufgabe anlegen' : 'Create first task'}
               </button>
@@ -2516,9 +2513,9 @@ export function Dashboard() {
                 ].filter(s => s.value > 0).map(s => (
                   <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                     <span style={{ fontSize: '0.6875rem', color: '#475569', width: 56, flexShrink: 0 }}>{s.label}</span>
-                    <div style={{ flex: 1, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                    <div style={{ flex: 1, height: 4, borderRadius: 0, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
                       <div style={{
-                        height: '100%', borderRadius: 2, background: s.color,
+                        height: '100%', borderRadius: 0, background: s.color,
                         width: `${Math.round((s.value / aufgaben.gesamt) * 100)}%`,
                         transition: 'width 0.5s ease',
                       }} />
@@ -2562,23 +2559,20 @@ export function Dashboard() {
       </div>
 
       {/* ── System Pulse (Live Trace) ── */}
-      {letzteTrace.length > 0 && (
-        <SystemPulse
-          unternehmenId={aktivesUnternehmen.id}
-          initialTrace={letzteTrace}
-          lang={lang}
-        />
-      )}
+      <SystemPulse
+        unternehmenId={aktivesUnternehmen.id}
+        lang={lang}
+      />
 
       {/* ── Quick actions ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
         {[
-          { icon: Plus,         label: lang === 'de' ? 'Neue Aufgabe'   : 'New Task',         to: '/tasks',        accent: '#23CDCB' },
+          { icon: Plus,         label: lang === 'de' ? 'Neue Aufgabe'   : 'New Task',         to: '/tasks',        accent: '#c5a059' },
           { icon: Users,        label: lang === 'de' ? 'Team verwalten' : 'Manage Team',       to: '/experts',      accent: '#6366f1' },
           { icon: ShieldCheck,  label: lang === 'de' ? 'Genehmigungen'  : 'Approvals',         to: '/approvals',    accent: '#f59e0b', badge: pendingApprovals > 0 ? pendingApprovals : undefined },
           { icon: Zap,          label: lang === 'de' ? 'Routinen'       : 'Routines',           to: '/routines',     accent: '#22c55e' },
-          { icon: FolderOpen,   label: lang === 'de' ? 'Projekte'       : 'Projects',           to: '/projects',     accent: '#8b5cf6' },
-          { icon: Brain,        label: lang === 'de' ? 'Intelligence'   : 'Intelligence',       to: '/intelligence', accent: '#a855f7' },
+          { icon: FolderOpen,   label: lang === 'de' ? 'Projekte'       : 'Projects',           to: '/projects',     accent: '#9b87c8' },
+          { icon: Brain,        label: lang === 'de' ? 'Wissensbasis'   : 'Knowledge',          to: '/company-knowledge', accent: '#9b87c8' },
           { icon: MessageSquare,label: lang === 'de' ? 'Meetings'       : 'Meetings',           to: '/meetings',     accent: '#6366f1' },
           { icon: Clock,        label: lang === 'de' ? 'Aktivität'      : 'Activity',           to: '/activity',     accent: '#3b82f6' },
         ].map(item => (

@@ -1,7 +1,7 @@
 // Heartbeat Actions Worker — bash execution, JSON actions, work products for worker agents
 
 import { db } from '../../db/client.js';
-import { kommentare } from '../../db/schema.js';
+import { comments } from '../../db/schema.js';
 import { v4 as uuid } from 'uuid';
 import { recordWorkProducts } from './dependencies.js';
 
@@ -11,8 +11,8 @@ import { recordWorkProducts } from './dependencies.js';
  */
 export async function processWorkerActions(
   taskId: string,
-  expertId: string,
-  unternehmenId: string,
+  agentId: string,
+  companyId: string,
   runId: string,
   output: string,
   workspacePath?: string
@@ -21,28 +21,28 @@ export async function processWorkerActions(
   const bashMatch = output.match(/```(?:bash|sh|shell)?\n([\s\S]*?)```/);
   if (bashMatch) {
     const code = bashMatch[1].trim();
-    console.log(`  ⚡ Executing autonomous bash action for ${expertId}...`);
+    console.log(`  ⚡ Executing autonomous bash action for ${agentId}...`);
 
     const bashAdapter = (await import('../../adapters/bash.js')).createBashAdapter();
     const res = await bashAdapter.execute(
-      { id: taskId, titel: 'Autonomous Action', beschreibung: code, status: 'in_progress', prioritaet: 'medium' },
+      { id: taskId, title: 'Autonomous Action', description: code, status: 'in_progress', priority: 'medium' },
       {} as any,
-      { expertId, unternehmenId, runId, workspacePath }
+      { agentId, companyId, runId, workspacePath }
     );
 
     // Log the action result
-    await db.insert(kommentare).values({
+    await db.insert(comments).values({
       id: uuid(),
-      unternehmenId,
-      aufgabeId: taskId,
-      autorExpertId: expertId,
-      autorTyp: 'agent',
-      inhalt: `### 🛠️ AUTONOME AKTION AUSGEFÜHRT\n\n**Befehl:**\n\`\`\`bash\n${code}\n\`\`\`\n\n**Ergebnis:**\n\`\`\`\n${res.output || res.error}\n\`\`\``,
-      erstelltAm: new Date().toISOString(),
+      companyId,
+      taskId: taskId,
+      authorAgentId: agentId,
+      authorType: 'agent',
+      content: `### 🛠️ AUTONOME AKTION AUSGEFÜHRT\n\n**Befehl:**\n\`\`\`bash\n${code}\n\`\`\`\n\n**Ergebnis:**\n\`\`\`\n${res.output || res.error}\n\`\`\``,
+      createdAt: new Date().toISOString(),
     });
 
     // Record any newly created files
-    await recordWorkProducts(taskId, expertId, unternehmenId, runId, workspacePath ?? null);
+    await recordWorkProducts(taskId, agentId, companyId, runId, workspacePath ?? null);
   }
 
   // 2. Check for JSON actions (e.g. create_task, hire_agent)
@@ -54,7 +54,7 @@ export async function processWorkerActions(
       // Support status updates from workers
       if (parsed.action === 'update_task_status' || (parsed.actions && parsed.actions.some((a: any) => a.type === 'update_task_status'))) {
          // Logic to handle worker status decisions
-         console.log(`  📝 Worker ${expertId} requested status update.`);
+         console.log(`  📝 Worker ${agentId} requested status update.`);
       }
     } catch (e) {
       // Ignore invalid JSON

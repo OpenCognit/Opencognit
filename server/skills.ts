@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { db } from './db/client.js';
 import { v4 as uuid } from 'uuid';
-import { chatNachrichten, aktivitaetslog, experten, unternehmen } from './db/schema.js';
+import { chatMessages, activityLog, agents, companies } from './db/schema.js';
 import { eq } from 'drizzle-orm';
 import { mcpClient } from './services/mcpClient.js';
 
@@ -26,7 +26,7 @@ function isInsideAppDir(dir: string): boolean {
 
 /**
  * Resolves the effective working directory for an agent.
- * Priority: taskWorkspacePath → agent.verbindungsConfig.workDir → company.workDir → data/workspaces/<companyId>
+ * Priority: taskWorkspacePath → agent.connectionConfig.workDir → company.workDir → data/workspaces/<companyId>
  *
  * Any path that resolves to inside the OpenCognit app directory (except data/workspaces/)
  * is rejected to prevent agents from overwriting the application itself.
@@ -55,9 +55,9 @@ export function resolveWorkDir(expertId: string, unternehmenId: string, taskWork
 
   // 2. Agent-level override (in verbindungsConfig.workDir)
   try {
-    const expert = db.select().from(experten).where(eq(experten.id, expertId)).get() as any;
-    if (expert?.verbindungsConfig) {
-      const config = JSON.parse(expert.verbindungsConfig);
+    const expert = db.select().from(agents).where(eq(agents.id, expertId)).get() as any;
+    if (expert?.connectionConfig) {
+      const config = JSON.parse(expert.connectionConfig);
       if (config.workDir) {
         const safe = guardPath(config.workDir, 'Agent-WorkDir');
         if (safe && fs.existsSync(safe)) return safe;
@@ -67,7 +67,7 @@ export function resolveWorkDir(expertId: string, unternehmenId: string, taskWork
 
   // 3. Company-level (global default) — auto-create if configured but missing
   try {
-    const company = db.select().from(unternehmen).where(eq(unternehmen.id, unternehmenId)).get() as any;
+    const company = db.select().from(companies).where(eq(companies.id, unternehmenId)).get() as any;
     if (company?.workDir) {
       const safe = guardPath(company.workDir, 'Company-WorkDir');
       if (safe) {
@@ -236,27 +236,27 @@ export async function executeSkill(expertId: string, unternehmenId: string, acti
 
   // Store in database as System Observation
   const msgId = uuid();
-  db.insert(chatNachrichten).values({
+  db.insert(chatMessages).values({
     id: msgId,
     unternehmenId,
     expertId,
-    absenderTyp: 'system',
-    nachricht: `[SYSTEM BEOBACHTUNG - ${action.toUpperCase()}]\n${result}`,
+    senderType: 'system',
+    message: `[SYSTEM BEOBACHTUNG - ${action.toUpperCase()}]\n${result}`,
     gelesen: false,
     erstelltAm: new Date().toISOString()
   }).run();
 
   // Log to Activity
   if (logAction) {
-    db.insert(aktivitaetslog).values({
+    db.insert(activityLog).values({
       id: uuid(),
       unternehmenId,
-      akteurTyp: 'agent',
-      akteurId: expertId,
-      aktion: logAction,
+      actorType: 'agent',
+      actorId: expertId,
+      action: logAction,
       entitaetTyp: 'skill',
       entitaetId: action,
-      erstelltAm: new Date().toISOString()
+      createdAt: new Date().toISOString()
     }).run();
   }
   

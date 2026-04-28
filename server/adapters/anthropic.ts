@@ -7,7 +7,7 @@ const MAX_ITERATIONS = 15;
 
 export class AnthropicAdapter implements ExpertAdapter {
   name = 'anthropic';
-  beschreibung = 'Anthropic Claude API (claude-3-5-sonnet, claude-3-haiku, etc.)';
+  description = 'Anthropic Claude API (claude-3-5-sonnet, claude-3-haiku, etc.)';
 
   async isAvailable(): Promise<boolean> {
     return true;
@@ -19,8 +19,8 @@ export class AnthropicAdapter implements ExpertAdapter {
 
     let model = 'claude-haiku-4-5-20251001';
     try {
-      if (options.verbindungsConfig) {
-        const config = JSON.parse(options.verbindungsConfig);
+      if (options.connectionConfig) {
+        const config = JSON.parse(options.connectionConfig);
         if (config.model) model = config.model;
       }
     } catch {
@@ -30,9 +30,9 @@ export class AnthropicAdapter implements ExpertAdapter {
     if (!options.apiKey) {
       return {
         success: false,
-        ausgabe: '',
-        fehler: 'Kein Anthropic API Key in den Systemeinstellungen hinterlegt.',
-        dauer: Date.now() - startTime,
+        output: '',
+        error: 'Kein Anthropic API Key in den Systemeinstellungen hinterlegt.',
+        duration: Date.now() - startTime,
       };
     }
 
@@ -90,9 +90,9 @@ export class AnthropicAdapter implements ExpertAdapter {
       } catch (e: any) {
         return {
           success: false,
-          ausgabe: finalOutput,
-          fehler: `Verbindungsfehler zu Anthropic: ${e.message}`,
-          dauer: Date.now() - startTime,
+          output: finalOutput,
+          error: `Verbindungsfehler zu Anthropic: ${e.message}`,
+          duration: Date.now() - startTime,
         };
       }
 
@@ -154,13 +154,13 @@ export class AnthropicAdapter implements ExpertAdapter {
     // Haiku 4.5: ~$0.80/$4 per 1M, Sonnet 4.6: ~$3/$15 per 1M, Opus 4.6: ~$15/$75 per 1M
     const inputRate = model.includes('haiku') ? 0.0008 : model.includes('opus') ? 0.015 : 0.003;
     const outputRate = model.includes('haiku') ? 0.004 : model.includes('opus') ? 0.075 : 0.015;
-    const kostenCent = Math.ceil((totalInputTokens * inputRate + totalOutputTokens * outputRate) / 100);
+    const costCent = Math.ceil((totalInputTokens * inputRate + totalOutputTokens * outputRate) / 100);
 
     return {
       success: true,
-      ausgabe: finalOutput,
-      dauer: Date.now() - startTime,
-      tokenVerbrauch: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, kostenCent },
+      output: finalOutput,
+      duration: Date.now() - startTime,
+      tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, costCent },
     };
   }
 }

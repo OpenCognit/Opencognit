@@ -7,7 +7,7 @@ import { apiExperten, type Experte } from '../api/client';
 
 function authFetch(url: string) {
   const token = localStorage.getItem('opencognit_token');
-  return fetch(url, { headers: { Authorization: token ? `Bearer ${token}` : '' } });
+  return fetch(url, { credentials: 'include', headers: { Authorization: token ? `Bearer ${token}` : '' } });
 }
 
 function centZuEuro(cent: number) {
@@ -52,8 +52,8 @@ function MiniBar({ values }: { values: number[] }) {
         <div key={i} title={`${days[i]}: ${v}`} style={{
           width: 10,
           height: Math.max(3, Math.round((v / max) * 28)),
-          background: v > 0 ? `rgba(35,205,202,${0.3 + (v / max) * 0.7})` : 'rgba(255,255,255,0.06)',
-          borderRadius: 2,
+          background: v > 0 ? `rgba(197,160,89,${0.3 + (v / max) * 0.7})` : 'rgba(255,255,255,0.06)',
+          borderRadius: 0,
           transition: 'height 0.4s ease',
         }} />
       ))}
@@ -188,7 +188,7 @@ export function Performance() {
 
   const SortIndicator = ({ k }: { k: SortKey }) => {
     if (sortKey !== k) return <ChevronDown size={12} style={{ opacity: 0.3 }} />;
-    return sortDir === 'desc' ? <ChevronDown size={12} style={{ color: '#23CDCB' }} /> : <ChevronUp size={12} style={{ color: '#23CDCB' }} />;
+    return sortDir === 'desc' ? <ChevronDown size={12} style={{ color: '#c5a059' }} /> : <ChevronUp size={12} style={{ color: '#c5a059' }} />;
   };
 
   if (!aktivesUnternehmen) return null;
@@ -199,7 +199,7 @@ export function Performance() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 32 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(245,158,11,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: 40, height: 40, borderRadius: 0, background: 'rgba(245,158,11,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Trophy size={20} style={{ color: '#f59e0b' }} />
             </div>
             <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, background: 'linear-gradient(135deg, #f59e0b, #ef4444)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
@@ -216,7 +216,7 @@ export function Performance() {
           style={{
             display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px',
             background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)',
-            borderRadius: 10, cursor: 'pointer', fontSize: 13, color: 'var(--color-text-secondary)',
+            borderRadius: 0, cursor: 'pointer', fontSize: 13, color: 'var(--color-text-secondary)',
             transition: 'all 0.15s',
           }}
         >
@@ -236,18 +236,18 @@ export function Performance() {
             color: '#22c55e',
           },
           {
-            icon: <Zap size={20} style={{ color: '#23CDCB' }} />,
+            icon: <Zap size={20} style={{ color: '#c5a059' }} />,
             label: de ? 'Ø Erfolgsrate' : 'Avg. Success Rate',
             value: `${avgSuccessRate}%`,
             sub: de ? 'aller Agenten' : 'all agents',
-            color: '#23CDCB',
+            color: '#c5a059',
           },
           {
-            icon: <Bot size={20} style={{ color: '#a855f7' }} />,
+            icon: <Bot size={20} style={{ color: '#9b87c8' }} />,
             label: de ? 'Zyklen gesamt' : 'Total Cycles',
             value: totalCycles,
             sub: de ? 'letzte 30 Tage' : 'last 30 days',
-            color: '#a855f7',
+            color: '#9b87c8',
           },
           {
             icon: <Wallet size={20} style={{ color: '#f59e0b' }} />,
@@ -258,8 +258,8 @@ export function Performance() {
           },
         ].map((kpi, i) => (
           <div key={i} style={{
-            padding: 20, borderRadius: 16,
-            background: `rgba(${kpi.color === '#22c55e' ? '34,197,94' : kpi.color === '#23CDCB' ? '35,205,202' : kpi.color === '#a855f7' ? '168,85,247' : '245,158,11'},0.04)`,
+            padding: 20, borderRadius: 0,
+            background: `rgba(${kpi.color === '#22c55e' ? '34,197,94' : kpi.color === '#c5a059' ? '197,160,89' : kpi.color === '#9b87c8' ? '155,135,200' : '245,158,11'},0.04)`,
             border: `1px solid ${kpi.color}22`,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
@@ -276,10 +276,10 @@ export function Performance() {
       {evolution && evolution.length > 0 && (
         <div style={{
           background: 'rgba(255,255,255,0.02)', border: '1px solid var(--color-border)',
-          borderRadius: 20, padding: '20px 24px', marginBottom: 24,
+          borderRadius: 0, padding: '20px 24px', marginBottom: 24,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-            <TrendingUp size={16} style={{ color: '#23CDCB' }} />
+            <TrendingUp size={16} style={{ color: '#c5a059' }} />
             <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>
               {de ? 'Agenten-Evolution' : 'Agent Evolution'}
             </h2>
@@ -300,14 +300,14 @@ export function Performance() {
                 const good = invert ? val > 0 : val < 0;
                 const c = Math.abs(val) < 1 ? 'var(--color-text-muted)' : good ? '#22c55e' : '#ef4444';
                 return (
-                  <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: `${c}22`, color: c, border: `1px solid ${c}44` }}>
+                  <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 0, background: `${c}22`, color: c, border: `1px solid ${c}44` }}>
                     {label} {val > 0 ? '+' : ''}{val.toFixed(0)}%
                   </span>
                 );
               };
               return (
                 <div key={e.current.expertId} style={{
-                  padding: '12px 14px', borderRadius: 12,
+                  padding: '12px 14px', borderRadius: 0,
                   background: 'rgba(255,255,255,0.02)', border: '1px solid var(--color-border)',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -334,7 +334,7 @@ export function Performance() {
       )}
 
       {/* Leaderboard */}
-      <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--color-border)', borderRadius: 20, overflow: 'hidden' }}>
+      <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--color-border)', borderRadius: 0, overflow: 'hidden' }}>
         <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 10 }}>
           <Trophy size={16} style={{ color: '#f59e0b' }} />
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{de ? 'Agenten-Leaderboard' : 'Agent Leaderboard'}</h2>
@@ -345,7 +345,7 @@ export function Performance() {
 
         {loading ? (
           <div style={{ padding: 60, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>
-            <div style={{ width: 32, height: 32, border: '2px solid var(--color-border)', borderTopColor: '#23CDCB', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+            <div style={{ width: 32, height: 32, border: '2px solid var(--color-border)', borderTopColor: '#c5a059', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
             {de ? 'Lade Performance-Daten...' : 'Loading performance data...'}
           </div>
         ) : sorted.length === 0 ? (
@@ -362,17 +362,17 @@ export function Performance() {
             }}>
               <div style={{ textAlign: 'center' }}>#</div>
               <div>{de ? 'Agent' : 'Agent'}</div>
-              <button onClick={() => toggleSort('tasksDone')} style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'none', border: 'none', color: sortKey === 'tasksDone' ? '#23CDCB' : 'var(--color-text-muted)', cursor: 'pointer', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+              <button onClick={() => toggleSort('tasksDone')} style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'none', border: 'none', color: sortKey === 'tasksDone' ? '#c5a059' : 'var(--color-text-muted)', cursor: 'pointer', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
                 {de ? 'Erledigt' : 'Done'} <SortIndicator k="tasksDone" />
               </button>
-              <button onClick={() => toggleSort('totalCycles')} style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'none', border: 'none', color: sortKey === 'totalCycles' ? '#23CDCB' : 'var(--color-text-muted)', cursor: 'pointer', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+              <button onClick={() => toggleSort('totalCycles')} style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'none', border: 'none', color: sortKey === 'totalCycles' ? '#c5a059' : 'var(--color-text-muted)', cursor: 'pointer', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
                 {de ? 'Zyklen' : 'Cycles'} <SortIndicator k="totalCycles" />
               </button>
-              <button onClick={() => toggleSort('successRate')} style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'none', border: 'none', color: sortKey === 'successRate' ? '#23CDCB' : 'var(--color-text-muted)', cursor: 'pointer', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+              <button onClick={() => toggleSort('successRate')} style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'none', border: 'none', color: sortKey === 'successRate' ? '#c5a059' : 'var(--color-text-muted)', cursor: 'pointer', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
                 {de ? 'Erfolg' : 'Success'} <SortIndicator k="successRate" />
               </button>
               <div>{de ? 'Aktivität (7T)' : 'Activity (7d)'}</div>
-              <button onClick={() => toggleSort('costPerTask')} style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'none', border: 'none', color: sortKey === 'costPerTask' ? '#23CDCB' : 'var(--color-text-muted)', cursor: 'pointer', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+              <button onClick={() => toggleSort('costPerTask')} style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'none', border: 'none', color: sortKey === 'costPerTask' ? '#c5a059' : 'var(--color-text-muted)', cursor: 'pointer', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
                 {de ? '€/Aufgabe' : '€/Task'} <SortIndicator k="costPerTask" />
               </button>
               <div>{de ? 'Trend' : 'Trend'}</div>
@@ -398,8 +398,8 @@ export function Performance() {
 
                   {/* Agent */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 10, background: (perf.expert.avatarFarbe || '#23CDCB') + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
-                      {perf.expert.avatar || <Bot size={18} style={{ color: perf.expert.avatarFarbe || '#23CDCB' }} />}
+                    <div style={{ width: 36, height: 36, borderRadius: 0, background: (perf.expert.avatarFarbe || '#c5a059') + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
+                      {perf.expert.avatar || <Bot size={18} style={{ color: perf.expert.avatarFarbe || '#c5a059' }} />}
                     </div>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -428,8 +428,8 @@ export function Performance() {
                     <div style={{ fontSize: 16, fontWeight: 700, color: successColor }}>
                       {perf.totalCycles > 0 ? `${perf.successRate}%` : '—'}
                     </div>
-                    <div style={{ height: 3, width: '60%', margin: '4px auto 0', background: 'rgba(255,255,255,0.07)', borderRadius: 2, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${perf.successRate}%`, background: successColor, borderRadius: 2 }} />
+                    <div style={{ height: 3, width: '60%', margin: '4px auto 0', background: 'rgba(255,255,255,0.07)', borderRadius: 0, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${perf.successRate}%`, background: successColor, borderRadius: 0 }} />
                     </div>
                   </div>
 
@@ -463,7 +463,7 @@ export function Performance() {
       {!loading && agents.length > 0 && (
         <div style={{ marginTop: 24, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           {/* Status breakdown */}
-          <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--color-border)', borderRadius: 16, padding: 20 }}>
+          <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--color-border)', borderRadius: 0, padding: 20 }}>
             <h3 style={{ margin: '0 0 16px', fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)' }}>
               {de ? 'Agenten-Status' : 'Agent Status'}
             </h3>
@@ -482,8 +482,8 @@ export function Performance() {
                   <div key={status} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
                     <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', minWidth: 60 }}>{label}</div>
-                    <div style={{ flex: 1, height: 6, background: 'rgba(255,255,255,0.05)', borderRadius: 3, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 3, transition: 'width 0.6s ease' }} />
+                    <div style={{ flex: 1, height: 6, background: 'rgba(255,255,255,0.05)', borderRadius: 0, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 0, transition: 'width 0.6s ease' }} />
                     </div>
                     <div style={{ fontSize: 12, fontWeight: 600, color, minWidth: 20, textAlign: 'right' }}>{cnt}</div>
                   </div>
@@ -493,7 +493,7 @@ export function Performance() {
           </div>
 
           {/* Top performers summary */}
-          <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--color-border)', borderRadius: 16, padding: 20 }}>
+          <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--color-border)', borderRadius: 0, padding: 20 }}>
             <h3 style={{ margin: '0 0 16px', fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)' }}>
               {de ? 'Top Performer' : 'Top Performers'}
             </h3>
@@ -503,7 +503,7 @@ export function Performance() {
                   <span style={{ fontSize: 14, minWidth: 20 }}>
                     {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}
                   </span>
-                  <div style={{ width: 24, height: 24, borderRadius: 6, background: (perf.expert.avatarFarbe || '#23CDCB') + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0 }}>
+                  <div style={{ width: 24, height: 24, borderRadius: 0, background: (perf.expert.avatarFarbe || '#c5a059') + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0 }}>
                     {perf.expert.avatar || '🤖'}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>

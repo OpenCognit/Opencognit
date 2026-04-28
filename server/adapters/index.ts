@@ -9,7 +9,11 @@ import { AnthropicAdapter } from './anthropic.js';
 import { CustomAdapter } from './custom.js';
 import { CodexCLIAdapter } from './codex-cli.js';
 import { GeminiCLIAdapter } from './gemini-cli.js';
+import { KimiCLIAdapter } from './kimi-cli.js';
 import { ClaudeCodeAdapter } from './claude-code.js';
+import { PoeAdapter } from './poe.js';
+import { GoogleAdapter } from './google.js';
+import { MoonshotAdapter } from './moonshot.js';
 import type { ExpertAdapter } from './types.js';
 
 export * from './types.js';
@@ -28,7 +32,11 @@ const adapters: Record<string, any> = {
   custom: new CustomAdapter(),
   'codex-cli': new CodexCLIAdapter(),
   'gemini-cli': new GeminiCLIAdapter(),
+  'kimi-cli': new KimiCLIAdapter(),
   'claude-code': new ClaudeCodeAdapter(),
+  'poe': new PoeAdapter(),
+  'google': new GoogleAdapter(),
+  'moonshot': new MoonshotAdapter(),
 };
 
 export function getAdapter(type: string): ExpertAdapter | undefined {

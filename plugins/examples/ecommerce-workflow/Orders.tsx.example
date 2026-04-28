@@ -1,0 +1,469 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { useCompany } from '../hooks/useCompany';
+import { request } from '../api/client';
+import {
+  ShoppingCart, Package, CheckCircle, Clock, XCircle,
+  Download, FileText, RefreshCw, Filter, Search, ArrowUpDown,
+  Euro, User, Calendar, Truck, CreditCard, ChevronDown, ChevronRight,
+  AlertCircle, ListTodo
+} from 'lucide-react';
+
+interface OrderItem {
+  id: string;
+  productName: string;
+  productSku?: string;
+  menge: number;
+  einzelpreisCent: number;
+  gesamtpreisCent: number;
+  steuersatzProzent: number;
+}
+
+interface Customer {
+  id: string;
+  name: string;
+  email?: string;
+  telefon?: string;
+  adresse?: string;
+  stadt?: string;
+  plz?: string;
+  land?: string;
+}
+
+interface Order {
+  id: string;
+  externalOrderId?: string;
+  status: string;
+  zahlungsStatus: string;
+  zahlungsMethode?: string;
+  gesamtCent: number;
+  zwischensummeCent: number;
+  steuerCent: number;
+  versandCent: number;
+  rabattCent: number;
+  waehrung: string;
+  quelle: string;
+  versandName?: string;
+  versandAdresse?: string;
+  versandStadt?: string;
+  versandPlz?: string;
+  versandLand?: string;
+  taskId?: string;
+  invoiceId?: string;
+  erstelltAm: string;
+  aktualisiertAm: string;
+  items?: OrderItem[];
+  customer?: Customer | null;
+}
+
+function formatCurrency(cents: number, currency: string = 'EUR'): string {
+  const symbol = currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency;
+  return `${(cents / 100).toFixed(2)} ${symbol}`;
+}
+
+function statusIcon(status: string) {
+  switch (status) {
+    case 'pending': return <Clock size={14} className="text-amber-400" />;
+    case 'confirmed': return <CheckCircle size={14} className="text-emerald-400" />;
+    case 'processing': return <RefreshCw size={14} className="text-blue-400" />;
+    case 'shipped': return <Truck size={14} className="text-cyan-400" />;
+    case 'delivered': return <CheckCircle size={14} className="text-emerald-500" />;
+    case 'cancelled': return <XCircle size={14} className="text-red-400" />;
+    case 'refunded': return <AlertCircle size={14} className="text-orange-400" />;
+    default: return <Clock size={14} className="text-gray-400" />;
+  }
+}
+
+function statusLabel(status: string): string {
+  const map: Record<string, string> = {
+    pending: 'Ausstehend',
+    confirmed: 'Bestätigt',
+    processing: 'In Bearbeitung',
+    shipped: 'Versendet',
+    delivered: 'Geliefert',
+    cancelled: 'Storniert',
+    refunded: 'Rückerstattet',
+  };
+  return map[status] || status;
+}
+
+function paymentStatusColor(status: string): string {
+  switch (status) {
+    case 'paid': return 'text-emerald-400';
+    case 'pending': return 'text-amber-400';
+    case 'failed': return 'text-red-400';
+    case 'refunded': return 'text-orange-400';
+    default: return 'text-gray-400';
+  }
+}
+
+function sourceBadge(quelle: string): string {
+  const map: Record<string, string> = {
+    shopify: 'Shopify',
+    woocommerce: 'WooCommerce',
+    manual: 'Manuell',
+    webhook: 'Webhook',
+    api: 'API',
+  };
+  return map[quelle] || quelle;
+}
+
+export function Orders() {
+  const { aktivesUnternehmen: activeCompany } = useCompany();
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
+  const [generatingInvoice, setGeneratingInvoice] = useState<string | null>(null);
+
+  const fetchOrders = useCallback(async () => {
+    if (!activeCompany) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const url = statusFilter
+        ? `/unternehmen/${activeCompany.id}/orders?status=${statusFilter}`
+        : `/unternehmen/${activeCompany.id}/orders`;
+      const data = await request<Order[]>(url);
+      setOrders(data || []);
+    } catch (e: any) {
+      setError(e.message || 'Fehler beim Laden');
+    } finally {
+      setLoading(false);
+    }
+  }, [activeCompany, statusFilter]);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
+
+  const createInvoice = async (orderId: string) => {
+    if (!activeCompany) return;
+    setGeneratingInvoice(orderId);
+    try {
+      await request(`/unternehmen/${activeCompany.id}/orders/${orderId}/invoice`, {
+        method: 'POST',
+        body: JSON.stringify({
+          companyName: activeCompany.name,
+          companyAddress: activeCompany.beschreibung || 'Musterstraße 1',
+          companyCity: '12345 Musterstadt',
+          companyTaxId: 'DE123456789',
+        }),
+      });
+      fetchOrders();
+    } catch (e: any) {
+      alert('Fehler: ' + (e.message || 'Rechnung konnte nicht erstellt werden'));
+    } finally {
+      setGeneratingInvoice(null);
+    }
+  };
+
+  const downloadInvoice = async (invoiceId: string) => {
+    if (!activeCompany) return;
+    try {
+      const response = await fetch(`/api/unternehmen/${activeCompany.id}/invoices/${invoiceId}/pdf`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('opencognit_token') || ''}` },
+      });
+      if (!response.ok) throw new Error('PDF nicht gefunden');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Rechnung-${invoiceId}.pdf`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert('Fehler: ' + e.message);
+    }
+  };
+
+  const filteredOrders = orders.filter(o => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      o.externalOrderId?.toLowerCase().includes(q) ||
+      o.customer?.name?.toLowerCase().includes(q) ||
+      o.customer?.email?.toLowerCase().includes(q) ||
+      o.versandName?.toLowerCase().includes(q)
+    );
+  });
+
+  const totals = {
+    pending: orders.filter(o => o.status === 'pending').length,
+    processing: orders.filter(o => o.status === 'processing').length,
+    totalRevenue: orders.reduce((sum, o) => sum + (o.zahlungsStatus === 'paid' ? o.gesamtCent : 0), 0),
+  };
+
+  return (
+    <div style={{ padding: '2rem', maxWidth: 1400, margin: '0 auto' }}>
+      {/* Header */}
+      <div style={{ marginBottom: '2rem' }}>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <ShoppingCart size={28} style={{ color: '#c5a059' }} />
+          Bestellungen
+        </h1>
+        <p style={{ color: 'var(--muted-foreground)', fontSize: '0.875rem' }}>
+          Eingehende Bestellungen aus deinem Shop — automatisch an Agenten delegiert
+        </p>
+      </div>
+
+      {/* Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+        <div className="card" style={{ padding: '1.25rem' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', marginBottom: '0.5rem' }}>Ausstehend</div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#c5a059' }}>{totals.pending}</div>
+        </div>
+        <div className="card" style={{ padding: '1.25rem' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', marginBottom: '0.5rem' }}>In Bearbeitung</div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#3b82f6' }}>{totals.processing}</div>
+        </div>
+        <div className="card" style={{ padding: '1.25rem' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', marginBottom: '0.5rem' }}>Bezahlte Einnahmen</div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#10b981' }}>{formatCurrency(totals.totalRevenue)}</div>
+        </div>
+        <div className="card" style={{ padding: '1.25rem' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', marginBottom: '0.5rem' }}>Gesamtbestellungen</div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 700 }}>{orders.length}</div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 240 }}>
+          <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#888' }} />
+          <input
+            type="text"
+            placeholder="Bestellung suchen..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            style={{
+              width: '100%', padding: '0.6rem 0.75rem 0.6rem 2.25rem',
+              background: 'var(--card)', border: '1px solid rgba(255,255,255,0.08)',
+              color: 'var(--foreground)', fontSize: '0.875rem',
+            }}
+          />
+        </div>
+        <select
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value)}
+          style={{
+            padding: '0.6rem 0.75rem', background: 'var(--card)',
+            border: '1px solid rgba(255,255,255,0.08)', color: 'var(--foreground)',
+            fontSize: '0.875rem',
+          }}
+        >
+          <option value="">Alle Status</option>
+          <option value="pending">Ausstehend</option>
+          <option value="confirmed">Bestätigt</option>
+          <option value="processing">In Bearbeitung</option>
+          <option value="shipped">Versendet</option>
+          <option value="delivered">Geliefert</option>
+          <option value="cancelled">Storniert</option>
+        </select>
+        <button className="btn btn-primary" onClick={fetchOrders} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <RefreshCw size={14} /> Aktualisieren
+        </button>
+      </div>
+
+      {/* Orders List */}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--muted-foreground)' }}>
+          <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite', marginBottom: '0.5rem' }} />
+          <div>Bestellungen werden geladen...</div>
+        </div>
+      ) : error ? (
+        <div className="card" style={{ padding: '2rem', textAlign: 'center', color: '#ef4444' }}>
+          <AlertCircle size={32} style={{ marginBottom: '0.5rem' }} />
+          <div>{error}</div>
+        </div>
+      ) : filteredOrders.length === 0 ? (
+        <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
+          <Package size={40} style={{ color: 'var(--muted-foreground)', marginBottom: '1rem' }} />
+          <div style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.5rem' }}>Keine Bestellungen</div>
+          <p style={{ color: 'var(--muted-foreground)', fontSize: '0.875rem' }}>
+            Bestellungen erscheinen hier, wenn sie über Webhook eingehen oder manuell erstellt werden.
+          </p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {filteredOrders.map(order => {
+            const isExpanded = expandedOrder === order.id;
+            return (
+              <div key={order.id} className="card" style={{ overflow: 'hidden' }}>
+                {/* Order Header Row */}
+                <div
+                  onClick={() => setExpandedOrder(isExpanded ? null : order.id)}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'auto 1fr auto auto auto auto auto auto',
+                    gap: '1rem',
+                    alignItems: 'center',
+                    padding: '1rem 1.25rem',
+                    cursor: 'pointer',
+                    borderBottom: isExpanded ? '1px solid rgba(255,255,255,0.06)' : 'none',
+                  }}
+                >
+                  {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>
+                      #{order.externalOrderId || order.id.slice(0, 8)}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>
+                      {sourceBadge(order.quelle)}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem' }}>
+                    {statusIcon(order.status)}
+                    {statusLabel(order.status)}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: paymentStatusColor(order.zahlungsStatus) }}>
+                    {order.zahlungsStatus}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <User size={12} />
+                    {order.customer?.name || order.versandName || '—'}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--muted-foreground)' }}>
+                    {order.items?.length || 0} Artikel
+                  </div>
+                  <div style={{ fontWeight: 700, fontSize: '0.95rem', textAlign: 'right', minWidth: 100 }}>
+                    {formatCurrency(order.gesamtCent, order.waehrung)}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', whiteSpace: 'nowrap' }}>
+                    {new Date(order.erstelltAm).toLocaleDateString('de-DE')}
+                  </div>
+                </div>
+
+                {/* Expanded Details */}
+                {isExpanded && (
+                  <div style={{ padding: '1.25rem', background: 'rgba(0,0,0,0.2)' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+                      {/* Customer Info */}
+                      <div>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#c5a059', marginBottom: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          Kunde
+                        </div>
+                        <div style={{ fontSize: '0.875rem', lineHeight: 1.6 }}>
+                          <div style={{ fontWeight: 600 }}>{order.customer?.name || order.versandName || '—'}</div>
+                          {order.customer?.email && <div style={{ color: 'var(--muted-foreground)' }}>{order.customer.email}</div>}
+                          {order.customer?.telefon && <div style={{ color: 'var(--muted-foreground)' }}>{order.customer.telefon}</div>}
+                          <div style={{ marginTop: '0.5rem' }}>
+                            {order.versandAdresse && <div>{order.versandAdresse}</div>}
+                            <div>{order.versandPlz} {order.versandStadt}</div>
+                            <div>{order.versandLand || 'DE'}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Order Details */}
+                      <div>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#c5a059', marginBottom: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          Bestelldetails
+                        </div>
+                        <div style={{ fontSize: '0.875rem', lineHeight: 1.8 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: 'var(--muted-foreground)' }}>Zahlung:</span>
+                            <span>{order.zahlungsMethode || '—'}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: 'var(--muted-foreground)' }}>Zwischensumme:</span>
+                            <span>{formatCurrency(order.zwischensummeCent, order.waehrung)}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: 'var(--muted-foreground)' }}>MwSt:</span>
+                            <span>{formatCurrency(order.steuerCent, order.waehrung)}</span>
+                          </div>
+                          {order.versandCent > 0 && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ color: 'var(--muted-foreground)' }}>Versand:</span>
+                              <span>{formatCurrency(order.versandCent, order.waehrung)}</span>
+                            </div>
+                          )}
+                          {order.rabattCent > 0 && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ color: 'var(--muted-foreground)' }}>Rabatt:</span>
+                              <span style={{ color: '#ef4444' }}>-{formatCurrency(order.rabattCent, order.waehrung)}</span>
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '0.5rem', marginTop: '0.25rem' }}>
+                            <span>Gesamt:</span>
+                            <span>{formatCurrency(order.gesamtCent, order.waehrung)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#c5a059', marginBottom: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          Aktionen
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          {order.taskId ? (
+                            <a href={`/tasks?id=${order.taskId}`} className="btn btn-secondary" style={{ fontSize: '0.8rem', justifyContent: 'flex-start' }}>
+                              <ListTodo size={14} /> Zum Agent-Task
+                            </a>
+                          ) : null}
+                          {!order.invoiceId ? (
+                            <button
+                              className="btn btn-primary"
+                              onClick={() => createInvoice(order.id)}
+                              disabled={generatingInvoice === order.id}
+                              style={{ fontSize: '0.8rem', justifyContent: 'flex-start' }}
+                            >
+                              {generatingInvoice === order.id ? (
+                                <><RefreshCw size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> Erstelle...</>
+                              ) : (
+                                <><FileText size={14} /> Rechnung erstellen</>
+                              )}
+                            </button>
+                          ) : (
+                            <button
+                              className="btn btn-secondary"
+                              onClick={() => downloadInvoice(order.invoiceId!)}
+                              style={{ fontSize: '0.8rem', justifyContent: 'flex-start' }}
+                            >
+                              <Download size={14} /> Rechnung herunterladen
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Items Table */}
+                    <div style={{ marginTop: '1rem' }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#c5a059', marginBottom: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        Artikel
+                      </div>
+                      <div style={{ border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 100px 100px 60px', gap: '0.5rem', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.03)', fontSize: '0.75rem', fontWeight: 600, color: 'var(--muted-foreground)' }}>
+                          <div>Artikel</div>
+                          <div style={{ textAlign: 'right' }}>Menge</div>
+                          <div style={{ textAlign: 'right' }}>Einzelpreis</div>
+                          <div style={{ textAlign: 'right' }}>Gesamt</div>
+                          <div style={{ textAlign: 'right' }}>MwSt</div>
+                        </div>
+                        {order.items?.map(item => (
+                          <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 100px 100px 60px', gap: '0.5rem', padding: '0.5rem 0.75rem', borderTop: '1px solid rgba(255,255,255,0.04)', fontSize: '0.8rem' }}>
+                            <div>
+                              <div>{item.productName}</div>
+                              {item.productSku && <div style={{ fontSize: '0.7rem', color: 'var(--muted-foreground)' }}>SKU: {item.productSku}</div>}
+                            </div>
+                            <div style={{ textAlign: 'right' }}>{item.menge}</div>
+                            <div style={{ textAlign: 'right' }}>{formatCurrency(item.einzelpreisCent)}</div>
+                            <div style={{ textAlign: 'right', fontWeight: 600 }}>{formatCurrency(item.gesamtpreisCent)}</div>
+                            <div style={{ textAlign: 'right', color: 'var(--muted-foreground)' }}>{item.steuersatzProzent}%</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

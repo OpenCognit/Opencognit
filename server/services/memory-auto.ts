@@ -11,7 +11,7 @@
  */
 
 import { db } from '../db/client.js';
-import { palaceWings, palaceDrawers, palaceDiary, palaceKg, experten } from '../db/schema.js';
+import { palaceWings, palaceDrawers, palaceDiary, palaceKg, agents } from '../db/schema.js';
 import { eq, and, isNull, desc } from 'drizzle-orm';
 import { v4 as uuid } from 'uuid';
 import { loadSummary, needsConsolidation, consolidateWing } from './memory-consolidation.js';
@@ -22,25 +22,25 @@ const today = () => now().split('T')[0];
 // ── Wing helpers ─────────────────────────────────────────────────────────────
 
 function getWing(expertId: string) {
-  return db.select().from(palaceWings).where(eq(palaceWings.expertId, expertId)).get() ?? null;
+  return db.select().from(palaceWings).where(eq(palaceWings.agentId, expertId)).get() ?? null;
 }
 
 function getOrCreateWingForExpert(expertId: string) {
   const existing = getWing(expertId);
   if (existing) return existing;
 
-  const expert = db.select().from(experten).where(eq(experten.id, expertId)).get();
+  const expert = db.select().from(agents).where(eq(agents.id, expertId)).get();
   if (!expert) return null;
 
   const wingName = expert.name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
   const id = uuid();
   db.insert(palaceWings).values({
     id,
-    unternehmenId: expert.unternehmenId,
-    expertId: expert.id,
+    companyId: expert.companyId,
+    agentId: expert.id,
     name: wingName || `agent_${id.slice(0, 8)}`,
-    erstelltAm: now(),
-    aktualisiertAm: now(),
+    createdAt: now(),
+    updatedAt: now(),
   }).run();
 
   return db.select().from(palaceWings).where(eq(palaceWings.id, id)).get() ?? null;
@@ -51,10 +51,10 @@ function saveDrawer(wingId: string, room: string, content: string) {
     id: uuid(),
     wingId,
     room,
-    inhalt: content,
-    erstelltAm: now(),
+    content: content,
+    createdAt: now(),
   }).run();
-  db.update(palaceWings).set({ aktualisiertAm: now() }).where(eq(palaceWings.id, wingId)).run();
+  db.update(palaceWings).set({ updatedAt: now() }).where(eq(palaceWings.id, wingId)).run();
 }
 
 function saveDiary(wingId: string, opts: { thought?: string; action?: string; knowledge?: string }) {
@@ -65,7 +65,7 @@ function saveDiary(wingId: string, opts: { thought?: string; action?: string; kn
     thought: opts.thought ?? null,
     action: opts.action ?? null,
     knowledge: opts.knowledge ?? null,
-    erstelltAm: now(),
+    createdAt: now(),
   }).run();
 }
 
@@ -79,14 +79,14 @@ function saveKg(unternehmenId: string, subject: string, predicate: string, objec
   }
   db.insert(palaceKg).values({
     id: uuid(),
-    unternehmenId,
+    companyId: unternehmenId,
     subject,
     predicate,
     object,
     validFrom: today(),
     validUntil: null,
-    erstelltVon: null,
-    erstelltAm: now(),
+    createdBy: null,
+    createdAt: now(),
   }).run();
 }
 
@@ -237,7 +237,7 @@ Beispiele:
   [REMEMBER:kontakte] Max Mustermann ist Ansprechpartner für API-Zugang
   [REMEMBER:projekt] Ziel: OAuth2-Integration bis Freitag
   [REMEMBER:erkenntnisse] Das API-Rate-Limit beträgt 100 req/min
-Erlaubte Räume: entscheidungen, kontakte, projekt, erkenntnisse, notizen, aufgaben, fehler`;
+Erlaubte Räume: entscheidungen, kontakte, projekt, erkenntnisse, notizen, tasks, fehler`;
 
 /**
  * Loads relevant Memory context for an agent before its cycle.
@@ -288,7 +288,7 @@ export function loadRelevantMemory(expertId: string, taskKeywords: string[]): st
     // 2. Recent raw diary entries (always include freshest, even if summary exists)
     const recentDiary = db.select().from(palaceDiary)
       .where(eq(palaceDiary.wingId, wing.id))
-      .orderBy(desc(palaceDiary.erstelltAm))
+      .orderBy(desc(palaceDiary.createdAt))
       .limit(summary ? 1 : 2)
       .all();
 
@@ -310,7 +310,7 @@ export function loadRelevantMemory(expertId: string, taskKeywords: string[]): st
     {
       const allDrawers = db.select().from(palaceDrawers)
         .where(eq(palaceDrawers.wingId, wing.id))
-        .orderBy(desc(palaceDrawers.erstelltAm))
+        .orderBy(desc(palaceDrawers.createdAt))
         .limit(50)  // larger candidate pool for better IDF stats
         .all();
 
@@ -318,13 +318,13 @@ export function loadRelevantMemory(expertId: string, taskKeywords: string[]): st
         const query = taskKeywords.join(' ');
         const ranked = rankByBm25(
           query,
-          allDrawers.map(d => ({ text: `${d.room} ${d.inhalt}`, item: d })),
+          allDrawers.map(d => ({ text: `${d.room} ${d.content}`, item: d })),
           summary ? 1 : 2,  // 1 drawer when summary exists, 2 when not
         );
 
         if (ranked.length > 0) {
           const drawerLines = ranked.map(({ item: d, score }) =>
-            `[${d.room}] ${d.inhalt.slice(0, 220)}`  // slightly more content
+            `[${d.room}] ${d.content.slice(0, 220)}`  // slightly more content
           );
           parts.push(`Relevantes Wissen:\n${drawerLines.join('\n')}`);
         }
@@ -332,7 +332,7 @@ export function loadRelevantMemory(expertId: string, taskKeywords: string[]): st
     }
 
     // 4. Active KG facts about this agent
-    const expert = db.select({ name: experten.name }).from(experten).where(eq(experten.id, expertId)).get() as any;
+    const expert = db.select({ name: agents.name }).from(agents).where(eq(agents.id, expertId)).get() as any;
     if (expert?.name) {
       const kgFacts = db.select().from(palaceKg)
         .where(and(eq(palaceKg.subject, expert.name), isNull(palaceKg.validUntil)))
@@ -380,7 +380,7 @@ const KNOWLEDGE_PATTERNS = [
 // Allowed rooms for [REMEMBER:room] protocol (safe list to avoid spam)
 const ALLOWED_REMEMBER_ROOMS = new Set([
   'entscheidungen', 'kontakte', 'projekt', 'erkenntnisse', 'notizen',
-  'aufgaben', 'fehler', 'task_ergebnisse', 'meeting_ergebnisse',
+  'tasks', 'fehler', 'task_ergebnisse', 'meeting_ergebnisse',
   'decisions', 'contacts', 'project', 'insights', 'notes', 'tasks', 'errors',
 ]);
 
@@ -420,13 +420,13 @@ function parseAndSaveKgTags(output: string, expertId: string, unternehmenId: str
 
     db.insert(palaceKg).values({
       id: uuid(),
-      unternehmenId,
+      companyId: unternehmenId,
       subject: subject.slice(0, 200),
       predicate: predicate.slice(0, 100),
       object: object.slice(0, 500),
       validFrom: today(),
-      erstelltVon: expertId,
-      erstelltAm: now(),
+      createdBy: expertId,
+      createdAt: now(),
     }).run();
     console.log(`🧠 KG [REMEMBER:kg]: "${subject}" → ${predicate} → "${object}"`);
     count++;
@@ -470,7 +470,7 @@ export async function autoSaveInsights(
     const wing = getOrCreateWingForExpert(expertId);
     if (!wing) return;
 
-    const expert = db.select({ name: experten.name }).from(experten).where(eq(experten.id, expertId)).get() as any;
+    const expert = db.select({ name: agents.name }).from(agents).where(eq(agents.id, expertId)).get() as any;
     const agentName = expert?.name || expertId;
 
     // 1a. Parse [REMEMBER:kg] tags → write directly to Knowledge Graph
@@ -568,8 +568,8 @@ export async function saveMeetingResult(
 
     // Build full summary text
     const expertNames = new Map<string, string>();
-    const allExperts = db.select({ id: experten.id, name: experten.name }).from(experten)
-      .where(eq(experten.unternehmenId, unternehmenId)).all();
+    const allExperts = db.select({ id: agents.id, name: agents.name }).from(agents)
+      .where(eq(agents.companyId, unternehmenId)).all();
     for (const e of allExperts as any[]) expertNames.set(e.id, e.name);
 
     const summaryLines = teilnehmerIds.map(id => {

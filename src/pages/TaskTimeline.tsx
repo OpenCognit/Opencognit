@@ -40,8 +40,8 @@ const kindColor = (kind: string) => {
   if (kind === 'run_succeeded' || kind === 'task_completed' || kind === 'approval_approved') return '#22c55e';
   if (kind === 'run_failed' || kind === 'task_cancelled' || kind === 'approval_rejected') return '#ef4444';
   if (kind === 'cost') return '#f59e0b';
-  if (kind === 'comment') return '#a855f7';
-  if (kind.startsWith('trace_')) return '#23CDCB';
+  if (kind === 'comment') return '#9b87c8';
+  if (kind.startsWith('trace_')) return '#c5a059';
   if (kind.startsWith('approval_')) return '#3b82f6';
   return '#94a3b8';
 };
@@ -99,7 +99,7 @@ export function TaskTimeline() {
 
   return (
     <div style={{ padding: '24px 32px', maxWidth: 1100, margin: '0 auto' }}>
-      <Link to="/tasks" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#23CDCB', textDecoration: 'none', fontSize: 13, marginBottom: 16 }}>
+      <Link to="/tasks" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#c5a059', textDecoration: 'none', fontSize: 13, marginBottom: 16 }}>
         <ArrowLeft size={14} /> {de ? 'Zurück zu Tasks' : 'Back to tasks'}
       </Link>
 
@@ -119,10 +119,10 @@ export function TaskTimeline() {
           <button
             onClick={() => setRunFilter(null)}
             style={{
-              padding: '4px 10px', borderRadius: 999, fontSize: 11,
+              padding: '4px 10px', borderRadius: 0, fontSize: 11,
               background: runFilter === null ? 'rgba(35,205,203,0.2)' : 'rgba(148,163,184,0.1)',
-              color: runFilter === null ? '#23CDCB' : '#94a3b8',
-              border: `1px solid ${runFilter === null ? '#23CDCB' : 'rgba(148,163,184,0.2)'}`,
+              color: runFilter === null ? '#c5a059' : '#94a3b8',
+              border: `1px solid ${runFilter === null ? '#c5a059' : 'rgba(148,163,184,0.2)'}`,
               cursor: 'pointer',
             }}
           >{de ? 'Alle Ereignisse' : 'All events'}</button>
@@ -131,10 +131,10 @@ export function TaskTimeline() {
               key={r.id}
               onClick={() => setRunFilter(runFilter === r.id ? null : r.id)}
               style={{
-                padding: '4px 10px', borderRadius: 999, fontSize: 11,
+                padding: '4px 10px', borderRadius: 0, fontSize: 11,
                 background: runFilter === r.id ? 'rgba(35,205,203,0.2)' : 'rgba(148,163,184,0.1)',
-                color: runFilter === r.id ? '#23CDCB' : '#94a3b8',
-                border: `1px solid ${runFilter === r.id ? '#23CDCB' : 'rgba(148,163,184,0.2)'}`,
+                color: runFilter === r.id ? '#c5a059' : '#94a3b8',
+                border: `1px solid ${runFilter === r.id ? '#c5a059' : 'rgba(148,163,184,0.2)'}`,
                 cursor: 'pointer',
               }}
               title={`${r.status} · ${r.gestartetAm || ''}`}
@@ -165,7 +165,7 @@ export function TaskTimeline() {
                 onClick={() => hasDetails && toggle(ev.id)}
                 style={{
                   background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(8px)',
-                  border: '1px solid rgba(148,163,184,0.15)', borderRadius: 8,
+                  border: '1px solid rgba(148,163,184,0.15)', borderRadius: 0,
                   padding: '10px 12px', cursor: hasDetails ? 'pointer' : 'default',
                 }}
               >
@@ -175,7 +175,7 @@ export function TaskTimeline() {
                     <span style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {ev.title}
                     </span>
-                    <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: `${color}20`, color, border: `1px solid ${color}40` }}>
+                    <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 0, background: `${color}20`, color, border: `1px solid ${color}40` }}>
                       {ev.kind}
                     </span>
                   </div>
@@ -189,7 +189,7 @@ export function TaskTimeline() {
                 {isOpen && hasDetails && (
                   <pre style={{
                     marginTop: 10, padding: 10, background: 'rgba(0,0,0,0.4)',
-                    borderRadius: 6, fontSize: 11, color: '#cbd5e1',
+                    borderRadius: 0, fontSize: 11, color: '#cbd5e1',
                     overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                     maxHeight: 400, overflowY: 'auto',
                   }}>

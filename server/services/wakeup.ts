@@ -2,7 +2,7 @@
 // Implements coalescing deduplication and multi-source triggers (timer, assignment, automation)
 
 import { db } from '../db/client.js';
-import { agentWakeupRequests, arbeitszyklen, experten, aufgaben } from '../db/schema.js';
+import { agentWakeupRequests, workCycles, agents, tasks } from '../db/schema.js';
 import { eq, and, sql } from 'drizzle-orm';
 
 export type WakeupSource = 'timer' | 'assignment' | 'on_demand' | 'automation';
@@ -87,8 +87,8 @@ class WakeupServiceImpl implements WakeupService {
       .from(agentWakeupRequests)
       .where(
         and(
-          eq(agentWakeupRequests.expertId, expertId),
-          eq(agentWakeupRequests.unternehmenId, unternehmenId),
+          eq(agentWakeupRequests.agentId, expertId),
+          eq(agentWakeupRequests.companyId, unternehmenId),
           eq(agentWakeupRequests.status, 'queued')
         )
       )
@@ -117,8 +117,8 @@ class WakeupServiceImpl implements WakeupService {
     const wakeupId = crypto.randomUUID();
     await db.insert(agentWakeupRequests).values({
       id: wakeupId,
-      unternehmenId,
-      expertId,
+      companyId: unternehmenId,
+      agentId: expertId,
       source: options.source,
       triggerDetail: options.triggerDetail,
       reason: options.reason,
@@ -141,7 +141,7 @@ class WakeupServiceImpl implements WakeupService {
       .from(agentWakeupRequests)
       .where(
         and(
-          eq(agentWakeupRequests.expertId, expertId),
+          eq(agentWakeupRequests.agentId, expertId),
           eq(agentWakeupRequests.status, 'queued')
         )
       )

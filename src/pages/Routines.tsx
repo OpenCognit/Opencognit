@@ -44,6 +44,7 @@ interface Experte {
 async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   const token = localStorage.getItem('opencognit_token');
   const res = await fetch(path, {
+    credentials: 'include',
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -281,8 +282,8 @@ export function Routines() {
       {/* Stats */}
       <div style={styles.statsGrid}>
         <div style={styles.statCard}>
-          <div style={{ ...styles.statIcon, background: 'rgba(35, 205, 202, 0.15)' }}>
-            <Activity size={20} color="#23CDCB" />
+          <div style={{ ...styles.statIcon, background: 'rgba(197, 160, 89, 0.15)' }}>
+            <Activity size={20} color="#c5a059" />
           </div>
           <div>
             <div style={styles.statValue}>{routinen.filter(r => r.status === 'active').length}</div>
@@ -299,8 +300,8 @@ export function Routines() {
           </div>
         </div>
         <div style={styles.statCard}>
-          <div style={{ ...styles.statIcon, background: 'rgba(35, 205, 202, 0.15)' }}>
-            <Zap size={20} color="#23CDCB" />
+          <div style={{ ...styles.statIcon, background: 'rgba(197, 160, 89, 0.15)' }}>
+            <Zap size={20} color="#c5a059" />
           </div>
           <div>
             <div style={styles.statValue}>{routinen.length}</div>
@@ -430,7 +431,7 @@ export function Routines() {
             style={{
               background: 'var(--color-bg-secondary)',
               border: '1px solid var(--color-border)',
-              borderRadius: '16px',
+              borderRadius: 0,
               padding: '2rem',
               width: '100%',
               maxWidth: '500px',
@@ -469,7 +470,7 @@ export function Routines() {
                     padding: '0.75rem 1rem',
                     background: 'var(--color-bg-input)',
                     border: '1px solid var(--color-border)',
-                    borderRadius: '10px',
+                    borderRadius: 0,
                     color: 'var(--color-text-primary)',
                     fontSize: '0.875rem',
                     outline: 'none',
@@ -497,7 +498,7 @@ export function Routines() {
                     padding: '0.75rem 1rem',
                     background: 'var(--color-bg-input)',
                     border: '1px solid var(--color-border)',
-                    borderRadius: '10px',
+                    borderRadius: 0,
                     color: 'var(--color-text-primary)',
                     fontSize: '0.875rem',
                     outline: 'none',
@@ -560,7 +561,7 @@ export function Routines() {
                     padding: '0.75rem 1.25rem',
                     background: 'rgba(255, 255, 255, 0.05)',
                     border: '1px solid rgba(255, 255, 255, 0.1)',
-                    borderRadius: '10px',
+                    borderRadius: 0,
                     color: 'var(--color-text-secondary)',
                     fontWeight: 500,
                     fontSize: '0.875rem',
@@ -577,10 +578,10 @@ export function Routines() {
                     alignItems: 'center',
                     gap: '0.5rem',
                     padding: '0.75rem 1.25rem',
-                    background: 'linear-gradient(135deg, rgba(35, 205, 202, 0.2), rgba(35, 205, 202, 0.1))',
-                    border: '1px solid rgba(35, 205, 202, 0.3)',
-                    borderRadius: '10px',
-                    color: '#23CDCB',
+                    background: 'linear-gradient(135deg, rgba(197, 160, 89, 0.2), rgba(197, 160, 89, 0.1))',
+                    border: '1px solid rgba(197, 160, 89, 0.3)',
+                    borderRadius: 0,
+                    color: '#c5a059',
                     fontWeight: 600,
                     fontSize: '0.875rem',
                     cursor: 'pointer',
@@ -613,7 +614,7 @@ const styles: Record<string, React.CSSProperties> = {
   title: {
     fontSize: '1.75rem',
     fontWeight: 700,
-    background: 'linear-gradient(to right, #23CDCB, #ffffff)',
+    background: 'linear-gradient(to right, #c5a059, #ffffff)',
     WebkitBackgroundClip: 'text',
     WebkitTextFillColor: 'transparent',
     backgroundClip: 'text',
@@ -628,10 +629,10 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: '0.5rem',
     padding: '0.75rem 1.25rem',
-    background: 'linear-gradient(135deg, rgba(35, 205, 202, 0.2), rgba(35, 205, 202, 0.1))',
-    border: '1px solid rgba(35, 205, 202, 0.3)',
-    borderRadius: '10px',
-    color: '#23CDCB',
+    background: 'linear-gradient(135deg, rgba(197, 160, 89, 0.2), rgba(197, 160, 89, 0.1))',
+    border: '1px solid rgba(197, 160, 89, 0.3)',
+    borderRadius: 0,
+    color: '#c5a059',
     fontWeight: 600,
     fontSize: '0.875rem',
     cursor: 'pointer',
@@ -641,7 +642,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '0.75rem 1.25rem',
     background: 'rgba(255, 255, 255, 0.05)',
     border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: '10px',
+    borderRadius: 0,
     color: '#a1a1aa',
     fontWeight: 500,
     fontSize: '0.875rem',
@@ -663,7 +664,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '1.25rem',
     background: 'rgba(255, 255, 255, 0.04)',
     border: '1px solid rgba(255, 255, 255, 0.09)',
-    borderRadius: '16px',
+    borderRadius: 0,
     backdropFilter: 'blur(24px) saturate(160%)',
     boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 4px 16px rgba(0, 0, 0, 0.2)',
   },
@@ -673,7 +674,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     width: '48px',
     height: '48px',
-    borderRadius: '10px',
+    borderRadius: 0,
   },
   statValue: {
     fontSize: '1.5rem',
@@ -687,7 +688,7 @@ const styles: Record<string, React.CSSProperties> = {
   card: {
     background: 'rgba(255, 255, 255, 0.04)',
     border: '1px solid rgba(255, 255, 255, 0.09)',
-    borderRadius: '20px',
+    borderRadius: 0,
     backdropFilter: 'blur(24px) saturate(160%)',
     boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 4px 16px rgba(0, 0, 0, 0.2)',
     position: 'relative',
@@ -729,11 +730,11 @@ const styles: Record<string, React.CSSProperties> = {
   triggerBadge: {
     display: 'inline-block',
     padding: '0.25rem 0.625rem',
-    background: 'rgba(35, 205, 202, 0.1)',
-    border: '1px solid rgba(35, 205, 202, 0.2)',
-    borderRadius: '6px',
+    background: 'rgba(197, 160, 89, 0.1)',
+    border: '1px solid rgba(197, 160, 89, 0.2)',
+    borderRadius: 0,
     fontSize: '0.75rem',
-    color: '#23CDCB',
+    color: '#c5a059',
     marginBottom: '0.25rem',
   },
   inactiveBadge: {
@@ -742,7 +743,7 @@ const styles: Record<string, React.CSSProperties> = {
   priorityBadge: {
     display: 'inline-block',
     padding: '0.25rem 0.625rem',
-    borderRadius: '6px',
+    borderRadius: 0,
     fontSize: '0.75rem',
     fontWeight: 600,
     textTransform: 'capitalize',
@@ -750,7 +751,7 @@ const styles: Record<string, React.CSSProperties> = {
   statusBadge: {
     display: 'inline-block',
     padding: '0.25rem 0.625rem',
-    borderRadius: '6px',
+    borderRadius: 0,
     fontSize: '0.75rem',
     fontWeight: 600,
     textTransform: 'capitalize',
@@ -761,7 +762,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     width: '32px',
     height: '32px',
-    borderRadius: '8px',
+    borderRadius: 0,
     background: 'rgba(255, 255, 255, 0.05)',
     border: '1px solid rgba(255, 255, 255, 0.08)',
     color: '#a1a1aa',
@@ -805,7 +806,7 @@ const styles: Record<string, React.CSSProperties> = {
   modal: {
     background: 'linear-gradient(135deg, rgba(30, 30, 40, 0.95), rgba(15, 15, 25, 0.95))',
     border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: '16px',
+    borderRadius: 0,
     padding: '2rem',
     width: '100%',
     maxWidth: '500px',
@@ -832,7 +833,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '0.75rem 1rem',
     background: 'rgba(255, 255, 255, 0.05)',
     border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: '10px',
+    borderRadius: 0,
     color: '#ffffff',
     fontSize: '0.875rem',
     outline: 'none',

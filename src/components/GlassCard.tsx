@@ -6,15 +6,18 @@ interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {
   active?: boolean;
   /** Skip backdrop-filter blur — use for high-density lists (kanban cards, etc.) */
   noBlur?: boolean;
+  /** Show ambient top-edge glow line */
+  ambient?: boolean;
 }
 
 export function GlassCard({
   children,
   style = {},
-  accent = '#23CDCB',
+  accent = '#c5a059',
   onClick,
   active = false,
   noBlur = false,
+  ambient = false,
   className,
   onMouseEnter,
   onMouseLeave,
@@ -23,7 +26,6 @@ export function GlassCard({
   const [hovered, setHovered] = useState(false);
   const on = hovered || active;
 
-  // noBlur mode: lightweight card for high-density lists (no overlays, no backdrop-filter, minimal transition)
   if (noBlur) {
     return (
       <div
@@ -35,19 +37,24 @@ export function GlassCard({
         style={{
           position: 'relative',
           overflow: 'hidden',
-          background: on ? 'rgba(255,255,255,0.11)' : 'rgba(30,30,40,0.9)',
-          borderRadius: '14px',
-          borderWidth: '1px',
-          borderStyle: 'solid',
-          borderColor: on ? `${accent}50` : 'rgba(255,255,255,0.12)',
+          background: on ? 'rgba(20,16,10,0.95)' : 'rgba(14,11,7,0.92)',
+          borderRadius: 0,
           boxShadow: on
-            ? `0 4px 20px rgba(0,0,0,0.4), 0 0 0 1px ${accent}25`
-            : '0 1px 4px rgba(0,0,0,0.3)',
-          transition: 'background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease',
+            ? `inset 0 0 0 1px ${accent}45, inset 0 1px 0 ${accent}30, 0 4px 20px rgba(0,0,0,0.5)`
+            : `inset 0 0 0 1px rgba(197,160,89,0.10), inset 0 1px 0 rgba(197,160,89,0.06), 0 1px 4px rgba(0,0,0,0.4)`,
+          transition: 'background 0.15s ease, box-shadow 0.15s ease',
           cursor: onClick ? 'pointer' : 'default',
           ...style,
         }}
       >
+        {/* Top-edge accent line */}
+        {on && (
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+            background: `linear-gradient(90deg, transparent 0%, ${accent}55 40%, ${accent}55 60%, transparent 100%)`,
+            pointerEvents: 'none', zIndex: 2,
+          }} />
+        )}
         <div style={{ position: 'relative', zIndex: 1 }}>
           {children}
         </div>
@@ -65,34 +72,50 @@ export function GlassCard({
       style={{
         position: 'relative',
         overflow: 'hidden',
-        background: on ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.04)',
-        backdropFilter: 'blur(24px) saturate(160%)',
-        borderRadius: '20px',
-        borderWidth: '1px',
-        borderStyle: 'solid',
-        borderColor: on ? `${accent}30` : 'rgba(255,255,255,0.09)',
+        background: on
+          ? `linear-gradient(160deg, rgba(18,14,9,0.96) 0%, rgba(10,7,4,0.98) 100%)`
+          : `rgba(8,6,4,0.88)`,
+        backdropFilter: 'none',
+        WebkitBackdropFilter: 'none',
+        borderRadius: 0,
         boxShadow: on
-          ? `inset 0 1px 0 rgba(255,255,255,0.18), 0 12px 40px rgba(0,0,0,0.35), 0 0 0 1px ${accent}15`
-          : 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
+          ? `inset 0 0 0 1px ${accent}30, inset 0 1px 0 ${accent}22, 0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px ${accent}12`
+          : `inset 0 0 0 1px rgba(197,160,89,0.10), inset 0 1px 0 rgba(197,160,89,0.07), 0 4px 16px rgba(0,0,0,0.4)`,
         transform: on ? 'translateY(-2px)' : 'none',
-        transition: 'background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease',
+        transition: 'background 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease',
         cursor: onClick ? 'pointer' : 'default',
         ...style,
       }}
     >
-      {/* Dot pattern */}
+      {/* Top-edge accent line — always visible, brighter on hover */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+        background: on
+          ? `linear-gradient(90deg, transparent 0%, ${accent}65 35%, ${accent}65 65%, transparent 100%)`
+          : `linear-gradient(90deg, transparent 0%, ${accent}22 35%, ${accent}22 65%, transparent 100%)`,
+        transition: 'opacity 0.25s',
+        pointerEvents: 'none', zIndex: 2,
+      }} />
+
+      {/* Ambient top glow */}
+      {(on || ambient) && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, height: 80,
+          background: `linear-gradient(180deg, ${accent}08 0%, transparent 100%)`,
+          pointerEvents: 'none', zIndex: 1,
+          opacity: on ? 1 : 0.5,
+          transition: 'opacity 0.25s',
+        }} />
+      )}
+
+      {/* Subtle dot-matrix pattern on hover */}
       <div style={{
         position: 'absolute', inset: 0, pointerEvents: 'none',
-        opacity: on ? 1 : 0, transition: 'opacity 0.3s',
-        backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.035) 1px, transparent 1px)',
-        backgroundSize: '16px 16px',
+        opacity: on ? 0.6 : 0, transition: 'opacity 0.3s',
+        backgroundImage: 'radial-gradient(circle, rgba(197,160,89,0.04) 1px, transparent 1px)',
+        backgroundSize: '20px 20px',
       }} />
-      {/* Gradient glow */}
-      <div style={{
-        position: 'absolute', inset: 0, borderRadius: '20px', pointerEvents: 'none',
-        background: `linear-gradient(135deg, ${accent}12, transparent 60%, ${accent}08)`,
-        opacity: on ? 1 : 0, transition: 'opacity 0.3s',
-      }} />
+
       <div style={{ position: 'relative', zIndex: 1 }}>
         {children}
       </div>

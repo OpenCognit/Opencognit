@@ -33,7 +33,8 @@ export function Tasks() {
   const getKanbanSpalten = () => [
     { key: 'backlog', label: i18n.t.status.backlog, color: '#71717a' },
     { key: 'todo', label: i18n.t.status.todo, color: '#3b82f6' },
-    { key: 'in_progress', label: i18n.t.status.in_progress, color: '#23CDCB' },
+    { key: 'in_progress', label: i18n.t.status.in_progress, color: '#c5a059' },
+    { key: 'blocked', label: i18n.t.status.blocked, color: '#ef4444' },
     { key: 'in_review', label: i18n.t.status.in_review, color: '#eab308' },
     { key: 'done', label: i18n.t.status.done, color: '#22c55e' },
   ];
@@ -54,7 +55,7 @@ export function Tasks() {
     if (!aktivesUnternehmen) return;
     const token = localStorage.getItem('opencognit_token');
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${window.location.hostname}:3201/ws${token ? `?token=${token}` : ''}`);
+    const ws = new WebSocket(`${proto}//${window.location.host}/ws${token ? `?token=${token}` : ''}`);
     ws.onmessage = ev => {
       try {
         const msg = JSON.parse(ev.data);
@@ -64,7 +65,11 @@ export function Tasks() {
         }
       } catch {}
     };
-    return () => ws.close();
+    return () => {
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
+        ws.close();
+      }
+    };
   }, [aktivesUnternehmen?.id]);
 
   // Auto-open task drawer from navigation state (e.g., from command palette search)
@@ -260,7 +265,7 @@ export function Tasks() {
   if (loading || !alleAufgaben || !alleExperten) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' }}>
-        <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#23CDCB' }} />
+        <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#c5a059' }} />
       </div>
     );
   }
@@ -279,15 +284,15 @@ export function Tasks() {
           }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                <Sparkles size={20} style={{ color: '#23CDCB' }} />
-                <span style={{ fontSize: '12px', fontWeight: 600, color: '#23CDCB', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                <Sparkles size={20} style={{ color: '#c5a059' }} />
+                <span style={{ fontSize: '12px', fontWeight: 600, color: '#c5a059', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                   {aktivesUnternehmen.name}
                 </span>
               </div>
               <h1 style={{
                 fontSize: '2rem',
                 fontWeight: 700,
-                background: 'linear-gradient(to bottom right, #23CDCB 0%, #ffffff 100%)',
+                background: 'linear-gradient(to bottom right, #c5a059 0%, #ffffff 100%)',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
@@ -295,7 +300,7 @@ export function Tasks() {
               <p style={{ fontSize: '0.875rem', color: '#71717a', marginTop: '0.25rem' }}>{i18n.t.aufgaben.subtitle}</p>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <div style={{ display: 'flex', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: 0, overflow: 'hidden' }}>
                 <button
                   onClick={() => setAnsicht('kanban')}
                   style={{
@@ -303,9 +308,9 @@ export function Tasks() {
                     alignItems: 'center',
                     gap: '0.5rem',
                     padding: '0.5rem 0.875rem',
-                    backgroundColor: ansicht === 'kanban' ? 'rgba(35, 205, 202, 0.1)' : 'transparent',
+                    backgroundColor: ansicht === 'kanban' ? 'rgba(197, 160, 89, 0.1)' : 'transparent',
                     border: 'none',
-                    color: ansicht === 'kanban' ? '#23CDCB' : '#71717a',
+                    color: ansicht === 'kanban' ? '#c5a059' : '#71717a',
                     fontWeight: 500,
                     fontSize: '0.8125rem',
                     cursor: 'pointer',
@@ -321,9 +326,9 @@ export function Tasks() {
                     alignItems: 'center',
                     gap: '0.5rem',
                     padding: '0.5rem 0.875rem',
-                    backgroundColor: ansicht === 'liste' ? 'rgba(35, 205, 202, 0.1)' : 'transparent',
+                    backgroundColor: ansicht === 'liste' ? 'rgba(197, 160, 89, 0.1)' : 'transparent',
                     border: 'none',
-                    color: ansicht === 'liste' ? '#23CDCB' : '#71717a',
+                    color: ansicht === 'liste' ? '#c5a059' : '#71717a',
                     fontWeight: 500,
                     fontSize: '0.8125rem',
                     cursor: 'pointer',
@@ -339,9 +344,9 @@ export function Tasks() {
                     alignItems: 'center',
                     gap: '0.5rem',
                     padding: '0.5rem 0.875rem',
-                    backgroundColor: ansicht === 'timeline' ? 'rgba(35, 205, 202, 0.1)' : 'transparent',
+                    backgroundColor: ansicht === 'timeline' ? 'rgba(197, 160, 89, 0.1)' : 'transparent',
                     border: 'none',
-                    color: ansicht === 'timeline' ? '#23CDCB' : '#71717a',
+                    color: ansicht === 'timeline' ? '#c5a059' : '#71717a',
                     fontWeight: 500,
                     fontSize: '0.8125rem',
                     cursor: 'pointer',
@@ -359,7 +364,7 @@ export function Tasks() {
                   padding: '0.75rem 1rem',
                   backgroundColor: 'rgba(255,255,255,0.04)',
                   border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '12px', color: '#71717a',
+                  borderRadius: 0, color: '#71717a',
                   fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer',
                   transition: 'all 0.2s',
                 }}
@@ -374,15 +379,15 @@ export function Tasks() {
                 style={{
                   display: 'flex', alignItems: 'center', gap: '0.5rem',
                   padding: '0.75rem 1rem',
-                  backgroundColor: 'rgba(168,85,247,0.08)',
-                  border: '1px solid rgba(168,85,247,0.2)',
-                  borderRadius: '12px',
-                  color: '#a855f7',
+                  backgroundColor: 'rgba(155,135,200,0.08)',
+                  border: '1px solid rgba(155,135,200,0.2)',
+                  borderRadius: 0,
+                  color: '#9b87c8',
                   fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer',
                   transition: 'all 0.2s',
                 }}
-                onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(168,85,247,0.14)'; }}
-                onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(168,85,247,0.08)'; }}
+                onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(155,135,200,0.14)'; }}
+                onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(155,135,200,0.08)'; }}
               >
                 <Sparkles size={14} /> Workflow
               </button>
@@ -393,10 +398,10 @@ export function Tasks() {
                   alignItems: 'center',
                   gap: '0.5rem',
                   padding: '0.75rem 1.25rem',
-                  backgroundColor: 'rgba(35, 205, 202, 0.1)',
-                  border: '1px solid rgba(35, 205, 202, 0.2)',
-                  borderRadius: '12px',
-                  color: '#23CDCB',
+                  backgroundColor: 'rgba(197, 160, 89, 0.1)',
+                  border: '1px solid rgba(197, 160, 89, 0.2)',
+                  borderRadius: 0,
+                  color: '#c5a059',
                   fontWeight: 600,
                   fontSize: '0.875rem',
                   cursor: 'pointer',
@@ -451,13 +456,13 @@ export function Tasks() {
                   paddingBottom: '0.5rem',
                   background: 'rgba(255,255,255,0.04)',
                   border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: '10px',
+                  borderRadius: 0,
                   color: '#e4e4e7',
                   fontSize: '0.875rem',
                   outline: 'none',
                   transition: 'border-color 0.2s',
                 }}
-                onFocus={e => { e.currentTarget.style.borderColor = 'rgba(35,205,202,0.4)'; }}
+                onFocus={e => { e.currentTarget.style.borderColor = 'rgba(197,160,89,0.4)'; }}
                 onBlur={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; }}
               />
               {search && (
@@ -481,9 +486,9 @@ export function Tasks() {
               onChange={e => setFilterStatus(e.target.value)}
               style={{
                 padding: '0.5rem 0.75rem',
-                background: filterStatus ? 'rgba(35,205,202,0.08)' : 'rgba(255,255,255,0.04)',
-                border: `1px solid ${filterStatus ? 'rgba(35,205,202,0.3)' : 'rgba(255,255,255,0.08)'}`,
-                borderRadius: '10px', color: filterStatus ? '#23CDCB' : '#71717a',
+                background: filterStatus ? 'rgba(197,160,89,0.08)' : 'rgba(255,255,255,0.04)',
+                border: `1px solid ${filterStatus ? 'rgba(197,160,89,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                borderRadius: 0, color: filterStatus ? '#c5a059' : '#71717a',
                 fontSize: '0.8125rem', cursor: 'pointer', outline: 'none',
               }}
             >
@@ -502,9 +507,9 @@ export function Tasks() {
               onChange={e => setFilterPriority(e.target.value)}
               style={{
                 padding: '0.5rem 0.75rem',
-                background: filterPriority ? 'rgba(35,205,202,0.08)' : 'rgba(255,255,255,0.04)',
-                border: `1px solid ${filterPriority ? 'rgba(35,205,202,0.3)' : 'rgba(255,255,255,0.08)'}`,
-                borderRadius: '10px', color: filterPriority ? '#23CDCB' : '#71717a',
+                background: filterPriority ? 'rgba(197,160,89,0.08)' : 'rgba(255,255,255,0.04)',
+                border: `1px solid ${filterPriority ? 'rgba(197,160,89,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                borderRadius: 0, color: filterPriority ? '#c5a059' : '#71717a',
                 fontSize: '0.8125rem', cursor: 'pointer', outline: 'none',
               }}
             >
@@ -521,9 +526,9 @@ export function Tasks() {
               onChange={e => setFilterAgent(e.target.value)}
               style={{
                 padding: '0.5rem 0.75rem',
-                background: filterAgent ? 'rgba(35,205,202,0.08)' : 'rgba(255,255,255,0.04)',
-                border: `1px solid ${filterAgent ? 'rgba(35,205,202,0.3)' : 'rgba(255,255,255,0.08)'}`,
-                borderRadius: '10px', color: filterAgent ? '#23CDCB' : '#71717a',
+                background: filterAgent ? 'rgba(197,160,89,0.08)' : 'rgba(255,255,255,0.04)',
+                border: `1px solid ${filterAgent ? 'rgba(197,160,89,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                borderRadius: 0, color: filterAgent ? '#c5a059' : '#71717a',
                 fontSize: '0.8125rem', cursor: 'pointer', outline: 'none',
               }}
             >
@@ -542,7 +547,7 @@ export function Tasks() {
                   padding: '0.5rem 0.875rem',
                   background: 'rgba(239,68,68,0.08)',
                   border: '1px solid rgba(239,68,68,0.2)',
-                  borderRadius: '10px', color: '#ef4444',
+                  borderRadius: 0, color: '#ef4444',
                   fontSize: '0.8125rem', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', gap: '0.375rem',
                 }}
@@ -564,9 +569,9 @@ export function Tasks() {
                   onClick={selectedIds.size === filteredAufgaben.length ? clearSelection : selectAll}
                   style={{
                     padding: '0.4rem 0.75rem',
-                    background: selectedIds.size > 0 ? 'rgba(35,205,202,0.08)' : 'rgba(255,255,255,0.04)',
-                    border: `1px solid ${selectedIds.size > 0 ? 'rgba(35,205,202,0.25)' : 'rgba(255,255,255,0.08)'}`,
-                    borderRadius: '10px', color: selectedIds.size > 0 ? '#23CDCB' : '#71717a',
+                    background: selectedIds.size > 0 ? 'rgba(197,160,89,0.08)' : 'rgba(255,255,255,0.04)',
+                    border: `1px solid ${selectedIds.size > 0 ? 'rgba(197,160,89,0.25)' : 'rgba(255,255,255,0.08)'}`,
+                    borderRadius: 0, color: selectedIds.size > 0 ? '#c5a059' : '#71717a',
                     fontSize: '0.8125rem', cursor: 'pointer',
                     display: 'flex', alignItems: 'center', gap: '0.375rem', whiteSpace: 'nowrap',
                   }}
@@ -654,7 +659,7 @@ export function Tasks() {
                             active={isChecked || isBeingDragged}
                             style={{
                               padding: '0.875rem',
-                              borderRadius: '14px',
+                              borderRadius: 0,
                               cursor: 'grab',
                               opacity: isBeingDragged ? 0.5 : 1,
                               userSelect: 'none',
@@ -666,9 +671,9 @@ export function Tasks() {
                               onClick={e => toggleSelect(a.id, e)}
                               style={{
                                 position: 'absolute', top: '0.5rem', right: '0.5rem',
-                                background: isChecked ? '#23CDCB' : 'rgba(255,255,255,0.06)',
-                                border: `1px solid ${isChecked ? '#23CDCB' : 'rgba(255,255,255,0.12)'}`,
-                                borderRadius: '6px', width: 20, height: 20, cursor: 'pointer',
+                                background: isChecked ? '#c5a059' : 'rgba(255,255,255,0.06)',
+                                border: `1px solid ${isChecked ? '#c5a059' : 'rgba(255,255,255,0.12)'}`,
+                                borderRadius: 0, width: 20, height: 20, cursor: 'pointer',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                 color: isChecked ? '#000' : '#52525b',
                                 transition: 'all 0.15s', flexShrink: 0, padding: 0,
@@ -685,7 +690,7 @@ export function Tasks() {
                             {a.blockedBy && (
                               <div style={{
                                 fontSize: '0.6875rem', color: '#ef4444', marginBottom: '0.375rem',
-                                padding: '0.2rem 0.5rem', borderRadius: '4px',
+                                padding: '0.2rem 0.5rem', borderRadius: 0,
                                 background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)',
                                 display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
                               }}>
@@ -699,7 +704,7 @@ export function Tasks() {
                                   backgroundColor: a.prioritaet === 'critical' ? 'rgba(239, 68, 68, 0.1)' :
                                     a.prioritaet === 'high' ? 'rgba(234, 179, 8, 0.1)' : 'rgba(255, 255, 255, 0.05)',
                                   border: `1px solid ${a.prioritaet === 'critical' ? '#ef4444' : a.prioritaet === 'high' ? '#eab308' : 'rgba(255, 255, 255, 0.1)'}`,
-                                  borderRadius: '6px',
+                                  borderRadius: 0,
                                   fontSize: '0.6875rem',
                                   color: a.prioritaet === 'critical' ? '#ef4444' : a.prioritaet === 'high' ? '#eab308' : '#71717a',
                                 }}>
@@ -712,7 +717,7 @@ export function Tasks() {
                                   onClick={(e) => { e.stopPropagation(); toggleMaximizer(a.id, !!a.isMaximizerMode); }}
                                   style={{
                                     padding: '0.2rem 0.4rem',
-                                    borderRadius: '6px',
+                                    borderRadius: 0,
                                     border: `1px solid ${a.isMaximizerMode ? 'rgba(239, 68, 68, 0.4)' : 'rgba(255, 255, 255, 0.08)'}`,
                                     background: a.isMaximizerMode ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
                                     cursor: 'pointer',
@@ -729,7 +734,7 @@ export function Tasks() {
                                 <div style={{
                                   width: '24px',
                                   height: '24px',
-                                  borderRadius: '8px',
+                                  borderRadius: 0,
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
@@ -747,7 +752,7 @@ export function Tasks() {
                                 title={i18n.language === 'de' ? 'Aufgabe löschen' : 'Delete task'}
                                 onClick={(e) => deleteTask(a.id, e)}
                                 style={{
-                                  padding: '0.2rem 0.3rem', borderRadius: '6px',
+                                  padding: '0.2rem 0.3rem', borderRadius: 0,
                                   border: '1px solid rgba(239,68,68,0.2)', background: 'transparent',
                                   cursor: 'pointer', display: 'flex', alignItems: 'center',
                                   color: '#52525b', transition: 'all 0.15s',
@@ -768,7 +773,7 @@ export function Tasks() {
                             width: '100%', padding: '0.5rem',
                             background: 'rgba(255,255,255,0.04)',
                             border: '1px solid rgba(255,255,255,0.1)',
-                            borderRadius: '10px',
+                            borderRadius: 0,
                             color: '#71717a', fontSize: '0.8125rem', cursor: 'pointer',
                             transition: 'color 0.15s, border-color 0.15s',
                           }}
@@ -795,7 +800,7 @@ export function Tasks() {
                     <th style={{ padding: '0.75rem', width: 40 }}>
                       <button
                         onClick={selectedIds.size === filteredAufgaben.length ? clearSelection : selectAll}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: selectedIds.size > 0 ? '#23CDCB' : '#52525b', display: 'flex', padding: 2 }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: selectedIds.size > 0 ? '#c5a059' : '#52525b', display: 'flex', padding: 2 }}
                       >
                         {selectedIds.size === filteredAufgaben.length && filteredAufgaben.length > 0 ? <CheckSquare2 size={15} /> : <Square size={15} />}
                       </button>
@@ -819,10 +824,10 @@ export function Tasks() {
                           borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
                           cursor: 'pointer',
                           transition: 'all 0.2s',
-                          backgroundColor: rowChecked ? 'rgba(35,205,202,0.05)' : 'transparent',
+                          backgroundColor: rowChecked ? 'rgba(197,160,89,0.05)' : 'transparent',
                         }}
                         onMouseEnter={(e) => {
-                          if (!rowChecked) (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'rgba(35, 205, 202, 0.05)';
+                          if (!rowChecked) (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'rgba(197, 160, 89, 0.05)';
                         }}
                         onMouseLeave={(e) => {
                           if (!rowChecked) (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent';
@@ -832,8 +837,8 @@ export function Tasks() {
                           <button
                             onClick={e => toggleSelect(a.id, e)}
                             style={{
-                              background: rowChecked ? '#23CDCB' : 'none', border: `1px solid ${rowChecked ? '#23CDCB' : 'rgba(255,255,255,0.12)'}`,
-                              borderRadius: '6px', width: 20, height: 20, cursor: 'pointer', padding: 0,
+                              background: rowChecked ? '#c5a059' : 'none', border: `1px solid ${rowChecked ? '#c5a059' : 'rgba(255,255,255,0.12)'}`,
+                              borderRadius: 0, width: 20, height: 20, cursor: 'pointer', padding: 0,
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
                               color: rowChecked ? '#000' : '#52525b', transition: 'all 0.15s',
                             }}
@@ -846,7 +851,7 @@ export function Tasks() {
                             <span style={{ fontSize: '0.875rem', fontWeight: 500, color: '#ffffff' }}>{a.titel}</span>
                             {a.isMaximizerMode && (
                               <span style={{
-                                padding: '0.125rem 0.375rem', borderRadius: '4px',
+                                padding: '0.125rem 0.375rem', borderRadius: 0,
                                 background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)',
                                 color: '#ef4444', fontSize: '0.625rem', fontWeight: 700,
                                 display: 'flex', alignItems: 'center', gap: '0.2rem',
@@ -864,7 +869,7 @@ export function Tasks() {
                             backgroundColor: a.prioritaet === 'critical' ? 'rgba(239, 68, 68, 0.1)' :
                               a.prioritaet === 'high' ? 'rgba(234, 179, 8, 0.1)' : 'rgba(255, 255, 255, 0.05)',
                             border: `1px solid ${a.prioritaet === 'critical' ? '#ef4444' : a.prioritaet === 'high' ? '#eab308' : 'rgba(255, 255, 255, 0.1)'}`,
-                            borderRadius: '6px',
+                            borderRadius: 0,
                             fontSize: '0.75rem',
                             color: a.prioritaet === 'critical' ? '#ef4444' : a.prioritaet === 'high' ? '#eab308' : '#71717a',
                           }}>
@@ -877,7 +882,7 @@ export function Tasks() {
                               <div style={{
                                 width: '24px',
                                 height: '24px',
-                                borderRadius: '8px',
+                                borderRadius: 0,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -898,7 +903,7 @@ export function Tasks() {
                             title={i18n.language === 'de' ? 'Aufgabe löschen' : 'Delete task'}
                             onClick={(e) => deleteTask(a.id, e)}
                             style={{
-                              padding: '0.25rem 0.5rem', borderRadius: '8px',
+                              padding: '0.25rem 0.5rem', borderRadius: 0,
                               border: '1px solid rgba(239,68,68,0.2)', background: 'transparent',
                               cursor: 'pointer', color: '#52525b', transition: 'all 0.15s',
                               display: 'flex', alignItems: 'center',
@@ -940,23 +945,23 @@ export function Tasks() {
           background: 'rgba(10, 10, 20, 0.96)',
           backdropFilter: 'blur(40px)',
           WebkitBackdropFilter: 'blur(40px)',
-          border: '1px solid rgba(35, 205, 202, 0.25)',
-          borderRadius: '20px',
+          border: '1px solid rgba(197, 160, 89, 0.25)',
+          borderRadius: 0,
           padding: '0.75rem 1.25rem',
           display: 'flex',
           alignItems: 'center',
           gap: '0.875rem',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 0 30px rgba(35,205,202,0.08)',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 0 30px rgba(197,160,89,0.08)',
           animation: 'slideUp 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
           whiteSpace: 'nowrap',
         }}>
           {/* Count */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <div style={{
-              width: 28, height: 28, borderRadius: '8px',
-              background: 'rgba(35,205,202,0.15)', border: '1px solid rgba(35,205,202,0.3)',
+              width: 28, height: 28, borderRadius: 0,
+              background: 'rgba(197,160,89,0.15)', border: '1px solid rgba(197,160,89,0.3)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '0.75rem', fontWeight: 700, color: '#23CDCB',
+              fontSize: '0.75rem', fontWeight: 700, color: '#c5a059',
             }}>{selectedIds.size}</div>
             <span style={{ fontSize: '0.8125rem', color: '#a1a1aa', fontWeight: 500 }}>
               {i18n.language === 'de' ? 'ausgewählt' : 'selected'}
@@ -974,7 +979,7 @@ export function Tasks() {
               defaultValue=""
               style={{
                 background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '10px', color: '#d4d4d8', padding: '0.375rem 0.625rem',
+                borderRadius: 0, color: '#d4d4d8', padding: '0.375rem 0.625rem',
                 fontSize: '0.8125rem', cursor: 'pointer', outline: 'none',
               }}
             >
@@ -995,7 +1000,7 @@ export function Tasks() {
             defaultValue=""
             style={{
               background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '10px', color: '#d4d4d8', padding: '0.375rem 0.625rem',
+              borderRadius: 0, color: '#d4d4d8', padding: '0.375rem 0.625rem',
               fontSize: '0.8125rem', cursor: 'pointer', outline: 'none',
             }}
           >
@@ -1015,7 +1020,7 @@ export function Tasks() {
               defaultValue=""
               style={{
                 background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '10px', color: '#d4d4d8', padding: '0.375rem 0.625rem',
+                borderRadius: 0, color: '#d4d4d8', padding: '0.375rem 0.625rem',
                 fontSize: '0.8125rem', cursor: 'pointer', outline: 'none',
               }}
             >
@@ -1036,7 +1041,7 @@ export function Tasks() {
             style={{
               padding: '0.375rem 0.75rem',
               background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
-              borderRadius: '10px', color: '#ef4444',
+              borderRadius: 0, color: '#ef4444',
               fontSize: '0.8125rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.375rem',
               opacity: batchLoading ? 0.5 : 1,
             }}
@@ -1060,7 +1065,7 @@ export function Tasks() {
           </button>
 
           {batchLoading && (
-            <Loader2 size={14} style={{ animation: 'spin 1s linear infinite', color: '#23CDCB' }} />
+            <Loader2 size={14} style={{ animation: 'spin 1s linear infinite', color: '#c5a059' }} />
           )}
         </div>
       )}

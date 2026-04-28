@@ -7,7 +7,7 @@ import { useCompany } from '../hooks/useCompany';
 
 function authFetch(url: string, opts?: RequestInit) {
   const token = localStorage.getItem('opencognit_token');
-  return fetch(url, { ...opts, headers: { ...opts?.headers, Authorization: token ? `Bearer ${token}` : '' } });
+  return fetch(url, { credentials: 'include', ...opts, headers: { ...opts?.headers, Authorization: token ? `Bearer ${token}` : '' } });
 }
 
 function centToEuro(cent: number) {
@@ -45,7 +45,7 @@ interface Backup {
 
 const TASK_STATUS_COLOR: Record<string, string> = {
   done: '#22c55e',
-  in_progress: '#23CDCB',
+  in_progress: '#c5a059',
   todo: '#60a5fa',
   backlog: '#6b7280',
   blocked: '#ef4444',
@@ -56,30 +56,30 @@ const TASK_STATUS_COLOR: Record<string, string> = {
 const RUN_STATUS_COLOR: Record<string, string> = {
   succeeded: '#22c55e',
   failed: '#ef4444',
-  running: '#23CDCB',
+  running: '#c5a059',
   queued: '#60a5fa',
   cancelled: '#a1a1aa',
   timed_out: '#f97316',
-  deferred: '#a855f7',
+  deferred: '#9b87c8',
 };
 
 function MiniBar({ value, max, color }: { value: number; max: number; color: string }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0;
   return (
-    <div style={{ height: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden', flex: 1 }}>
-      <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 3, transition: 'width 0.4s ease' }} />
+    <div style={{ height: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 0, overflow: 'hidden', flex: 1 }}>
+      <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 0, transition: 'width 0.4s ease' }} />
     </div>
   );
 }
 
-function StatCard({ icon: Icon, label, value, sub, color = '#23CDCB' }: {
+function StatCard({ icon: Icon, label, value, sub, color = '#c5a059' }: {
   icon: any; label: string; value: string; sub?: string; color?: string;
 }) {
   return (
     <div style={{
       background: 'rgba(255,255,255,0.03)',
       border: '1px solid rgba(255,255,255,0.08)',
-      borderRadius: 14,
+      borderRadius: 0,
       padding: '1.25rem 1.5rem',
       display: 'flex',
       gap: '1rem',
@@ -87,7 +87,7 @@ function StatCard({ icon: Icon, label, value, sub, color = '#23CDCB' }: {
       backdropFilter: 'blur(10px)',
     }}>
       <div style={{
-        width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+        width: 40, height: 40, borderRadius: 0, flexShrink: 0,
         background: `${color}18`, border: `1px solid ${color}30`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
@@ -202,9 +202,9 @@ export function Metrics() {
         </div>
         <button onClick={loadMetrics} style={{
           display: 'flex', alignItems: 'center', gap: '0.5rem',
-          padding: '0.5rem 1rem', borderRadius: 8,
-          background: 'rgba(35,205,202,0.1)', border: '1px solid rgba(35,205,202,0.2)',
-          color: '#23CDCB', cursor: 'pointer', fontSize: '0.8125rem',
+          padding: '0.5rem 1rem', borderRadius: 0,
+          background: 'rgba(197,160,89,0.1)', border: '1px solid rgba(197,160,89,0.2)',
+          color: '#c5a059', cursor: 'pointer', fontSize: '0.8125rem',
         }}>
           <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
           {t.metriken.refresh}
@@ -212,7 +212,7 @@ export function Metrics() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '0.25rem', width: 'fit-content' }}>
+      <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.03)', borderRadius: 0, padding: '0.25rem', width: 'fit-content' }}>
         {[
           { id: 'overview', label: t.metriken.tabOverview, icon: BarChart3 },
           { id: 'health', label: `${t.metriken.tabHealth}${alertCount > 0 ? ` (${alertCount})` : ''}`, icon: alertCount > 0 ? AlertTriangle : Shield },
@@ -220,10 +220,10 @@ export function Metrics() {
         ].map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} style={{
             display: 'flex', alignItems: 'center', gap: '0.5rem',
-            padding: '0.5rem 1rem', borderRadius: 8, border: 'none', cursor: 'pointer',
+            padding: '0.5rem 1rem', borderRadius: 0, border: 'none', cursor: 'pointer',
             fontSize: '0.8125rem', fontWeight: 500,
-            background: activeTab === tab.id ? 'rgba(35,205,202,0.15)' : 'transparent',
-            color: activeTab === tab.id ? '#23CDCB' : '#71717a',
+            background: activeTab === tab.id ? 'rgba(197,160,89,0.15)' : 'transparent',
+            color: activeTab === tab.id ? '#c5a059' : '#71717a',
           }}>
             <tab.icon size={14} />
             {tab.label}
@@ -238,10 +238,10 @@ export function Metrics() {
           <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
             {[7, 14, 30, 90].map(d => (
               <button key={d} onClick={() => setDays(d)} style={{
-                padding: '0.375rem 0.75rem', borderRadius: 8, border: '1px solid',
-                borderColor: days === d ? 'rgba(35,205,202,0.4)' : 'rgba(255,255,255,0.08)',
-                background: days === d ? 'rgba(35,205,202,0.1)' : 'transparent',
-                color: days === d ? '#23CDCB' : '#a1a1aa',
+                padding: '0.375rem 0.75rem', borderRadius: 0, border: '1px solid',
+                borderColor: days === d ? 'rgba(197,160,89,0.4)' : 'rgba(255,255,255,0.08)',
+                background: days === d ? 'rgba(197,160,89,0.1)' : 'transparent',
+                color: days === d ? '#c5a059' : '#a1a1aa',
                 fontSize: '0.8125rem', cursor: 'pointer',
               }}>
                 {d} Tage
@@ -263,7 +263,7 @@ export function Metrics() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
 
               {/* Daily cost chart */}
-              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 14, padding: '1.25rem' }}>
+              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 0, padding: '1.25rem' }}>
                 <h3 style={{ margin: '0 0 1rem', fontSize: '0.875rem', color: '#a1a1aa', fontWeight: 600 }}>
                   Tageskosten (letzte {days} Tage)
                 </h3>
@@ -277,8 +277,8 @@ export function Metrics() {
                           <div key={d.day} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}
                             title={`${d.day}: ${centToEuro(d.kostenCent)} (${d.runs} Runs)`}>
                             <div style={{
-                              width: '100%', minWidth: 4, background: '#23CDCB',
-                              height: `${Math.max(pct, 2)}%`, borderRadius: '3px 3px 0 0',
+                              width: '100%', minWidth: 4, background: '#c5a059',
+                              height: `${Math.max(pct, 2)}%`, borderRadius: '0',
                               opacity: 0.8, transition: 'height 0.3s ease',
                             }} />
                           </div>
@@ -290,7 +290,7 @@ export function Metrics() {
               </div>
 
               {/* Cost per agent */}
-              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 14, padding: '1.25rem' }}>
+              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 0, padding: '1.25rem' }}>
                 <h3 style={{ margin: '0 0 1rem', fontSize: '0.875rem', color: '#a1a1aa', fontWeight: 600 }}>
                   Kosten pro Agent
                 </h3>
@@ -300,7 +300,7 @@ export function Metrics() {
                       <span style={{ width: 110, fontSize: '0.75rem', color: '#d4d4d8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
                         {a.expertName || 'Unbekannt'}
                       </span>
-                      <MiniBar value={a.kostenCent} max={maxAgentCost} color="#23CDCB" />
+                      <MiniBar value={a.kostenCent} max={maxAgentCost} color="#c5a059" />
                       <span style={{ width: 60, fontSize: '0.7rem', color: '#71717a', textAlign: 'right', flexShrink: 0 }}>
                         {centToEuro(a.kostenCent)}
                       </span>
@@ -313,7 +313,7 @@ export function Metrics() {
               </div>
 
               {/* Task status distribution */}
-              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 14, padding: '1.25rem' }}>
+              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 0, padding: '1.25rem' }}>
                 <h3 style={{ margin: '0 0 1rem', fontSize: '0.875rem', color: '#a1a1aa', fontWeight: 600 }}>
                   Aufgaben nach Status
                 </h3>
@@ -335,7 +335,7 @@ export function Metrics() {
               </div>
 
               {/* Run status + agent activity */}
-              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 14, padding: '1.25rem' }}>
+              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 0, padding: '1.25rem' }}>
                 <h3 style={{ margin: '0 0 1rem', fontSize: '0.875rem', color: '#a1a1aa', fontWeight: 600 }}>
                   Aktivste Agenten
                 </h3>
@@ -367,7 +367,7 @@ export function Metrics() {
 
           {loading && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-              <div style={{ width: 24, height: 24, borderRadius: '50%', border: '2px solid rgba(35,205,202,0.2)', borderTopColor: '#23CDCB', animation: 'spin 0.8s linear infinite' }} />
+              <div style={{ width: 24, height: 24, borderRadius: '50%', border: '2px solid rgba(197,160,89,0.2)', borderTopColor: '#c5a059', animation: 'spin 0.8s linear infinite' }} />
             </div>
           )}
         </>
@@ -378,14 +378,14 @@ export function Metrics() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           {healthLoading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-              <div style={{ width: 24, height: 24, borderRadius: '50%', border: '2px solid rgba(35,205,202,0.2)', borderTopColor: '#23CDCB', animation: 'spin 0.8s linear infinite' }} />
+              <div style={{ width: 24, height: 24, borderRadius: '50%', border: '2px solid rgba(197,160,89,0.2)', borderTopColor: '#c5a059', animation: 'spin 0.8s linear infinite' }} />
             </div>
           ) : health && (
             <>
               {/* Overall health badge */}
               <div style={{
                 display: 'flex', alignItems: 'center', gap: '0.75rem',
-                padding: '0.875rem 1.25rem', borderRadius: 12,
+                padding: '0.875rem 1.25rem', borderRadius: 0,
                 background: health.healthy ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
                 border: `1px solid ${health.healthy ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}`,
               }}>
@@ -399,7 +399,7 @@ export function Metrics() {
                   Geprüft: {new Date(health.checkedAt).toLocaleTimeString('de-DE')}
                 </span>
                 <button onClick={loadHealth} style={{
-                  padding: '0.25rem 0.625rem', borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)',
+                  padding: '0.25rem 0.625rem', borderRadius: 0, border: '1px solid rgba(255,255,255,0.1)',
                   background: 'transparent', color: '#71717a', cursor: 'pointer', fontSize: '0.75rem',
                 }}>
                   <RefreshCw size={12} />
@@ -408,7 +408,7 @@ export function Metrics() {
 
               {/* Stuck agents */}
               {health.stuckAgents.length > 0 && (
-                <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 12, padding: '1.25rem' }}>
+                <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 0, padding: '1.25rem' }}>
                   <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.875rem', color: '#ef4444', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <AlertTriangle size={14} /> Feststeckende Agenten (&gt;5 Minuten in &apos;running&apos;)
                   </h3>
@@ -425,7 +425,7 @@ export function Metrics() {
 
               {/* Error agents */}
               {health.errorAgents.length > 0 && (
-                <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 12, padding: '1.25rem' }}>
+                <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 0, padding: '1.25rem' }}>
                   <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.875rem', color: '#ef4444', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <AlertTriangle size={14} /> Agenten im Fehlerstatus
                   </h3>
@@ -442,14 +442,14 @@ export function Metrics() {
 
               {/* Loop detection */}
               {health.loopyWakeups.length > 0 && (
-                <div style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 12, padding: '1.25rem' }}>
+                <div style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 0, padding: '1.25rem' }}>
                   <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.875rem', color: '#f59e0b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <AlertTriangle size={14} /> Mögliche Endlosschleifen (coalescedCount &ge; 10)
                   </h3>
                   {health.loopyWakeups.map((w, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.5rem 0', borderTop: '1px solid rgba(245,158,11,0.1)' }}>
                       <span style={{ color: '#fde68a', fontWeight: 500 }}>{w.expertName}</span>
-                      <span style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b', borderRadius: 6, padding: '2px 6px', fontSize: '0.7rem', fontWeight: 700 }}>
+                      <span style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b', borderRadius: 0, padding: '2px 6px', fontSize: '0.7rem', fontWeight: 700 }}>
                         ×{w.coalescedCount}
                       </span>
                       <span style={{ color: '#52525b', fontSize: '0.75rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -462,7 +462,7 @@ export function Metrics() {
 
               {/* Recent failures */}
               {health.recentFailures.length > 0 && (
-                <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 12, padding: '1.25rem' }}>
+                <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 0, padding: '1.25rem' }}>
                   <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.875rem', color: '#f87171', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <AlertTriangle size={14} /> Häufige Fehler (letzte 24h, &ge; 3 Fehlschläge)
                   </h3>
@@ -495,9 +495,9 @@ export function Metrics() {
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             <button onClick={runBackup} disabled={backupRunning} style={{
               display: 'flex', alignItems: 'center', gap: '0.5rem',
-              padding: '0.625rem 1.25rem', borderRadius: 8,
-              background: backupRunning ? 'rgba(35,205,202,0.05)' : 'rgba(35,205,202,0.1)',
-              border: '1px solid rgba(35,205,202,0.25)', color: '#23CDCB',
+              padding: '0.625rem 1.25rem', borderRadius: 0,
+              background: backupRunning ? 'rgba(197,160,89,0.05)' : 'rgba(197,160,89,0.1)',
+              border: '1px solid rgba(197,160,89,0.25)', color: '#c5a059',
               cursor: backupRunning ? 'not-allowed' : 'pointer', fontSize: '0.8125rem', fontWeight: 500,
             }}>
               <Download size={14} style={{ animation: backupRunning ? 'spin 1s linear infinite' : 'none' }} />
@@ -506,7 +506,7 @@ export function Metrics() {
 
             <button onClick={runCleanup} disabled={cleanupRunning} style={{
               display: 'flex', alignItems: 'center', gap: '0.5rem',
-              padding: '0.625rem 1.25rem', borderRadius: 8,
+              padding: '0.625rem 1.25rem', borderRadius: 0,
               background: cleanupRunning ? 'rgba(239,68,68,0.03)' : 'rgba(239,68,68,0.06)',
               border: '1px solid rgba(239,68,68,0.2)', color: '#f87171',
               cursor: cleanupRunning ? 'not-allowed' : 'pointer', fontSize: '0.8125rem', fontWeight: 500,
@@ -518,7 +518,7 @@ export function Metrics() {
 
           {/* Cleanup result */}
           {cleanupStats && (
-            <div style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 12, padding: '1rem 1.25rem' }}>
+            <div style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 0, padding: '1rem 1.25rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                 <CheckCircle size={14} style={{ color: '#22c55e' }} />
                 <span style={{ color: '#22c55e', fontWeight: 600, fontSize: '0.875rem' }}>Cleanup abgeschlossen</span>
@@ -535,7 +535,7 @@ export function Metrics() {
           )}
 
           {/* Backup list */}
-          <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 14, overflow: 'hidden' }}>
+          <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 0, overflow: 'hidden' }}>
             <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 8 }}>
               <Database size={14} style={{ color: '#71717a' }} />
               <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#a1a1aa' }}>
@@ -552,7 +552,7 @@ export function Metrics() {
                   display: 'flex', alignItems: 'center', gap: '1rem',
                   padding: '0.875rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.04)',
                 }}>
-                  <Database size={14} style={{ color: '#23CDCB', flexShrink: 0 }} />
+                  <Database size={14} style={{ color: '#c5a059', flexShrink: 0 }} />
                   <span style={{ flex: 1, fontSize: '0.8125rem', color: '#d4d4d8', fontFamily: 'monospace' }}>
                     {b.name}
                   </span>
@@ -568,7 +568,7 @@ export function Metrics() {
           </div>
 
           {/* Policy info */}
-          <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 10, fontSize: '0.8rem', color: '#52525b', lineHeight: 1.6 }}>
+          <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 0, fontSize: '0.8rem', color: '#52525b', lineHeight: 1.6 }}>
             <strong style={{ color: '#71717a' }}>Backup-Strategie:</strong>{' '}
             Täglich automatisch via SQLite hot-backup. Maximale Aufbewahrung: 7 Tage (älteste werden automatisch gelöscht).
             Cleanup läuft alle 6 Stunden: Session-Files (&gt;7 Tage), Ausführungsläufe (&gt;30 Tage),

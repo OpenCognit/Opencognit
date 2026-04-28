@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { resolveAgentWorkdir, SAFE_DEFAULT_WORKDIR } from './workspace-guard.js';
+import { resolveCliPath } from './cli-paths.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -100,7 +101,7 @@ export class ClaudeCodeAdapter implements Adapter {
 
   constructor(options: ClaudeCodeAdapterOptions = {}) {
     this.options = {
-      claudePath: options.claudePath || 'claude',
+      claudePath: options.claudePath || resolveCliPath('claude', undefined, 'claude'),
       maxTokens: options.maxTokens || 4096,
       model: options.model || 'claude-sonnet-4-6',
       systemPrompt: options.systemPrompt || this.getDefaultSystemPrompt(),
@@ -132,7 +133,7 @@ Respond in the language of the task (German if the task is in German, English if
   canHandle(task: AdapterTask): boolean {
     // Claude Code Adapter ist der "default" Adapter für komplexe Aufgaben
     // Er ist zuständig wenn kein anderer spezifischer Adapter passt
-    const text = `${task.titel} ${task.beschreibung || ''}`.toLowerCase();
+    const text = `${task.title} ${task.description || ''}`.toLowerCase();
     
     // Nicht zuständig für reine Bash/HTTP Tasks (die haben ihre eigenen Adapter)
     if (text.includes('bash') || text.includes('shell') || 
@@ -163,7 +164,7 @@ Respond in the language of the task (German if the task is in German, English if
     config: AdapterConfig
   ): Promise<AdapterExecutionResult> {
     const startTime = Date.now();
-    const sessionId = `${config.unternehmenId}-${config.expertId}-${config.runId}`;
+    const sessionId = `${config.companyId}-${config.agentId}-${config.runId}`;
     const sessionFile = path.join(this.sessionDir, `${sessionId}.json`);
 
     // Load previous session if exists
@@ -187,9 +188,9 @@ Respond in the language of the task (German if the task is in German, English if
     fs.writeFileSync(tmpFile, prompt, 'utf-8');
 
     // ── Acquire global lock — only one claude CLI process at a time ──────────
-    console.log(`⏳ [claude-code] Warte auf CLI-Lock für ${config.expertId}...`);
+    console.log(`⏳ [claude-code] Warte auf CLI-Lock für ${config.agentId}...`);
     await acquireCliLock();
-    console.log(`🔒 [claude-code] CLI-Lock erworben für ${config.expertId}`);
+    console.log(`🔒 [claude-code] CLI-Lock erworben für ${config.agentId}`);
     // ─────────────────────────────────────────────────────────────────────────
 
     try {
@@ -215,8 +216,8 @@ Respond in the language of the task (German if the task is in German, English if
           env: {
             ...process.env,
             PATH: enrichedPath,
-            OPENCOGNIT_EXPERT_ID: config.expertId,
-            OPENCOGNIT_UNTERNEHMEN_ID: config.unternehmenId,
+            OPENCOGNIT_EXPERT_ID: config.agentId,
+            OPENCOGNIT_UNTERNEHMEN_ID: config.companyId,
             OPENCOGNIT_RUN_ID: config.runId,
             OPENCOGNIT_WORKSPACE: resolvedWorkdir,
             CLAUDE_CODE_ENTRYPOINT: 'opencognit',
@@ -270,7 +271,7 @@ Respond in the language of the task (German if the task is in German, English if
       };
     } finally {
       releaseCliLock();
-      console.log(`🔓 [claude-code] CLI-Lock freigegeben für ${config.expertId}`);
+      console.log(`🔓 [claude-code] CLI-Lock freigegeben für ${config.agentId}`);
     }
   }
 
@@ -285,16 +286,16 @@ Respond in the language of the task (German if the task is in German, English if
 
     // Company context
     parts.push(`[UNTERNEHMEN]\nName: ${context.companyContext.name}`);
-    if (context.companyContext.ziel) {
-      parts.push(`Ziel: ${context.companyContext.ziel}`);
+    if (context.companyContext.goal) {
+      parts.push(`Ziel: ${context.companyContext.goal}`);
     }
     parts.push('');
 
     // Project context (injected when task belongs to a project)
     if (context.projektContext) {
       parts.push(`[PROJEKT: ${context.projektContext.name}]`);
-      if (context.projektContext.beschreibung) {
-        parts.push(context.projektContext.beschreibung);
+      if (context.projektContext.description) {
+        parts.push(context.projektContext.description);
       }
       if (context.projektContext.workDir) {
         parts.push(`Arbeitsverzeichnis: ${context.projektContext.workDir}`);
@@ -303,31 +304,31 @@ Respond in the language of the task (German if the task is in German, English if
     }
 
     // Agent context
-    parts.push(`[AGENT]\nName: ${context.agentContext.name}\nRolle: ${context.agentContext.rolle}`);
-    if (context.agentContext.faehigkeiten) {
-      parts.push(`Fähigkeiten: ${context.agentContext.faehigkeiten}`);
+    parts.push(`[AGENT]\nName: ${context.agentContext.name}\nRolle: ${context.agentContext.role}`);
+    if (context.agentContext.skills) {
+      parts.push(`Fähigkeiten: ${context.agentContext.skills}`);
     }
     parts.push('');
 
     // Memory Kontext (persistentes Langzeit-Gedächtnis)
-    if (context.agentContext.gedaechtnis) {
+    if (context.agentContext.memory) {
       parts.push('[MEIN GEDÄCHTNIS — Memory Wing]');
-      parts.push(context.agentContext.gedaechtnis);
+      parts.push(context.agentContext.memory);
       parts.push('');
     }
 
     // 🧭 Letzte strategische Entscheidung — roter Faden für den CEO
-    if ((context.agentContext as any).letzteEntscheidung) {
+    if ((context.agentContext as any).lastDecision) {
       parts.push('[DEINE LETZTE STRATEGISCHE ENTSCHEIDUNG]');
-      parts.push((context.agentContext as any).letzteEntscheidung);
+      parts.push((context.agentContext as any).lastDecision);
       parts.push('Baue darauf auf. Vermeide Widersprüche zu vorherigen Entscheidungen ohne explizite Begründung.');
       parts.push('');
     }
 
     // 💬 Letzte Chat-Nachrichten (Board ↔ Agent) — Kontinuität zwischen Chat und autonomer Ausführung
-    if ((context.agentContext as any).boardKommunikation) {
+    if ((context.agentContext as any).boardCommunication) {
       parts.push('[LETZTE KOMMUNIKATION MIT DEM BOARD]');
-      parts.push((context.agentContext as any).boardKommunikation);
+      parts.push((context.agentContext as any).boardCommunication);
       parts.push('Beachte diesen Kontext bei deiner Arbeit — handle konsistent mit dem was im Chat besprochen wurde.');
       parts.push('');
     }
@@ -343,15 +344,15 @@ Respond in the language of the task (German if the task is in German, English if
     if (ac.team && ac.team.length > 0) {
       parts.push('[TEAM]');
       for (const m of ac.team) {
-        parts.push(`  • ${m.name} (ID: ${m.id}) — ${m.rolle} [${m.status}]`);
+        parts.push(`  • ${m.name} (ID: ${m.id}) — ${m.role} [${m.status}]`);
       }
       parts.push('');
     }
     if (ac.offeneTasks && ac.offeneTasks.length > 0) {
       parts.push('[OFFENE AUFGABEN]');
       for (const t of ac.offeneTasks) {
-        const assignee = t.zugewiesenAn ? `→ ${t.zugewiesenAn}` : '→ nicht zugewiesen';
-        parts.push(`  • [${t.prioritaet}] ${t.titel} (ID: ${t.id}) [${t.status}] ${assignee}`);
+        const assignee = t.assignedTo ? `→ ${t.assignedTo}` : '→ nicht zugewiesen';
+        parts.push(`  • [${t.priority}] ${t.title} (ID: ${t.id}) [${t.status}] ${assignee}`);
       }
       parts.push('');
     }
@@ -362,12 +363,12 @@ Respond in the language of the task (German if the task is in German, English if
     // ───────────────────────────────────────────────────────────────────
 
     // Task
-    parts.push(`[AUFGABE]\nTitel: ${task.titel}`);
-    if (task.beschreibung) {
-      parts.push(`Beschreibung:\n${task.beschreibung}`);
+    parts.push(`[AUFGABE]\nTitel: ${task.title}`);
+    if (task.description) {
+      parts.push(`Beschreibung:\n${task.description}`);
     }
-    if (task.prioritaet) {
-      parts.push(`Priorität: ${task.prioritaet}`);
+    if (task.priority) {
+      parts.push(`Priorität: ${task.priority}`);
     }
     parts.push('');
 
@@ -375,7 +376,7 @@ Respond in the language of the task (German if the task is in German, English if
     if (context.previousComments.length > 0) {
       parts.push('[VERLAUF]');
       for (const comment of context.previousComments) {
-        parts.push(`[${comment.autorTyp}]: ${comment.inhalt}`);
+        parts.push(`[${comment.senderType}]: ${comment.content}`);
       }
       parts.push('');
     }
@@ -472,7 +473,7 @@ export async function runClaudeDirectChat(prompt: string, expertId: string): Pro
     const enrichedPath = currentPath.includes(localBin) ? currentPath : `${localBin}:${currentPath}`;
 
     const { stdout, stderr } = await execAsync(
-      `claude -p --output-format text --dangerously-skip-permissions < "${tmpFile}"`,
+      `${resolveCliPath('claude', undefined, 'claude')} -p --output-format text --dangerously-skip-permissions < "${tmpFile}"`,
       {
         shell: '/bin/sh',
         cwd: SAFE_DEFAULT_WORKDIR,

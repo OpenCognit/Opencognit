@@ -7,7 +7,7 @@ import type { ExpertAdapter, AdapterRunOptions, AdapterRunResult } from './types
 
 export class ClaudeAdapter implements ExpertAdapter {
   name = 'claude';
-  beschreibung = 'Claude Code CLI (Anthropic)';
+  description = 'Claude Code CLI (Anthropic)';
 
   async isAvailable(): Promise<boolean> {
     return new Promise((resolve) => {
@@ -40,8 +40,8 @@ export class ClaudeAdapter implements ExpertAdapter {
           ...process.env,
           OPENCOGNIT_API_KEY: options.apiKey,
           OPENCOGNIT_API_URL: options.apiBaseUrl,
-          OPENCOGNIT_EXPERT_ID: options.expertId,
-          OPENCOGNIT_UNTERNEHMEN_ID: options.unternehmenId,
+          OPENCOGNIT_EXPERT_ID: options.agentId,
+          OPENCOGNIT_UNTERNEHMEN_ID: options.companyId,
         },
       });
 
@@ -53,16 +53,16 @@ export class ClaudeAdapter implements ExpertAdapter {
         if (code === 0) {
           resolve({
             success: true,
-            ausgabe: stdout.trim(),
-            dauer,
-            tokenVerbrauch: this.estimateTokens(stdout),
+            output: stdout.trim(),
+            duration: dauer,
+            tokenUsage: this.estimateTokens(stdout),
           });
         } else {
           resolve({
             success: false,
-            ausgabe: stdout.trim(),
-            fehler: stderr.trim() || `Prozess beendet mit Code ${code}`,
-            dauer,
+            output: stdout.trim(),
+            error: stderr.trim() || `Prozess beendet mit Code ${code}`,
+            duration: dauer,
           });
         }
       });
@@ -70,20 +70,20 @@ export class ClaudeAdapter implements ExpertAdapter {
       proc.on('error', (err) => {
         resolve({
           success: false,
-          ausgabe: '',
-          fehler: `Fehler beim Starten: ${err.message}`,
-          dauer: Date.now() - startTime,
+          output: '',
+          error: `Fehler beim Starten: ${err.message}`,
+          duration: Date.now() - startTime,
         });
       });
     });
   }
 
-  private estimateTokens(text: string): { inputTokens: number; outputTokens: number; kostenCent: number } {
+  private estimateTokens(text: string): { inputTokens: number; outputTokens: number; costCent: number } {
     // Rough estimation: ~4 chars per token
     const outputTokens = Math.ceil(text.length / 4);
     const inputTokens = Math.ceil(outputTokens * 0.5); // System prompt estimate
     // Claude pricing estimate: $3/MTok input, $15/MTok output
-    const kostenCent = Math.ceil((inputTokens * 0.3 + outputTokens * 1.5) / 1000);
-    return { inputTokens, outputTokens, kostenCent };
+    const costCent = Math.ceil((inputTokens * 0.3 + outputTokens * 1.5) / 1000);
+    return { inputTokens, outputTokens, costCent };
   }
 }

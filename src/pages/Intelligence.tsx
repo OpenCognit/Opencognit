@@ -85,8 +85,8 @@ interface TraceEvent {
 }
 
 const TRACE_COLORS: Record<string, { color: string; bg: string; label: string }> = {
-  thinking: { color: '#a855f7', bg: 'rgba(168,85,247,0.06)',  label: '💭 Denkt' },
-  action:   { color: '#23CDCB', bg: 'rgba(35,205,202,0.06)',  label: '⚡ Aktion' },
+  thinking: { color: '#9b87c8', bg: 'rgba(155,135,200,0.06)',  label: '💭 Denkt' },
+  action:   { color: '#c5a059', bg: 'rgba(197,160,89,0.06)',  label: '⚡ Aktion' },
   result:   { color: '#22c55e', bg: 'rgba(34,197,94,0.06)',   label: '✓ Ergebnis' },
   error:    { color: '#ef4444', bg: 'rgba(239,68,68,0.06)',   label: '✗ Fehler' },
   warning:  { color: '#f59e0b', bg: 'rgba(245,158,11,0.06)',  label: '⚠ Warnung' },
@@ -107,7 +107,7 @@ function LiveTraceTab({ expertId, isExpanded }: { expertId: string; isExpanded: 
     if (!isExpanded) return;
     setLoading(true);
     const token = localStorage.getItem('opencognit_token') || '';
-    fetch(`/api/experten/${expertId}/trace/history?limit=30&token=${encodeURIComponent(token)}`)
+    fetch(`/api/experten/${expertId}/trace/history?limit=30&token=${encodeURIComponent(token)}`, { credentials: 'include' })
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) setEvents(data.reverse());
@@ -153,7 +153,7 @@ function LiveTraceTab({ expertId, isExpanded }: { expertId: string; isExpanded: 
         {live ? (
           <button onClick={stopLive} style={{
             display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.25rem 0.75rem',
-            borderRadius: '7px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600,
+            borderRadius: 0, fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600,
             background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444',
           }}>
             <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444', animation: 'pulse 1.2s ease-in-out infinite' }} />
@@ -162,8 +162,8 @@ function LiveTraceTab({ expertId, isExpanded }: { expertId: string; isExpanded: 
         ) : (
           <button onClick={startLive} style={{
             display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.25rem 0.75rem',
-            borderRadius: '7px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600,
-            background: 'rgba(35,205,202,0.08)', border: '1px solid rgba(35,205,202,0.2)', color: '#23CDCB',
+            borderRadius: 0, fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600,
+            background: 'rgba(197,160,89,0.08)', border: '1px solid rgba(197,160,89,0.2)', color: '#c5a059',
           }}>
             <Radio size={11} /> Live starten
           </button>
@@ -176,7 +176,7 @@ function LiveTraceTab({ expertId, isExpanded }: { expertId: string; isExpanded: 
       {/* Event list */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
-          <Cpu size={18} style={{ animation: 'spin 1s linear infinite', color: '#23CDCB' }} />
+          <Cpu size={18} style={{ animation: 'spin 1s linear infinite', color: '#c5a059' }} />
         </div>
       ) : events.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '2rem', color: '#3f3f46', fontSize: '0.8125rem' }}>
@@ -192,7 +192,7 @@ function LiveTraceTab({ expertId, isExpanded }: { expertId: string; isExpanded: 
             const cfg = TRACE_COLORS[ev.typ] ?? TRACE_COLORS.info;
             return (
               <div key={ev.id || i} style={{
-                padding: '0.5rem 0.75rem', borderRadius: '8px',
+                padding: '0.5rem 0.75rem', borderRadius: 0,
                 background: cfg.bg, border: `1px solid ${cfg.color}20`,
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: ev.details ? '0.25rem' : 0 }}>
@@ -225,7 +225,7 @@ function LiveTraceTab({ expertId, isExpanded }: { expertId: string; isExpanded: 
   );
 }
 
-const CLI_ADAPTERS = ['codex-cli', 'gemini-cli', 'claude-code'];
+const CLI_ADAPTERS = ['codex-cli', 'gemini-cli', 'kimi-cli', 'claude-code'];
 
 function computeHealthScore(expert: Expert): number {
   let score = 100;
@@ -488,32 +488,32 @@ function KnowledgeGraphPanel({ facts, unternehmenId, onRefresh }: { facts: KgFac
   if (facts.length === 0 && !addOpen) return null;
 
   return (
-    <div style={{ marginBottom: '2rem', background: '#000', border: '1px solid rgba(35,205,202,0.3)', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 0 40px rgba(35,205,202,0.06), 0 0 0 1px rgba(35,205,202,0.08)' }}>
+    <div style={{ marginBottom: '2rem', background: '#000', border: '1px solid rgba(197,160,89,0.3)', borderRadius: 0, overflow: 'hidden', boxShadow: '0 0 40px rgba(197,160,89,0.06), 0 0 0 1px rgba(197,160,89,0.08)' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.875rem 1.25rem', borderBottom: '1px solid rgba(35,205,202,0.1)', flexWrap: 'wrap', gap: '0.5rem', background: 'rgba(35,205,202,0.03)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.875rem 1.25rem', borderBottom: '1px solid rgba(197,160,89,0.1)', flexWrap: 'wrap', gap: '0.5rem', background: 'rgba(197,160,89,0.03)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.9375rem' }}>
-          <Network size={16} style={{ color: '#23CDCB' }} />
-          <span style={{ background: 'linear-gradient(90deg, #23CDCB, #a855f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Neural Knowledge Graph</span>
-          <span style={{ fontSize: '0.6875rem', color: '#23CDCB', fontWeight: 400, background: 'rgba(35,205,202,0.08)', border: '1px solid rgba(35,205,202,0.2)', padding: '0.1rem 0.5rem', borderRadius: '999px', fontFamily: 'monospace' }}>{facts.length} nodes</span>
+          <Network size={16} style={{ color: '#c5a059' }} />
+          <span style={{ background: 'linear-gradient(90deg, #c5a059, #9b87c8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Neural Knowledge Graph</span>
+          <span style={{ fontSize: '0.6875rem', color: '#c5a059', fontWeight: 400, background: 'rgba(197,160,89,0.08)', border: '1px solid rgba(197,160,89,0.2)', padding: '0.1rem 0.5rem', borderRadius: 0, fontFamily: 'monospace' }}>{facts.length} nodes</span>
         </div>
         <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center' }}>
           <div style={{ position: 'relative' }}>
-            <Search size={11} style={{ position: 'absolute', left: 7, top: '50%', transform: 'translateY(-50%)', color: '#23CDCB', opacity: 0.5 }} />
+            <Search size={11} style={{ position: 'absolute', left: 7, top: '50%', transform: 'translateY(-50%)', color: '#c5a059', opacity: 0.5 }} />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder={de ? 'Suchen…' : 'Search…'}
-              style={{ paddingLeft: 22, paddingRight: 8, paddingTop: 4, paddingBottom: 4, borderRadius: 7, border: '1px solid rgba(35,205,202,0.2)', background: 'rgba(35,205,202,0.05)', color: '#23CDCB', fontSize: '0.75rem', width: 120, outline: 'none' }} />
+              style={{ paddingLeft: 22, paddingRight: 8, paddingTop: 4, paddingBottom: 4, borderRadius: 0, border: '1px solid rgba(197,160,89,0.2)', background: 'rgba(197,160,89,0.05)', color: '#c5a059', fontSize: '0.75rem', width: 120, outline: 'none' }} />
           </div>
-          <button onClick={() => setAddOpen(o => !o)} style={{ padding: '0.25rem 0.625rem', borderRadius: 7, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', border: `1px solid rgba(35,205,202,${addOpen ? '0.5' : '0.25'})`, background: addOpen ? 'rgba(35,205,202,0.12)' : 'transparent', color: '#23CDCB', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button onClick={() => setAddOpen(o => !o)} style={{ padding: '0.25rem 0.625rem', borderRadius: 0, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', border: `1px solid rgba(197,160,89,${addOpen ? '0.5' : '0.25'})`, background: addOpen ? 'rgba(197,160,89,0.12)' : 'transparent', color: '#c5a059', display: 'flex', alignItems: 'center', gap: 4 }}>
             <Plus size={11} /> {de ? 'Fakt' : 'Fact'}
           </button>
           {(['graph', 'list'] as const).map(v => (
-            <button key={v} onClick={() => setView(v)} style={{ padding: '0.25rem 0.75rem', borderRadius: 7, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', border: `1px solid ${view === v ? 'rgba(35,205,202,0.3)' : 'rgba(255,255,255,0.06)'}`, background: view === v ? 'rgba(35,205,202,0.1)' : 'transparent', color: view === v ? '#23CDCB' : '#475569' }}>{v === 'graph' ? 'Graph' : (de ? 'Tabelle' : 'Table')}</button>
+            <button key={v} onClick={() => setView(v)} style={{ padding: '0.25rem 0.75rem', borderRadius: 0, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', border: `1px solid ${view === v ? 'rgba(197,160,89,0.3)' : 'rgba(255,255,255,0.06)'}`, background: view === v ? 'rgba(197,160,89,0.1)' : 'transparent', color: view === v ? '#c5a059' : '#475569' }}>{v === 'graph' ? 'Graph' : (de ? 'Tabelle' : 'Table')}</button>
           ))}
           {view === 'graph' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 1, background: 'rgba(35,205,202,0.04)', border: '1px solid rgba(35,205,202,0.15)', borderRadius: 7, padding: '0 2px', marginLeft: 2 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 1, background: 'rgba(197,160,89,0.04)', border: '1px solid rgba(197,160,89,0.15)', borderRadius: 0, padding: '0 2px', marginLeft: 2 }}>
               <button onClick={() => { const nz = Math.max(0.15, viewZoomRef.current * 0.85); const ratio = nz/viewZoomRef.current; const cx = W/2, cy = H/2; setPan(p=>({x: cx-(cx-p.x)*ratio, y: cy-(cy-p.y)*ratio})); setZoom(nz); }} title="Rauszoomen" style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', padding: '3px 4px' }}><ZoomOut size={11} /></button>
-              <button onClick={() => { setZoom(1); setPan({x:0,y:0}); }} title="Zoom zurücksetzen" style={{ background: 'none', border: 'none', color: '#23CDCB', cursor: 'pointer', fontSize: '0.6rem', fontWeight: 700, padding: '0 4px', fontFamily: 'monospace', minWidth: 30, textAlign: 'center' }}>{Math.round(zoom*100)}%</button>
+              <button onClick={() => { setZoom(1); setPan({x:0,y:0}); }} title="Zoom zurücksetzen" style={{ background: 'none', border: 'none', color: '#c5a059', cursor: 'pointer', fontSize: '0.6rem', fontWeight: 700, padding: '0 4px', fontFamily: 'monospace', minWidth: 30, textAlign: 'center' }}>{Math.round(zoom*100)}%</button>
               <button onClick={() => { const nz = Math.min(4, viewZoomRef.current * 1.18); const ratio = nz/viewZoomRef.current; const cx = W/2, cy = H/2; setPan(p=>({x: cx-(cx-p.x)*ratio, y: cy-(cy-p.y)*ratio})); setZoom(nz); }} title="Reinzoomen" style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', padding: '3px 4px' }}><ZoomIn size={11} /></button>
-              <div style={{ width: 1, height: 12, background: 'rgba(35,205,202,0.15)', margin: '0 1px' }} />
+              <div style={{ width: 1, height: 12, background: 'rgba(197,160,89,0.15)', margin: '0 1px' }} />
               <button onClick={fitView} title="Alle anzeigen" style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', padding: '3px 4px' }}><Maximize2 size={11} /></button>
             </div>
           )}
@@ -521,29 +521,29 @@ function KnowledgeGraphPanel({ facts, unternehmenId, onRefresh }: { facts: KgFac
       </div>
 
       {/* Stats bar */}
-      <div style={{ display: 'flex', gap: '1.5rem', padding: '0.4rem 1.25rem', borderBottom: '1px solid rgba(35,205,202,0.06)', fontSize: '0.6875rem', color: '#334155', alignItems: 'center', fontFamily: 'monospace' }}>
+      <div style={{ display: 'flex', gap: '1.5rem', padding: '0.4rem 1.25rem', borderBottom: '1px solid rgba(197,160,89,0.06)', fontSize: '0.6875rem', color: '#334155', alignItems: 'center', fontFamily: 'monospace' }}>
         <span><span style={{ color: '#22c55e', fontWeight: 700 }}>{uniqueSubjects}</span> <span style={{ color: '#22c55e88' }}>{de ? 'Subjekte' : 'subjects'}</span></span>
-        <span><span style={{ color: '#a855f7', fontWeight: 700 }}>{uniquePredicates}</span> <span style={{ color: '#a855f788' }}>{de ? 'Prädikate' : 'predicates'}</span></span>
-        <span><span style={{ color: '#23CDCB', fontWeight: 700 }}>{uniqueObjects}</span> <span style={{ color: '#23CDCB88' }}>{de ? 'Objekte' : 'objects'}</span></span>
-        {focused && <span style={{ marginLeft: 'auto', color: '#23CDCB', cursor: 'pointer', fontSize: '0.625rem', border: '1px solid rgba(35,205,202,0.3)', padding: '0.1rem 0.4rem', borderRadius: 4 }} onClick={() => setFocused(null)}>✕ clear focus</span>}
+        <span><span style={{ color: '#9b87c8', fontWeight: 700 }}>{uniquePredicates}</span> <span style={{ color: '#9b87c888' }}>{de ? 'Prädikate' : 'predicates'}</span></span>
+        <span><span style={{ color: '#c5a059', fontWeight: 700 }}>{uniqueObjects}</span> <span style={{ color: '#c5a05988' }}>{de ? 'Objekte' : 'objects'}</span></span>
+        {focused && <span style={{ marginLeft: 'auto', color: '#c5a059', cursor: 'pointer', fontSize: '0.625rem', border: '1px solid rgba(197,160,89,0.3)', padding: '0.1rem 0.4rem', borderRadius: 0 }} onClick={() => setFocused(null)}>✕ clear focus</span>}
       </div>
 
       {/* Add Fact form */}
       {addOpen && (
-        <div style={{ padding: '0.625rem 1.25rem', borderBottom: '1px solid rgba(35,205,202,0.08)', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', background: 'rgba(35,205,202,0.02)' }}>
+        <div style={{ padding: '0.625rem 1.25rem', borderBottom: '1px solid rgba(197,160,89,0.08)', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', background: 'rgba(197,160,89,0.02)' }}>
           {([
             { val: newSubject, set: setNewSubject, ph: de ? 'Subjekt' : 'Subject', color: '#22c55e' },
-            { val: newPredicate, set: setNewPredicate, ph: de ? 'Prädikat' : 'Predicate', color: '#a855f7' },
-            { val: newObject, set: setNewObject, ph: de ? 'Objekt' : 'Object', color: '#23CDCB' },
+            { val: newPredicate, set: setNewPredicate, ph: de ? 'Prädikat' : 'Predicate', color: '#9b87c8' },
+            { val: newObject, set: setNewObject, ph: de ? 'Objekt' : 'Object', color: '#c5a059' },
           ] as const).map(({ val, set, ph, color }) => (
             <input key={ph} value={val} onChange={e => set(e.target.value)} placeholder={ph}
               onKeyDown={e => e.key === 'Enter' && addFact()}
-              style={{ flex: 1, minWidth: 90, padding: '0.35rem 0.6rem', borderRadius: 7, border: `1px solid ${color}50`, background: `${color}08`, color, fontSize: '0.8rem', outline: 'none', fontFamily: 'monospace' }} />
+              style={{ flex: 1, minWidth: 90, padding: '0.35rem 0.6rem', borderRadius: 0, border: `1px solid ${color}50`, background: `${color}08`, color, fontSize: '0.8rem', outline: 'none', fontFamily: 'monospace' }} />
           ))}
-          <button onClick={addFact} disabled={saving} style={{ padding: '0.35rem 0.875rem', borderRadius: 7, border: '1px solid rgba(35,205,202,0.3)', background: 'rgba(35,205,202,0.1)', color: '#23CDCB', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>
+          <button onClick={addFact} disabled={saving} style={{ padding: '0.35rem 0.875rem', borderRadius: 0, border: '1px solid rgba(197,160,89,0.3)', background: 'rgba(197,160,89,0.1)', color: '#c5a059', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>
             {saving ? '…' : (de ? 'Speichern' : 'Save')}
           </button>
-          <button onClick={() => setAddOpen(false)} style={{ padding: '0.35rem 0.625rem', borderRadius: 7, border: 'none', background: 'transparent', color: '#475569', fontSize: '0.8rem', cursor: 'pointer' }}>✕</button>
+          <button onClick={() => setAddOpen(false)} style={{ padding: '0.35rem 0.625rem', borderRadius: 0, border: 'none', background: 'transparent', color: '#475569', fontSize: '0.8rem', cursor: 'pointer' }}>✕</button>
         </div>
       )}
 
@@ -576,21 +576,21 @@ function KnowledgeGraphPanel({ facts, unternehmenId, onRefresh }: { facts: KgFac
               </filter>
               {/* Arrows per color — we use a single white-ish arrow */}
               <marker id="kg-arrow" markerWidth="7" markerHeight="7" refX="16" refY="3.5" orient="auto">
-                <path d="M0,0 L0,7 L7,3.5 z" fill="rgba(35,205,202,0.7)" />
+                <path d="M0,0 L0,7 L7,3.5 z" fill="rgba(197,160,89,0.7)" />
               </marker>
               <marker id="kg-arrow-dim" markerWidth="6" markerHeight="6" refX="14" refY="3" orient="auto">
                 <path d="M0,0 L0,6 L6,3 z" fill="rgba(255,255,255,0.15)" />
               </marker>
               {/* Scanline overlay */}
               <pattern id="kg-scan" x="0" y="0" width="700" height="4" patternUnits="userSpaceOnUse">
-                <rect width="700" height="1" y="3" fill="rgba(35,205,202,0.025)" />
+                <rect width="700" height="1" y="3" fill="rgba(197,160,89,0.025)" />
               </pattern>
               {/* Dot grid */}
               <pattern id="kg-grid" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
-                <circle cx="0" cy="0" r="0.6" fill="rgba(35,205,202,0.12)" />
-                <circle cx="40" cy="0" r="0.6" fill="rgba(35,205,202,0.12)" />
-                <circle cx="0" cy="40" r="0.6" fill="rgba(35,205,202,0.12)" />
-                <circle cx="40" cy="40" r="0.6" fill="rgba(35,205,202,0.12)" />
+                <circle cx="0" cy="0" r="0.6" fill="rgba(197,160,89,0.12)" />
+                <circle cx="40" cy="0" r="0.6" fill="rgba(197,160,89,0.12)" />
+                <circle cx="0" cy="40" r="0.6" fill="rgba(197,160,89,0.12)" />
+                <circle cx="40" cy="40" r="0.6" fill="rgba(197,160,89,0.12)" />
               </pattern>
             </defs>
 
@@ -666,7 +666,7 @@ function KnowledgeGraphPanel({ facts, unternehmenId, onRefresh }: { facts: KgFac
               const isFoc = focused === n.id;
               const r = Math.min(13 + n.degree * 4, 32);
               const isSubj = facts.some(f => f.subject === n.id);
-              const color = isSubj ? '#22c55e' : '#23CDCB';
+              const color = isSubj ? '#22c55e' : '#c5a059';
               const glowId = isFoc ? 'kg-glow-strong' : active ? 'kg-glow-med' : undefined;
               return (
                 <g key={n.id} transform={`translate(${n.x},${n.y})`}
@@ -715,19 +715,19 @@ function KnowledgeGraphPanel({ facts, unternehmenId, onRefresh }: { facts: KgFac
             </g>{/* end zoomable content */}
 
             {/* Fixed corner decorations */}
-            <text x={8} y={H - 7} fontSize="7" fill="rgba(35,205,202,0.2)" fontFamily="monospace">NEURAL GRAPH v2</text>
-            <text x={W - 8} y={H - 7} fontSize="7" fill="rgba(35,205,202,0.2)" fontFamily="monospace" textAnchor="end">{facts.length} FACTS · {nodes.length} NODES</text>
-            <text x={8} y={H - 17} fontSize="6" fill="rgba(35,205,202,0.12)" fontFamily="monospace">Scroll = Zoom · Ziehen = Pan · Node-Drag = Bewegen</text>
+            <text x={8} y={H - 7} fontSize="7" fill="rgba(197,160,89,0.2)" fontFamily="monospace">NEURAL GRAPH v2</text>
+            <text x={W - 8} y={H - 7} fontSize="7" fill="rgba(197,160,89,0.2)" fontFamily="monospace" textAnchor="end">{facts.length} FACTS · {nodes.length} NODES</text>
+            <text x={8} y={H - 17} fontSize="6" fill="rgba(197,160,89,0.12)" fontFamily="monospace">Scroll = Zoom · Ziehen = Pan · Node-Drag = Bewegen</text>
           </svg>
 
-          <div style={{ display: 'flex', gap: '1.5rem', padding: '0.5rem 0.875rem', fontSize: '0.625rem', color: '#1e293b', flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid rgba(35,205,202,0.06)', fontFamily: 'monospace' }}>
+          <div style={{ display: 'flex', gap: '1.5rem', padding: '0.5rem 0.875rem', fontSize: '0.625rem', color: '#1e293b', flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid rgba(197,160,89,0.06)', fontFamily: 'monospace' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'rgba(34,197,94,0.25)', border: '1px solid #22c55e', display: 'inline-block', boxShadow: '0 0 4px #22c55e' }} />
               <span style={{ color: '#22c55e88' }}>{de ? 'Subjekt' : 'Subject'}</span>
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'rgba(35,205,202,0.2)', border: '1px solid #23CDCB', display: 'inline-block', boxShadow: '0 0 4px #23CDCB' }} />
-              <span style={{ color: '#23CDCB88' }}>{de ? 'Objekt' : 'Object'}</span>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'rgba(197,160,89,0.2)', border: '1px solid #c5a059', display: 'inline-block', boxShadow: '0 0 4px #c5a059' }} />
+              <span style={{ color: '#c5a05988' }}>{de ? 'Objekt' : 'Object'}</span>
             </span>
             <span style={{ color: '#1e3a4a' }}>{de ? 'Größe = Grad · Klick = Fokus · Node-Drag = bewegen · Hintergrund-Drag = Pan · Scroll = Zoom' : 'Size = Degree · Click = Focus · Node-Drag = move · Bg-Drag = Pan · Scroll = Zoom'}</span>
           </div>
@@ -735,15 +735,15 @@ function KnowledgeGraphPanel({ facts, unternehmenId, onRefresh }: { facts: KgFac
       ) : (
         <div style={{ padding: '0.75rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', background: '#000' }}>
           {facts.filter(f => sq === '' || f.subject.toLowerCase().includes(sq) || f.predicate.toLowerCase().includes(sq) || f.object.toLowerCase().includes(sq)).map(f => (
-            <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', borderRadius: 8, background: 'rgba(35,205,202,0.03)', border: '1px solid rgba(35,205,202,0.1)', fontSize: '0.8125rem', fontFamily: 'monospace' }}>
+            <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', borderRadius: 0, background: 'rgba(197,160,89,0.03)', border: '1px solid rgba(197,160,89,0.1)', fontSize: '0.8125rem', fontFamily: 'monospace' }}>
               <span style={{ color: '#22c55e', fontWeight: 700 }}>{f.subject}</span>
               <span style={{ color: '#475569', fontSize: '0.6875rem' }}>→</span>
               <span style={{ color: predicateColor(f.predicate), fontStyle: 'italic', fontSize: '0.75rem' }}>{f.predicate}</span>
               <span style={{ color: '#475569', fontSize: '0.6875rem' }}>→</span>
-              <span style={{ color: '#23CDCB', fontWeight: 500 }}>{f.object}</span>
+              <span style={{ color: '#c5a059', fontWeight: 500 }}>{f.object}</span>
               {f.validFrom && <span style={{ marginLeft: 'auto', fontSize: '0.6875rem', color: '#334155', flexShrink: 0 }}>{de ? 'seit' : 'since'} {f.validFrom}</span>}
               <button onClick={() => deleteFact(f.id)} disabled={deleting === f.id}
-                style={{ marginLeft: f.validFrom ? '0.5rem' : 'auto', padding: '0.15rem 0.375rem', borderRadius: 5, border: 'none', background: 'transparent', color: '#334155', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                style={{ marginLeft: f.validFrom ? '0.5rem' : 'auto', padding: '0.15rem 0.375rem', borderRadius: 0, border: 'none', background: 'transparent', color: '#334155', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
                 {deleting === f.id ? '…' : <Trash2 size={11} />}
               </button>
             </div>
@@ -779,10 +779,10 @@ function WriteMemoryForm({ expertId, onSaved, t }: { expertId: string; onSaved: 
   };
 
   return (
-    <div style={{ padding: '1rem', background: 'rgba(35,205,202,0.04)', border: '1px solid rgba(35,205,202,0.15)', borderRadius: '10px', marginTop: '0.75rem' }}>
+    <div style={{ padding: '1rem', background: 'rgba(197,160,89,0.04)', border: '1px solid rgba(197,160,89,0.15)', borderRadius: 0, marginTop: '0.75rem' }}>
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
         <select value={room} onChange={e => setRoom(e.target.value)} style={{
-          padding: '0.375rem 0.5rem', borderRadius: '6px', fontSize: '0.8125rem',
+          padding: '0.375rem 0.5rem', borderRadius: 0, fontSize: '0.8125rem',
           background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#a78bfa', cursor: 'pointer',
         }}>
           {ALLOWED_ROOMS.map(r => <option key={r} value={r}>{r}</option>)}
@@ -790,15 +790,15 @@ function WriteMemoryForm({ expertId, onSaved, t }: { expertId: string; onSaved: 
       </div>
       <textarea value={content} onChange={e => setContent(e.target.value)} placeholder={t.gedaechtnis.contentPlaceholder}
         rows={3} style={{
-          width: '100%', padding: '0.5rem', borderRadius: '6px', fontSize: '0.8125rem', resize: 'vertical',
+          width: '100%', padding: '0.5rem', borderRadius: 0, fontSize: '0.8125rem', resize: 'vertical',
           background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: '#e4e4e7',
           fontFamily: 'monospace', boxSizing: 'border-box',
         }} />
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.375rem' }}>
         <button onClick={save} disabled={saving || !content.trim()} style={{
           display: 'flex', alignItems: 'center', gap: '0.375rem',
-          padding: '0.375rem 0.875rem', borderRadius: '7px', cursor: saving ? 'wait' : 'pointer',
-          background: 'rgba(35,205,202,0.1)', border: '1px solid rgba(35,205,202,0.25)', color: '#23CDCB',
+          padding: '0.375rem 0.875rem', borderRadius: 0, cursor: saving ? 'wait' : 'pointer',
+          background: 'rgba(197,160,89,0.1)', border: '1px solid rgba(197,160,89,0.25)', color: '#c5a059',
           fontSize: '0.8125rem', fontWeight: 600, opacity: saving || !content.trim() ? 0.5 : 1,
         }}>
           <Save size={13} /> {saving ? t.gedaechtnis.saving : t.gedaechtnis.save}
@@ -878,7 +878,7 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
     <div style={{
       backgroundColor: 'rgba(255,255,255,0.02)',
       border: `1px solid ${health < 40 ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.07)'}`,
-      borderRadius: '20px', overflow: 'hidden', transition: 'all 0.3s',
+      borderRadius: 0, overflow: 'hidden', transition: 'all 0.3s',
     }}>
       {/* Header */}
       <div onClick={() => setExpanded(!expanded)} style={{
@@ -896,11 +896,11 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             <span style={{ fontWeight: 700, color: '#fff', fontSize: '0.9375rem' }}>{expert.name}</span>
-            <span style={{ padding: '0.125rem 0.5rem', background: 'rgba(35,205,202,0.1)', border: '1px solid rgba(35,205,202,0.25)', borderRadius: '9999px', fontSize: '0.625rem', color: '#23CDCB', fontWeight: 600, fontFamily: 'monospace' }}>
+            <span style={{ padding: '0.125rem 0.5rem', background: 'rgba(197,160,89,0.1)', border: '1px solid rgba(197,160,89,0.25)', borderRadius: '9999px', fontSize: '0.625rem', color: '#c5a059', fontWeight: 600, fontFamily: 'monospace' }}>
               {wingName}
             </span>
             {totalEntries > 0 && (
-              <span style={{ fontSize: '0.625rem', color: '#8b5cf6', fontWeight: 600 }}>
+              <span style={{ fontSize: '0.625rem', color: '#9b87c8', fontWeight: 600 }}>
                 {totalEntries} Eintr. / {rooms.length} Rooms / {diary.length} Diary
               </span>
             )}
@@ -908,7 +908,7 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
           <div style={{ fontSize: '0.8125rem', color: '#71717a', marginTop: '0.125rem' }}>{expert.rolle}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.5rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-              <div style={{ width: 60, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
+              <div style={{ width: 60, height: 4, borderRadius: 0, background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
                 <div style={{ height: '100%', width: `${budgetPct}%`, background: budgetPct >= 90 ? '#ef4444' : budgetPct >= 70 ? '#eab308' : '#22c55e', transition: 'width 0.5s' }} />
               </div>
               <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: budgetPct >= 90 ? '#ef4444' : budgetPct >= 70 ? '#eab308' : '#71717a' }}>{budgetPct}%</span>
@@ -946,10 +946,10 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
                 ].map(tab => (
                   <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
                     display: 'flex', alignItems: 'center', gap: '0.375rem',
-                    padding: '0.375rem 0.75rem', borderRadius: '8px',
-                    background: activeTab === tab.key ? 'rgba(35,205,202,0.1)' : 'transparent',
-                    border: `1px solid ${activeTab === tab.key ? 'rgba(35,205,202,0.25)' : 'transparent'}`,
-                    color: activeTab === tab.key ? '#23CDCB' : '#52525b',
+                    padding: '0.375rem 0.75rem', borderRadius: 0,
+                    background: activeTab === tab.key ? 'rgba(197,160,89,0.1)' : 'transparent',
+                    border: `1px solid ${activeTab === tab.key ? 'rgba(197,160,89,0.25)' : 'transparent'}`,
+                    color: activeTab === tab.key ? '#c5a059' : '#52525b',
                     cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600,
                   }}>
                     <tab.icon size={13} /> {tab.label}
@@ -958,16 +958,16 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.375rem' }}>
                   <button onClick={() => setShowWriteForm(v => !v)} style={{
                     display: 'flex', alignItems: 'center', gap: '0.25rem',
-                    padding: '0.25rem 0.625rem', borderRadius: '7px', cursor: 'pointer', fontSize: '0.75rem',
-                    background: showWriteForm ? 'rgba(139,92,246,0.12)' : 'transparent',
-                    border: `1px solid ${showWriteForm ? 'rgba(139,92,246,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                    padding: '0.25rem 0.625rem', borderRadius: 0, cursor: 'pointer', fontSize: '0.75rem',
+                    background: showWriteForm ? 'rgba(155,135,200,0.12)' : 'transparent',
+                    border: `1px solid ${showWriteForm ? 'rgba(155,135,200,0.3)' : 'rgba(255,255,255,0.08)'}`,
                     color: showWriteForm ? '#a78bfa' : '#52525b',
                   }}>
                     <Plus size={12} /> Schreiben
                   </button>
                   <button onClick={triggerConsolidation} disabled={consolidating} style={{
                     display: 'flex', alignItems: 'center', gap: '0.25rem',
-                    padding: '0.25rem 0.625rem', borderRadius: '7px', cursor: consolidating ? 'wait' : 'pointer',
+                    padding: '0.25rem 0.625rem', borderRadius: 0, cursor: consolidating ? 'wait' : 'pointer',
                     fontSize: '0.75rem', opacity: consolidating ? 0.6 : 1,
                     background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: '#52525b',
                   }}>
@@ -987,7 +987,7 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
                 const active = recentTasks.filter(t => t.status === 'in_progress');
                 const rest = recentTasks.filter(t => t.status !== 'in_progress');
                 const priColor = (p: string) => p === 'critical' ? '#ef4444' : p === 'high' ? '#f97316' : p === 'medium' ? '#eab308' : '#52525b';
-                const statusColor = (s: string) => s === 'done' ? '#22c55e' : s === 'in_progress' ? '#23CDCB' : s === 'blocked' ? '#ef4444' : '#52525b';
+                const statusColor = (s: string) => s === 'done' ? '#22c55e' : s === 'in_progress' ? '#c5a059' : s === 'blocked' ? '#ef4444' : '#52525b';
                 if (recentTasks.length === 0) return (
                   <div style={{ textAlign: 'center', padding: '2rem', color: '#3f3f46', fontSize: '0.8125rem' }}>
                     <ListTodo size={28} style={{ opacity: 0.2, marginBottom: '0.5rem' }} />
@@ -997,9 +997,9 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
                 return (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '380px', overflow: 'auto' }}>
                     {active.map(task => (
-                      <div key={task.id} style={{ padding: '0.875rem', borderRadius: '10px', background: 'rgba(35,205,202,0.05)', border: '1px solid rgba(35,205,202,0.2)', position: 'relative' }}>
+                      <div key={task.id} style={{ padding: '0.875rem', borderRadius: 0, background: 'rgba(197,160,89,0.05)', border: '1px solid rgba(197,160,89,0.2)', position: 'relative' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.375rem' }}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0.1rem 0.5rem', borderRadius: '999px', background: 'rgba(35,205,202,0.12)', border: '1px solid rgba(35,205,202,0.3)', fontSize: '0.6rem', color: '#23CDCB', fontWeight: 700, fontFamily: 'monospace', animation: 'pulse 1.5s ease-in-out infinite' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0.1rem 0.5rem', borderRadius: 0, background: 'rgba(197,160,89,0.12)', border: '1px solid rgba(197,160,89,0.3)', fontSize: '0.6rem', color: '#c5a059', fontWeight: 700, fontFamily: 'monospace', animation: 'pulse 1.5s ease-in-out infinite' }}>
                             <Zap size={9} /> AKTIV
                           </span>
                           <span style={{ fontSize: '0.6rem', color: priColor(task.prioritaet), fontWeight: 700, textTransform: 'uppercase', fontFamily: 'monospace' }}>{task.prioritaet}</span>
@@ -1009,7 +1009,7 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
                       </div>
                     ))}
                     {rest.map(task => (
-                      <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem 0.875rem', borderRadius: '8px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem 0.875rem', borderRadius: 0, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
                         <span style={{ width: 7, height: 7, borderRadius: '50%', background: statusColor(task.status), flexShrink: 0 }} />
                         <span style={{ flex: 1, fontSize: '0.8125rem', color: task.status === 'done' ? '#52525b' : '#a1a1aa', textDecoration: task.status === 'done' ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.titel}</span>
                         <span style={{ fontSize: '0.6rem', color: priColor(task.prioritaet), fontWeight: 700, fontFamily: 'monospace', flexShrink: 0 }}>{task.prioritaet}</span>
@@ -1039,9 +1039,9 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
                       <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
                         {rooms.map(r => (
                           <button key={r.room} onClick={() => setActiveRoom(r.room)} style={{
-                            padding: '0.25rem 0.625rem', borderRadius: '6px',
-                            background: activeRoom === r.room ? 'rgba(139,92,246,0.12)' : 'rgba(255,255,255,0.03)',
-                            border: `1px solid ${activeRoom === r.room ? 'rgba(139,92,246,0.3)' : 'rgba(255,255,255,0.06)'}`,
+                            padding: '0.25rem 0.625rem', borderRadius: 0,
+                            background: activeRoom === r.room ? 'rgba(155,135,200,0.12)' : 'rgba(255,255,255,0.03)',
+                            border: `1px solid ${activeRoom === r.room ? 'rgba(155,135,200,0.3)' : 'rgba(255,255,255,0.06)'}`,
                             color: activeRoom === r.room ? '#a78bfa' : '#71717a',
                             cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
                           }}>
@@ -1057,7 +1057,7 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '300px', overflow: 'auto' }}>
                             {room.entries.map(entry => (
                               <div key={entry.id} style={{
-                                padding: '0.75rem', borderRadius: '8px', position: 'relative',
+                                padding: '0.75rem', borderRadius: 0, position: 'relative',
                                 background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)',
                               }}>
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.375rem' }}>
@@ -1066,7 +1066,7 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
                                   </span>
                                   <button onClick={() => deleteDrawerEntry(entry.id)} style={{
                                     background: 'none', border: 'none', cursor: 'pointer', padding: '0.125rem 0.25rem',
-                                    color: '#3f3f46', borderRadius: '4px', display: 'flex', alignItems: 'center',
+                                    color: '#3f3f46', borderRadius: 0, display: 'flex', alignItems: 'center',
                                   }}
                                     onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
                                     onMouseLeave={e => (e.currentTarget.style.color = '#3f3f46')}>
@@ -1094,8 +1094,8 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
                       <Archive size={28} style={{ opacity: 0.2, marginBottom: '0.5rem' }} />
                       <div style={{ marginBottom: '0.5rem' }}>{t.gedaechtnis.noSummaryYet}</div>
                       <button onClick={triggerConsolidation} disabled={consolidating} style={{
-                        padding: '0.375rem 0.875rem', borderRadius: '7px', cursor: consolidating ? 'wait' : 'pointer',
-                        background: 'rgba(35,205,202,0.08)', border: '1px solid rgba(35,205,202,0.2)', color: '#23CDCB',
+                        padding: '0.375rem 0.875rem', borderRadius: 0, cursor: consolidating ? 'wait' : 'pointer',
+                        background: 'rgba(197,160,89,0.08)', border: '1px solid rgba(197,160,89,0.2)', color: '#c5a059',
                         fontSize: '0.8125rem', fontWeight: 600,
                       }}>
                         {consolidating ? t.gedaechtnis.consolidating : t.gedaechtnis.consolidateNow}
@@ -1104,9 +1104,9 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                       {/* Meta bar */}
-                      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', padding: '0.75rem', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', padding: '0.75rem', background: 'rgba(255,255,255,0.02)', borderRadius: 0, border: '1px solid rgba(255,255,255,0.05)' }}>
                         <span style={{ fontSize: '0.75rem', color: '#52525b' }}>
-                          Version <strong style={{ color: '#23CDCB' }}>v{summary.version}</strong>
+                          Version <strong style={{ color: '#c5a059' }}>v{summary.version}</strong>
                         </span>
                         <span style={{ fontSize: '0.75rem', color: '#52525b' }}>
                           <strong style={{ color: '#a78bfa' }}>{summary.komprimierteTurns}</strong> Turns komprimiert
@@ -1116,7 +1116,7 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
                         </span>
                       </div>
                       {/* Summary text */}
-                      <div style={{ maxHeight: '400px', overflow: 'auto', padding: '0.75rem', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div style={{ maxHeight: '400px', overflow: 'auto', padding: '0.75rem', background: 'rgba(255,255,255,0.02)', borderRadius: 0, border: '1px solid rgba(255,255,255,0.05)' }}>
                         <pre style={{ fontSize: '0.75rem', color: '#a1a1aa', whiteSpace: 'pre-wrap', fontFamily: 'monospace', lineHeight: 1.6, margin: 0 }}>
                           {summary.inhalt}
                         </pre>
@@ -1138,15 +1138,15 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '350px', overflow: 'auto' }}>
                       {diary.map(entry => (
                         <div key={entry.id} style={{
-                          padding: '0.875rem', borderRadius: '10px',
-                          background: 'rgba(139,92,246,0.04)', border: '1px solid rgba(139,92,246,0.12)',
+                          padding: '0.875rem', borderRadius: 0,
+                          background: 'rgba(155,135,200,0.04)', border: '1px solid rgba(155,135,200,0.12)',
                           position: 'relative',
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                            <span style={{ fontSize: '0.75rem', color: '#8b5cf6', fontWeight: 700 }}>{entry.datum}</span>
+                            <span style={{ fontSize: '0.75rem', color: '#9b87c8', fontWeight: 700 }}>{entry.datum}</span>
                             <button onClick={() => deleteDiaryEntry(entry.id)} style={{
                               background: 'none', border: 'none', cursor: 'pointer', padding: '0.125rem 0.25rem',
-                              color: '#3f3f46', borderRadius: '4px', display: 'flex', alignItems: 'center',
+                              color: '#3f3f46', borderRadius: 0, display: 'flex', alignItems: 'center',
                             }}
                               onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
                               onMouseLeave={e => (e.currentTarget.style.color = '#3f3f46')}>
@@ -1226,9 +1226,9 @@ export function Intelligence() {
       {toast && (
         <div style={{
           position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 9999,
-          padding: '0.875rem 1.25rem', background: 'rgba(35,205,202,0.15)',
-          border: '1px solid rgba(35,205,202,0.3)', borderRadius: '12px',
-          color: '#23CDCB', fontWeight: 600, fontSize: '0.875rem', backdropFilter: 'blur(20px)',
+          padding: '0.875rem 1.25rem', background: 'rgba(197,160,89,0.15)',
+          border: '1px solid rgba(197,160,89,0.3)', borderRadius: 0,
+          color: '#c5a059', fontWeight: 600, fontSize: '0.875rem', backdropFilter: 'blur(20px)',
           display: 'flex', alignItems: 'center', gap: '0.5rem', animation: 'fadeInUp 0.3s ease-out',
         }}>
           <CheckCircle size={16} /> {toast}
@@ -1239,14 +1239,14 @@ export function Intelligence() {
           {/* Header */}
           <div style={{ marginBottom: '2rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-              <Brain size={20} style={{ color: '#a855f7' }} />
-              <span style={{ fontSize: '12px', fontWeight: 600, color: '#a855f7', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              <Brain size={20} style={{ color: '#9b87c8' }} />
+              <span style={{ fontSize: '12px', fontWeight: 600, color: '#9b87c8', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                 {aktivesUnternehmen?.name}
               </span>
             </div>
             <h1 style={{
               fontSize: '2rem', fontWeight: 700,
-              background: 'linear-gradient(135deg, #a855f7 0%, #23CDCB 100%)',
+              background: 'linear-gradient(135deg, #9b87c8 0%, #c5a059 100%)',
               WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
             }}>
               {t.gedaechtnis.title}
@@ -1264,18 +1264,18 @@ export function Intelligence() {
             gap: '1rem', marginBottom: '2rem',
           }}>
             {[
-              { icon: Brain, label: t.gedaechtnis.agentCount, value: `${experts.length}`, color: '#a855f7' },
+              { icon: Brain, label: t.gedaechtnis.agentCount, value: `${experts.length}`, color: '#9b87c8' },
               { icon: GitBranch, label: 'Knowledge Graph', value: `${kgFacts.length} ${i18n.language === 'de' ? 'Fakten' : 'facts'}`, color: '#22c55e' },
               { icon: TrendingUp, label: t.gedaechtnis.healthScore, value: `${avgHealth} / 100`, color: healthColor },
-              { icon: Key, label: t.gedaechtnis.subscriptionBadge, value: `${cliExperten.length} CLI`, color: '#8b5cf6' },
+              { icon: Key, label: t.gedaechtnis.subscriptionBadge, value: `${cliExperten.length} CLI`, color: '#9b87c8' },
             ].map(({ icon: Icon, label, value, color }, i) => (
               <div key={i} style={{
                 padding: '1.25rem', background: 'rgba(255,255,255,0.02)',
-                border: '1px solid rgba(255,255,255,0.07)', borderRadius: '16px',
+                border: '1px solid rgba(255,255,255,0.07)', borderRadius: 0,
                 display: 'flex', alignItems: 'center', gap: '1rem',
                 animation: `fadeInUp 0.4s ease-out ${i * 0.08}s both`,
               }}>
-                <div style={{ width: 40, height: 40, borderRadius: '10px', background: color + '15', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ width: 40, height: 40, borderRadius: 0, background: color + '15', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Icon size={18} style={{ color }} />
                 </div>
                 <div>
@@ -1295,7 +1295,7 @@ export function Intelligence() {
           {/* Agent Wing Cards */}
           {loading ? (
             <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem', color: '#52525b' }}>
-              <Cpu size={32} style={{ animation: 'spin 1s linear infinite', color: '#a855f7' }} />
+              <Cpu size={32} style={{ animation: 'spin 1s linear infinite', color: '#9b87c8' }} />
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>

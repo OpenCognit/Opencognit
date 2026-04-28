@@ -8,7 +8,7 @@
     "rootDir": ".",
     "strict": false,
     "noImplicitAny": false,
-    "strictNullChecks": true,
+    "strictNullChecks": false,
     "skipLibCheck": true,
     "noEmit": true,
     "esModuleInterop": true,

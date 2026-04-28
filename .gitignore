@@ -1,49 +1,68 @@
 # Dependencies
 node_modules/
+.pnp
+.pnp.js
 
-# Build artifacts
+# Build outputs
 dist/
+build/
+*.tsbuildinfo
 
-# Environment & secrets
+# Environment variables
 .env
 .env.local
 .env.*.local
 
-# Database & data
-*.db
-*.sqlite
-data/
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
-# Logs
-*.log
-*.txt
-server_logs.txt
-server_out.txt
-test_out.txt
-ui.log
-server.log
-
-# TypeScript build info
-tsconfig.tsbuildinfo
-
-# OS files
+# OS
 .DS_Store
 Thumbs.db
 
-# IDE
-.idea/
-.vscode/
-*.swp
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Claude AI context (internal dev file)
-.claude/
+# Testing
+coverage/
+.nyc_output/
 
-# Internal dev / scratch files
-scratch/
-strategy_plan.md
-design_notes_hyperchain.md
-STRATEGIE_HOMEPAGE_BLOCKCHAIN.md
-CLAUDE.md
+# Temporary files
+*.tmp
+*.temp
+
+# Database & data directory (local development only)
+data/
+!data/.gitkeep
+
+# Server-side DBs
+server/db/*.db
+server/db/sqlite.db
+server/db/agent_gedaechtnis.db
+
+# Root-level DB files
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploads and generated content
+uploads/
+
+# Vite
+.vite/
+
+# Misc
+.cache/
+.parcel-cache/
+
+# OpenCognit specific
 TODO.md
 scripts/test-*.ts
 scripts/import-*.ts
@@ -57,6 +76,18 @@ opencognit.db
 
 # Temp files
 90
+server_logs.txt
+server_out.txt
+
+# Backup files
+server/index.ts.backup
+*.backup
+
+# Claude Code local data
+.claude/
+
+# Task runner state
+tasks/
 
 # Agent-created deployment configs (belong in project dirs, not here)
 deployments/
@@ -64,3 +95,19 @@ deployments/
 # Internal QA / release docs
 docs/qa/
 docs/qa-powerchain/
+
+# Internal analysis & review docs (not for public release)
+AUDIT_BRUTAL_HONESTY*.md
+CLAUDE_HANDOFF*.md
+HERMES_ANALYSIS.md
+PAPERCLIP_ANALYSIS.md
+REVIEW_PRE_GITHUB.md
+REFACTOR_DE_TO_EN.md
+AGENTS.md
+fix-tdz.py
+docs/ROADMAP_v1.md
+docs/SOCIAL_POST_Facebook.md
+
+# Playwright E2E test results
+test-results/
+playwright-report/

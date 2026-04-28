@@ -41,7 +41,7 @@ class OllamaExtendedAdapter implements Adapter {
 
   canHandle(task: AdapterTask): boolean {
     // Kann Aufgaben bearbeiten, die explizit Ollama erwähnen oder lokale Modelle anfordern
-    const text = `${task.titel} ${task.beschreibung || ''}`.toLowerCase();
+    const text = `${task.title} ${task.description || ''}`.toLowerCase();
 
     return text.includes('ollama') ||
            text.includes('lokales modell') ||
@@ -53,16 +53,16 @@ class OllamaExtendedAdapter implements Adapter {
 
   async execute(task: AdapterTask, context: AdapterContext, config: AdapterConfig): Promise<AdapterExecutionResult> {
     const startTime = Date.now();
-    this.logger.info(`[Ollama Extended] Führe Aufgabe aus: ${task.titel}`);
+    this.logger.info(`[Ollama Extended] Führe Aufgabe aus: ${task.title}`);
 
     try {
       // Cache-Schlüssel erstellen (einfache Implementierung)
-      const cacheKey = `${task.id}-${task.titel}`;
+      const cacheKey = `${task.id}-${task.title}`;
 
       // Prüfen, ob die Antwort im Cache ist
       if (this.enableCache && this.cache.has(cacheKey)) {
         const cachedResult = this.cache.get(cacheKey);
-        this.logger.info(`[Ollama Extended] Cache-Treffer für: ${task.titel}`);
+        this.logger.info(`[Ollama Extended] Cache-Treffer für: ${task.title}`);
 
         return {
           success: true,
@@ -83,10 +83,10 @@ class OllamaExtendedAdapter implements Adapter {
       this.logger.info(`[Ollama Extended] Sende Anfrage an Ollama API: ${this.baseUrl}/api/generate`);
 
       // Simulierte Antwort (in echter Implementierung würde die Antwort von der API kommen)
-      const response = `Ich habe Aufgabe "${task.titel}" analysiert und bearbeite sie wie folgt:\n\n` +
+      const response = `Ich habe Aufgabe "${task.title}" analysiert und bearbeite sie wie folgt:\n\n` +
         `1. Zuerst verstehe ich den Kontext: ${context.companyContext.name}\n` +
-        `2. Als ${context.agentContext.name} mit Rolle ${context.agentContext.rolle} muss ich:\n` +
-        `3. ${task.titel} mit Priorität ${task.prioritaet} bearbeiten.\n\n` +
+        `2. Als ${context.agentContext.name} mit Rolle ${context.agentContext.role} muss ich:\n` +
+        `3. ${task.title} mit Priorität ${task.priority} bearbeiten.\n\n` +
         `Meine Lösung lautet: Diese Aufgabe wurde erfolgreich mit dem erweiterten Ollama-Adapter bearbeitet.\n` +
         `Modell: ${this.defaultModel}, Kontext-Fenster: ${this.contextWindow}\n\n` +
         `Status: Abgeschlossen`;
@@ -135,30 +135,30 @@ class OllamaExtendedAdapter implements Adapter {
   private buildPrompt(task: AdapterTask, context: AdapterContext): string {
     const parts: string[] = [];
 
-    parts.push(`# Aufgabe: ${task.titel}`);
+    parts.push(`# Aufgabe: ${task.title}`);
 
-    if (task.beschreibung) {
-      parts.push(`## Beschreibung:\n${task.beschreibung}`);
+    if (task.description) {
+      parts.push(`## Beschreibung:\n${task.description}`);
     }
 
     parts.push(`## Kontext:\n`);
     parts.push(`- Unternehmen: ${context.companyContext.name}`);
 
-    if (context.companyContext.ziel) {
-      parts.push(`- Unternehmensziel: ${context.companyContext.ziel}`);
+    if (context.companyContext.goal) {
+      parts.push(`- Unternehmensziel: ${context.companyContext.goal}`);
     }
 
-    parts.push(`- Agent: ${context.agentContext.name} (${context.agentContext.rolle})`);
+    parts.push(`- Agent: ${context.agentContext.name} (${context.agentContext.role})`);
 
-    if (context.agentContext.faehigkeiten) {
-      parts.push(`- Fähigkeiten: ${context.agentContext.faehigkeiten}`);
+    if (context.agentContext.skills) {
+      parts.push(`- Fähigkeiten: ${context.agentContext.skills}`);
     }
 
     if (context.previousComments.length > 0) {
       parts.push(`\n## Vorherige Kommentare:\n`);
 
       for (const comment of context.previousComments) {
-        parts.push(`- ${comment.autorTyp === 'agent' ? 'Agent' : 'Board'}: ${comment.inhalt.substring(0, 100)}...`);
+        parts.push(`- ${comment.senderType === 'agent' ? 'Agent' : 'Board'}: ${comment.content.substring(0, 100)}...`);
       }
     }
 

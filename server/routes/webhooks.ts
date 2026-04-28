@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { Router } from 'express';
 import { db } from '../db/client.js';
-import { einstellungen, routineTrigger, routinen, routineAusfuehrung } from '../db/schema.js';
+import { settings, routineTrigger, routines, routineRuns } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { messagingService } from '../services/messaging.js';
 import { wakeupService } from '../services/wakeup.js';
@@ -74,19 +74,19 @@ router.post('/telegram/:secret', async (req, res) => {
 
   try {
     // Find the company associated with this secret
-    const setting = db.select().from(einstellungen)
+    const setting = db.select().from(settings)
       .where(and(
-        eq(einstellungen.schluessel, 'webhook_secret'),
-        eq(einstellungen.wert, secret)
+        eq(settings.key, 'webhook_secret'),
+        eq(settings.value, secret)
       ))
       .get();
 
-    if (!setting || !setting.unternehmenId) {
+    if (!setting || !setting.companyId) {
       console.warn(`⚠️ Webhook received with invalid secret: ${secret}`);
       return res.status(403).json({ error: 'Invalid secret' });
     }
 
-    const unternehmenId = setting.unternehmenId;
+    const unternehmenId = setting.companyId;
     const normalized = normalizeTelegram(payload);
 
     if (normalized) {
@@ -95,7 +95,7 @@ router.post('/telegram/:secret', async (req, res) => {
       // We reuse the existing logic in messagingService which handles 
       // CEO routing, DB insertion and cycle triggering.
       // We pass the raw telegram message format as handleInboundMessage expects it.
-      await messagingService.handleInboundMessage(unternehmenId, payload.message);
+      await messagingService.handleInboundMessage(unternehmenId, payload.message, '');
     }
 
     res.json({ ok: true });
@@ -114,18 +114,18 @@ router.post('/whatsapp/:secret', async (req, res) => {
   const payload = req.body;
 
   try {
-    const setting = db.select().from(einstellungen)
+    const setting = db.select().from(settings)
       .where(and(
-        eq(einstellungen.schluessel, 'webhook_secret'),
-        eq(einstellungen.wert, secret)
+        eq(settings.key, 'webhook_secret'),
+        eq(settings.value, secret)
       ))
       .get();
 
-    if (!setting || !setting.unternehmenId) {
+    if (!setting || !setting.companyId) {
       return res.status(403).json({ error: 'Invalid secret' });
     }
 
-    const unternehmenId = setting.unternehmenId;
+    const unternehmenId = setting.companyId;
     const normalized = normalizeWhatsApp(payload);
 
     if (normalized) {
@@ -134,7 +134,7 @@ router.post('/whatsapp/:secret', async (req, res) => {
         from: { id: normalized.senderId },
         text: normalized.text,
         date: Math.floor(new Date(normalized.timestamp).getTime() / 1000),
-      });
+      }, '');
     }
 
     res.json({ ok: true });
@@ -171,18 +171,18 @@ router.post('/slack/:secret', async (req, res) => {
   }
 
   try {
-    const setting = db.select().from(einstellungen)
+    const setting = db.select().from(settings)
       .where(and(
-        eq(einstellungen.schluessel, 'webhook_secret'),
-        eq(einstellungen.wert, secret)
+        eq(settings.key, 'webhook_secret'),
+        eq(settings.value, secret)
       ))
       .get();
 
-    if (!setting || !setting.unternehmenId) {
+    if (!setting || !setting.companyId) {
       return res.status(403).json({ error: 'Invalid secret' });
     }
 
-    const unternehmenId = setting.unternehmenId;
+    const unternehmenId = setting.companyId;
     const normalized = normalizeSlack(payload);
 
     if (normalized) {
@@ -191,7 +191,7 @@ router.post('/slack/:secret', async (req, res) => {
         from: { id: normalized.senderId },
         text: normalized.text,
         date: Math.floor(new Date(normalized.timestamp).getTime() / 1000),
-      });
+      }, '');
     }
 
     res.json({ ok: true });
@@ -217,7 +217,7 @@ router.post('/routine/:publicId', async (req, res) => {
     .where(and(
       eq(routineTrigger.publicId, publicId),
       eq(routineTrigger.kind, 'webhook'),
-      eq(routineTrigger.aktiv, true),
+      eq(routineTrigger.active, true),
     ))
     .get() as any;
 
@@ -238,8 +238,8 @@ router.post('/routine/:publicId', async (req, res) => {
   }
 
   // Load routine + assigned agent
-  const routine = db.select().from(routinen).where(eq(routinen.id, trigger.routineId)).get() as any;
-  if (!routine || !routine.zugewiesenAn) {
+  const routine = db.select().from(routines).where(eq(routines.id, trigger.routineId)).get() as any;
+  if (!routine || !routine.assignedTo) {
     return res.status(422).json({ error: 'Routine has no assigned agent' });
   }
 
@@ -247,15 +247,15 @@ router.post('/routine/:publicId', async (req, res) => {
   const executionId = uuid();
 
   // Record execution
-  db.insert(routineAusfuehrung).values({
+  db.insert(routineRuns).values({
     id: executionId,
-    unternehmenId: trigger.unternehmenId,
+    companyId: trigger.companyId,
     routineId: routine.id,
     triggerId: trigger.id,
     quelle: 'webhook',
     status: 'received',
     payload: JSON.stringify(req.body),
-    erstelltAm: now,
+    createdAt: now,
   } as any).run();
 
   // Update trigger last fired
@@ -265,14 +265,14 @@ router.post('/routine/:publicId', async (req, res) => {
     .run();
 
   // Wake agent
-  await wakeupService.wakeup(routine.zugewiesenAn, trigger.unternehmenId, {
+  await wakeupService.wakeup(routine.assignedTo, trigger.companyId, {
     source: 'automation',
-    triggerDetail: 'webhook',
-    reason: `Webhook-Trigger für Routine "${routine.titel}"`,
+    triggerDetail: 'system',
+    reason: `Webhook-Trigger für Routine "${routine.title}"`,
     payload: { executionId, routineId: routine.id, body: req.body },
   });
 
-  console.log(`📡 Webhook: Routine "${routine.titel}" via publicId ${publicId} ausgelöst → Agent ${routine.zugewiesenAn}`);
+  console.log(`📡 Webhook: Routine "${routine.title}" via publicId ${publicId} ausgelöst → Agent ${routine.assignedTo}`);
   return res.json({ ok: true, executionId });
 });
 

@@ -8,6 +8,7 @@ import { CompanyProvider } from './hooks/useCompany';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { useSystemStatus } from './hooks/useSystemStatus';
 import { OnboardingWizard } from './components/OnboardingWizard';
+import { OnboardingTour } from './components/OnboardingTour';
 import { BreadcrumbProvider } from './hooks/useBreadcrumbs';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
@@ -28,7 +29,7 @@ const Routines    = lazy(() => import('./pages/Routines').then(m => ({ default: 
 const Projects    = lazy(() => import('./pages/Projects').then(m => ({ default: m.Projects })));
 const Meetings    = lazy(() => import('./pages/Meetings').then(m => ({ default: m.Meetings })));
 const SkillLibrary= lazy(() => import('./pages/SkillLibrary').then(m => ({ default: m.SkillLibrary })));
-const Intelligence= lazy(() => import('./pages/Intelligence').then(m => ({ default: m.Intelligence })));
+const CompanyKnowledge = lazy(() => import('./pages/CompanyKnowledge').then(m => ({ default: m.CompanyKnowledge })));
 const Goals       = lazy(() => import('./pages/Goals').then(m => ({ default: m.Goals })));
 const Performance = lazy(() => import('./pages/Performance').then(m => ({ default: m.Performance })));
 const WarRoom     = lazy(() => import('./pages/WarRoom').then(m => ({ default: m.WarRoom })));
@@ -40,11 +41,13 @@ const WorkProducts = lazy(() => import('./pages/WorkProducts').then(m => ({ defa
 const TaskTimeline = lazy(() => import('./pages/TaskTimeline').then(m => ({ default: m.TaskTimeline })));
 const Plugins      = lazy(() => import('./pages/Plugins').then(m => ({ default: m.Plugins })));
 const WorkerNodes  = lazy(() => import('./pages/WorkerNodes').then(m => ({ default: m.WorkerNodes })));
+const Chat         = lazy(() => import('./pages/Chat').then(m => ({ default: m.Chat })));
+const Memory       = lazy(() => import('./pages/Memory').then(m => ({ default: m.Memory })));
 
 function PageLoader() {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' }}>
-      <div style={{ width: 24, height: 24, borderRadius: '50%', border: '2px solid rgba(35,205,202,0.2)', borderTopColor: '#23CDCB', animation: 'spin 0.8s linear infinite' }} />
+      <div style={{ width: 24, height: 24, borderRadius: '50%', border: '2px solid rgba(197,160,89,0.2)', borderTopColor: '#c5a059', animation: 'spin 0.8s linear infinite' }} />
     </div>
   );
 }
@@ -83,7 +86,9 @@ function ProtectedRoutes() {
   return (
     <BreadcrumbProvider>
       <CompanyProvider>
+      <OnboardingTour />
       <Routes>
+        <Route path="/war-room" element={<Page><WarRoom /></Page>} />
         <Route element={<Layout />}>
           <Route path="/" element={<ErrorBoundary fallback={<PageErrorFallback />}><Dashboard /></ErrorBoundary>} />
           <Route path="/companies" element={<Page><Companies /></Page>} />
@@ -97,10 +102,10 @@ function ProtectedRoutes() {
           <Route path="/routines" element={<Page><Routines /></Page>} />
           <Route path="/meetings" element={<Page><Meetings /></Page>} />
           <Route path="/skill-library" element={<Page><SkillLibrary /></Page>} />
-          <Route path="/intelligence" element={<Page><Intelligence /></Page>} />
+          <Route path="/company-knowledge" element={<Page><CompanyKnowledge /></Page>} />
+          <Route path="/intelligence" element={<Page><CompanyKnowledge /></Page>} />
           <Route path="/goals" element={<Page><Goals /></Page>} />
           <Route path="/performance" element={<Page><Performance /></Page>} />
-          <Route path="/war-room" element={<Page><WarRoom /></Page>} />
           <Route path="/focus" element={<Page><Focus /></Page>} />
           <Route path="/weekly-report" element={<Page><WeeklyReport /></Page>} />
           <Route path="/clipmart" element={<Page><Clipmart /></Page>} />
@@ -109,6 +114,8 @@ function ProtectedRoutes() {
           <Route path="/tasks/:id/timeline" element={<Page><TaskTimeline /></Page>} />
           <Route path="/plugins" element={<Page><Plugins /></Page>} />
           <Route path="/workers" element={<Page><WorkerNodes /></Page>} />
+          <Route path="/chat" element={<Page><Chat /></Page>} />
+          <Route path="/memory" element={<Page><Memory /></Page>} />
           <Route path="/settings" element={<Page><Settings /></Page>} />
           {/* Legacy German routes — redirect to English */}
           <Route path="/unternehmen" element={<Navigate to="/companies" replace />} />

@@ -6,10 +6,11 @@ function getToken(): string | null {
   return localStorage.getItem('opencognit_token');
 }
 
-async function request<T>(path: string, options?: RequestInit & { showToast?: boolean }): Promise<T> {
+export async function request<T>(path: string, options?: RequestInit & { showToast?: boolean }): Promise<T> {
   const token = getToken();
   try {
     const res = await fetch(`${API_BASE}${path}`, {
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -46,7 +47,7 @@ export interface Benutzer {
   id: string;
   name: string;
   email: string;
-  rolle: 'admin' | 'mitglied';
+  rolle: string;
 }
 
 export interface AuthAntwort {
@@ -74,7 +75,7 @@ export interface Experte {
   status: 'active' | 'paused' | 'idle' | 'running' | 'error' | 'terminated';
   reportsTo: string | null;
   faehigkeiten: string | null;
-  verbindungsTyp: 'claude' | 'anthropic' | 'openai' | 'openrouter' | 'ollama' | 'codex' | 'cursor' | 'http' | 'bash' | 'ceo' | 'custom' | 'claude-code';
+  verbindungsTyp: 'claude' | 'anthropic' | 'openai' | 'openrouter' | 'google' | 'moonshot' | 'poe' | 'ollama' | 'ollama_cloud' | 'codex' | 'codex-cli' | 'gemini-cli' | 'kimi-cli' | 'cursor' | 'http' | 'bash' | 'ceo' | 'custom' | 'claude-code' | 'openclaw';
   verbindungsConfig: string | null;
   avatar: string | null;
   avatarFarbe: string;
@@ -113,6 +114,7 @@ export interface Aufgabe {
   isMaximizerMode: boolean;
   // Dependencies
   blockedBy: string | null;
+  dueDate: string | null;
   gestartetAm: string | null;
   abgeschlossenAm: string | null;
   erstelltAm: string;
@@ -131,16 +133,26 @@ export interface Kommentar {
 
 export interface Genehmigung {
   id: string;
-  unternehmenId: string;
-  typ: 'hire_expert' | 'approve_strategy' | 'budget_change' | 'agent_action';
-  titel: string;
-  beschreibung: string | null;
-  angefordertVon: string | null;
+  // English (current server response)
+  type?: 'hire_expert' | 'approve_strategy' | 'budget_change' | 'agent_action';
+  title?: string;
+  description?: string | null;
+  requestedBy?: string | null;
+  decisionNote?: string | null;
+  decidedAt?: string | null;
+  createdAt?: string;
+  companyId?: string;
+  // Legacy German aliases (kept for backward-compat during rename)
+  unternehmenId?: string;
+  typ?: 'hire_expert' | 'approve_strategy' | 'budget_change' | 'agent_action';
+  titel?: string;
+  beschreibung?: string | null;
+  angefordertVon?: string | null;
+  entscheidungsnotiz?: string | null;
+  entschiedenAm?: string | null;
+  erstelltAm?: string;
   status: 'pending' | 'approved' | 'rejected' | 'cancelled';
   payload: Record<string, any> | null;
-  entscheidungsnotiz: string | null;
-  entschiedenAm: string | null;
-  erstelltAm: string;
 }
 
 export interface Aktivitaet {
@@ -406,6 +418,32 @@ export const apiDependencies = {
     request<{ success: boolean }>(`/aufgaben/${aufgabeId}/blocker`, { method: 'POST', body: JSON.stringify({ blockerId }) }),
   entfernen: (aufgabeId: string, blockerId: string) =>
     request<{ ok: boolean }>(`/aufgaben/${aufgabeId}/blocker/${blockerId}`, { method: 'DELETE' }),
+};
+
+// Memberships & Invites
+export interface Mitgliedschaft {
+  companyId: string;
+  role: string;
+  joinedAt: string | null;
+  companyName: string | null;
+  companyStatus: string | null;
+}
+export interface Mitglied {
+  userId: string;
+  name: string | null;
+  email: string | null;
+  role: string;
+  joinedAt: string | null;
+}
+export const apiMemberships = {
+  meine: () => request<Mitgliedschaft[]>('/user/memberships'),
+  mitglieder: (companyId: string) => request<Mitglied[]>(`/companies/${companyId}/members`),
+  einladen: (companyId: string, email: string, role?: string) =>
+    request<{ token: string; email: string; role: string; message: string }>(`/companies/${companyId}/invites`, { method: 'POST', body: JSON.stringify({ email, role: role || 'member' }) }),
+  akzeptieren: (token: string) =>
+    request<{ ok: boolean; companyId: string; role: string }>(`/invites/${token}/accept`, { method: 'POST' }),
+  entfernen: (companyId: string, userId: string) =>
+    request<{ ok: boolean }>(`/companies/${companyId}/members/${userId}`, { method: 'DELETE' }),
 };
 
 // Channels

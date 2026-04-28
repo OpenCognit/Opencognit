@@ -29,8 +29,8 @@ const typeIcon = (typ: string, mimeTyp: string | null) => {
 const typeColor = (typ: string) => {
   if (typ === 'url') return '#3b82f6';
   if (typ === 'directory') return '#f59e0b';
-  if (typ === 'text') return '#a855f7';
-  return '#23CDCB';
+  if (typ === 'text') return '#9b87c8';
+  return '#c5a059';
 };
 
 const formatBytes = (bytes: number | null) => {
@@ -87,7 +87,7 @@ export function WorkProducts() {
       {/* Header */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Package size={22} style={{ color: '#23CDCB' }} /> Work Products
+          <Package size={22} style={{ color: '#c5a059' }} /> Work Products
         </h1>
         <p style={{ color: '#52525b', fontSize: '0.875rem', margin: '0.25rem 0 0' }}>
           Alle Artefakte die deine Agenten produziert haben
@@ -107,19 +107,19 @@ export function WorkProducts() {
               width: '100%', boxSizing: 'border-box',
               padding: '0.55rem 0.75rem 0.55rem 2.25rem',
               background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
-              borderRadius: '10px', color: '#fff', fontSize: '0.875rem', outline: 'none',
+              borderRadius: 0, color: '#fff', fontSize: '0.875rem', outline: 'none',
             }}
           />
         </div>
 
         {/* Type filter */}
-        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '2px', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.03)', borderRadius: 0, padding: '2px', border: '1px solid rgba(255,255,255,0.06)' }}>
           {types.map(t => (
             <button key={t} onClick={() => setFilterTyp(t)} style={{
-              padding: '0.4rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer',
+              padding: '0.4rem 0.75rem', borderRadius: 0, border: 'none', cursor: 'pointer',
               fontSize: '0.75rem', fontWeight: 600, transition: 'all 0.15s',
-              background: filterTyp === t ? 'rgba(35,205,202,0.12)' : 'transparent',
-              color: filterTyp === t ? '#23CDCB' : '#52525b',
+              background: filterTyp === t ? 'rgba(197,160,89,0.12)' : 'transparent',
+              color: filterTyp === t ? '#c5a059' : '#52525b',
             }}>
               {t === 'all' ? 'Alle' : t}
             </button>
@@ -135,7 +135,7 @@ export function WorkProducts() {
             if (!count) return null;
             return (
               <div key={typ} style={{
-                padding: '0.375rem 0.75rem', borderRadius: '8px',
+                padding: '0.375rem 0.75rem', borderRadius: 0,
                 background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)',
                 fontSize: '0.75rem', color: '#71717a',
                 display: 'flex', alignItems: 'center', gap: '0.375rem',
@@ -151,7 +151,7 @@ export function WorkProducts() {
       {/* Grid */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
-          <div style={{ width: 24, height: 24, borderRadius: '50%', border: '2px solid rgba(35,205,202,0.2)', borderTopColor: '#23CDCB', animation: 'spin 0.8s linear infinite' }} />
+          <div style={{ width: 24, height: 24, borderRadius: '50%', border: '2px solid rgba(197,160,89,0.2)', borderTopColor: '#c5a059', animation: 'spin 0.8s linear infinite' }} />
         </div>
       ) : filtered.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '4rem', color: '#3f3f46' }}>
@@ -163,7 +163,7 @@ export function WorkProducts() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.75rem' }}>
           {filtered.map(p => (
             <div key={p.id} style={{
-              padding: '1rem', borderRadius: '12px',
+              padding: '1rem', borderRadius: 0,
               background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
               transition: 'border-color 0.15s', cursor: 'default',
             }}
@@ -173,7 +173,7 @@ export function WorkProducts() {
               {/* Type badge + name */}
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.625rem', marginBottom: '0.625rem' }}>
                 <div style={{
-                  width: 32, height: 32, borderRadius: '8px', flexShrink: 0,
+                  width: 32, height: 32, borderRadius: 0, flexShrink: 0,
                   background: `${typeColor(p.typ)}15`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   color: typeColor(p.typ),
@@ -195,7 +195,7 @@ export function WorkProducts() {
               {/* Meta */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.7rem', color: '#52525b' }}>
                 <span style={{
-                  padding: '0.1rem 0.4rem', borderRadius: '4px',
+                  padding: '0.1rem 0.4rem', borderRadius: 0,
                   background: `${typeColor(p.typ)}12`, color: typeColor(p.typ), fontWeight: 600,
                 }}>{p.typ}</span>
                 {p.groeßeBytes && <span>{formatBytes(p.groeßeBytes)}</span>}
@@ -207,7 +207,7 @@ export function WorkProducts() {
               <div style={{ display: 'flex', gap: '0.375rem', marginTop: '0.75rem' }}>
                 {(p.typ === 'text' || p.inhalt) && (
                   <button onClick={() => setPreview(p)} style={{
-                    flex: 1, padding: '0.35rem', borderRadius: '7px', border: '1px solid rgba(255,255,255,0.07)',
+                    flex: 1, padding: '0.35rem', borderRadius: 0, border: '1px solid rgba(255,255,255,0.07)',
                     background: 'rgba(255,255,255,0.03)', color: '#71717a', cursor: 'pointer',
                     fontSize: '0.7rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem',
                   }}>
@@ -216,7 +216,7 @@ export function WorkProducts() {
                 )}
                 {p.typ === 'url' && p.pfad && (
                   <a href={p.pfad} target="_blank" rel="noopener noreferrer" style={{
-                    flex: 1, padding: '0.35rem', borderRadius: '7px', border: '1px solid rgba(59,130,246,0.2)',
+                    flex: 1, padding: '0.35rem', borderRadius: 0, border: '1px solid rgba(59,130,246,0.2)',
                     background: 'rgba(59,130,246,0.06)', color: '#60a5fa', cursor: 'pointer',
                     fontSize: '0.7rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem',
                     textDecoration: 'none',
@@ -234,7 +234,7 @@ export function WorkProducts() {
       {total > PAGE_SIZE && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', marginTop: '1.5rem' }}>
           <button disabled={page === 0} onClick={() => { setPage(p => p - 1); load(page - 1, filterTyp); }} style={{
-            padding: '0.4rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.07)',
+            padding: '0.4rem 0.75rem', borderRadius: 0, border: '1px solid rgba(255,255,255,0.07)',
             background: 'rgba(255,255,255,0.03)', color: page === 0 ? '#3f3f46' : '#71717a',
             cursor: page === 0 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8rem',
           }}>
@@ -242,7 +242,7 @@ export function WorkProducts() {
           </button>
           <span style={{ fontSize: '0.8rem', color: '#52525b' }}>Seite {page + 1}</span>
           <button disabled={products.length < PAGE_SIZE} onClick={() => { setPage(p => p + 1); load(page + 1, filterTyp); }} style={{
-            padding: '0.4rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.07)',
+            padding: '0.4rem 0.75rem', borderRadius: 0, border: '1px solid rgba(255,255,255,0.07)',
             background: 'rgba(255,255,255,0.03)', color: products.length < PAGE_SIZE ? '#3f3f46' : '#71717a',
             cursor: products.length < PAGE_SIZE ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8rem',
           }}>
@@ -260,7 +260,7 @@ export function WorkProducts() {
           <div onClick={e => e.stopPropagation()} style={{
             width: '100%', maxWidth: 720, maxHeight: '80vh',
             background: '#0a0a0a', border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: '16px', overflow: 'hidden', display: 'flex', flexDirection: 'column',
+            borderRadius: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column',
           }}>
             <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               <span style={{ color: typeColor(preview.typ) }}>{typeIcon(preview.typ, preview.mimeTyp)}</span>

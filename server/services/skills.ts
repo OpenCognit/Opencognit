@@ -1,7 +1,7 @@
 // Skills Service - Verwaltet Agenten-Fähigkeiten und Skill-Matching
 
 import { db } from '../db/client.js';
-import { experten, aufgaben, ziele } from '../db/schema.js';
+import { agents, tasks, goals } from '../db/schema.js';
 import { eq, and, sql } from 'drizzle-orm';
 
 export interface Skill {
@@ -697,8 +697,8 @@ export class SkillsService {
    */
   async getAgentSkills(agentId: string): Promise<Skill[]> {
     const agent = await db.select()
-      .from(experten)
-      .where(eq(experten.id, agentId))
+      .from(agents)
+      .where(eq(agents.id, agentId))
       .limit(1);
 
     if (agent.length === 0) return [];
@@ -707,10 +707,10 @@ export class SkillsService {
     const skills: Skill[] = [];
 
     // Parse skills from agent's faehigkeiten field (JSON or comma-separated)
-    if (agentData.faehigkeiten) {
+    if (agentData.skills) {
       try {
         // Try JSON first
-        const parsed = JSON.parse(agentData.faehigkeiten);
+        const parsed = JSON.parse(agentData.skills);
         if (Array.isArray(parsed)) {
           const allSkills = await this.getAllSkills();
           for (const skillName of parsed) {
@@ -725,7 +725,7 @@ export class SkillsService {
         }
       } catch {
         // Fallback: comma-separated string
-        const skillNames = agentData.faehigkeiten.split(',').map(s => s.trim());
+        const skillNames = agentData.skills.split(',').map(s => s.trim());
         const allSkills = await this.getAllSkills();
         for (const skillName of skillNames) {
           const matchingSkill = allSkills.find(s =>
@@ -750,8 +750,8 @@ export class SkillsService {
     proficiency: number = 50
   ): Promise<boolean> {
     const agent = await db.select()
-      .from(experten)
-      .where(eq(experten.id, agentId))
+      .from(agents)
+      .where(eq(agents.id, agentId))
       .limit(1);
 
     if (agent.length === 0) return false;
@@ -770,12 +770,12 @@ export class SkillsService {
     }
 
     // Update agent
-    await db.update(experten)
+    await db.update(agents)
       .set({
-        faehigkeiten: JSON.stringify(currentSkillNames),
-        aktualisiertAm: new Date().toISOString(),
+        skills: JSON.stringify(currentSkillNames),
+        updatedAt: new Date().toISOString(),
       })
-      .where(eq(experten.id, agentId));
+      .where(eq(agents.id, agentId));
 
     return true;
   }
@@ -793,12 +793,12 @@ export class SkillsService {
       .filter(s => s.id !== skillId)
       .map(s => s.name);
 
-    await db.update(experten)
+    await db.update(agents)
       .set({
-        faehigkeiten: updatedSkills.length > 0 ? JSON.stringify(updatedSkills) : null,
-        aktualisiertAm: new Date().toISOString(),
+        skills: updatedSkills.length > 0 ? JSON.stringify(updatedSkills) : null,
+        updatedAt: new Date().toISOString(),
       })
-      .where(eq(experten.id, agentId));
+      .where(eq(agents.id, agentId));
 
     return true;
   }
@@ -807,11 +807,11 @@ export class SkillsService {
    * Find best agent for a task based on skills
    */
   async findBestAgentForTask(
-    unternehmenId: string,
-    taskTitel: string,
-    taskBeschreibung: string | null
+    companyId: string,
+    taskTitle: string,
+    taskDescription: string | null
   ): Promise<{ agentId: string; agentName: string; matchScore: number } | null> {
-    const text = `${taskTitel} ${taskBeschreibung || ''}`.toLowerCase();
+    const text = `${taskTitle} ${taskDescription || ''}`.toLowerCase();
     const allSkills = await this.getAllSkills();
 
     // Find matching skills for the task
@@ -850,28 +850,28 @@ export class SkillsService {
     }
 
     // Find agents with matching skills
-    const agents = await db.select({
-      id: experten.id,
-      name: experten.name,
-      faehigkeiten: experten.faehigkeiten,
-      status: experten.status,
+    const agentRows = await db.select({
+      id: agents.id,
+      name: agents.name,
+      skills: agents.skills,
+      status: agents.status,
     })
-      .from(experten)
-      .where(eq(experten.unternehmenId, unternehmenId));
+      .from(agents)
+      .where(eq(agents.companyId, companyId));
 
     let bestMatch: { agentId: string; agentName: string; matchScore: number } | null = null;
 
-    for (const agent of agents) {
+    for (const agent of agentRows) {
       if (agent.status === 'terminated' || agent.status === 'paused') {
         continue;
       }
 
       let agentSkillNames: string[] = [];
-      if (agent.faehigkeiten) {
+      if (agent.skills) {
         try {
-          agentSkillNames = JSON.parse(agent.faehigkeiten);
+          agentSkillNames = JSON.parse(agent.skills);
         } catch {
-          agentSkillNames = agent.faehigkeiten.split(',').map(s => s.trim());
+          agentSkillNames = agent.skills.split(',').map(s => s.trim());
         }
       }
 

@@ -33,12 +33,12 @@ const iconMap: Record<ToastType, React.ReactNode> = {
   agent: <Bot size={18} />,
 };
 
-const colorMap: Record<ToastType, { bg: string; border: string; accent: string }> = {
-  success: { bg: "rgba(16,185,129,0.08)", border: "rgba(16,185,129,0.25)", accent: "#10b981" },
-  error:   { bg: "rgba(239,68,68,0.08)",  border: "rgba(239,68,68,0.25)",  accent: "#ef4444" },
-  info:    { bg: "rgba(59,130,246,0.08)", border: "rgba(59,130,246,0.25)", accent: "#3b82f6" },
-  warning: { bg: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.25)", accent: "#f59e0b" },
-  agent:   { bg: "rgba(35,205,203,0.12)", border: "rgba(35,205,203,0.45)", accent: "#23CDCB" },
+const colorMap: Record<ToastType, { bg: string; border: string; accent: string; glow: string }> = {
+  success: { bg: "rgba(16,185,129,0.10)", border: "rgba(16,185,129,0.35)", accent: "#10b981", glow: "rgba(16,185,129,0.18)" },
+  error:   { bg: "rgba(239,68,68,0.10)",  border: "rgba(239,68,68,0.35)",  accent: "#ef4444", glow: "rgba(239,68,68,0.18)" },
+  info:    { bg: "rgba(59,130,246,0.10)", border: "rgba(59,130,246,0.35)", accent: "#3b82f6", glow: "rgba(59,130,246,0.18)" },
+  warning: { bg: "rgba(245,158,11,0.10)", border: "rgba(245,158,11,0.35)", accent: "#f59e0b", glow: "rgba(245,158,11,0.18)" },
+  agent:   { bg: "rgba(35,205,203,0.14)", border: "rgba(35,205,203,0.55)", accent: "#c5a059", glow: "rgba(35,205,203,0.22)" },
 };
 
 // Inject CSS animation for agent pulse once
@@ -97,11 +97,11 @@ function ToastItem({ t, dismiss }: { t: Toast; dismiss: (id: string) => void }) 
         display: "flex",
         flexDirection: "column",
         gap: 0,
-        borderRadius: "12px",
+        borderRadius: 0,
         background: isAgent ? "rgba(10, 16, 20, 0.97)" : "rgba(15, 17, 26, 0.92)",
         border: `1px solid ${colors.border}`,
         backdropFilter: "blur(20px)",
-        boxShadow: `0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.04), inset 0 1px 0 rgba(255,255,255,0.06)`,
+        boxShadow: `0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.04), inset 0 1px 0 rgba(255,255,255,0.06), 0 0 24px ${colors.glow}, 0 0 48px ${colors.glow.replace('0.18', '0.06').replace('0.22', '0.08')}`,
         overflow: "hidden",
         cursor: t.onClick ? "pointer" : "default",
         transform: visible ? "translateX(0) scale(1)" : "translateX(110%) scale(0.95)",
@@ -119,7 +119,7 @@ function ToastItem({ t, dismiss }: { t: Toast; dismiss: (id: string) => void }) 
           color: colors.accent,
           flexShrink: 0,
           marginTop: 1,
-          filter: `drop-shadow(0 0 6px ${colors.accent}60)`,
+          filter: `drop-shadow(0 0 8px ${colors.accent})`,
         }}>
           {iconMap[t.type]}
         </div>
@@ -164,7 +164,7 @@ function ToastItem({ t, dismiss }: { t: Toast; dismiss: (id: string) => void }) 
             background: "none", border: "none", cursor: "pointer",
             padding: "2px", color: "rgba(148,163,184,0.5)",
             display: "flex", alignItems: "center", flexShrink: 0,
-            borderRadius: 4, transition: "color 0.15s",
+            borderRadius: 0, transition: "color 0.15s",
           }}
           onMouseEnter={e => (e.currentTarget.style.color = "#f1f5f9")}
           onMouseLeave={e => (e.currentTarget.style.color = "rgba(148,163,184,0.5)")}
@@ -180,7 +180,7 @@ function ToastItem({ t, dismiss }: { t: Toast; dismiss: (id: string) => void }) 
           width: `${progress}%`,
           background: `linear-gradient(90deg, ${colors.accent}80, ${colors.accent})`,
           transition: "width 0.05s linear",
-          borderRadius: "0 1px 1px 0",
+          borderRadius: "0",
         }} />
       </div>
     </div>

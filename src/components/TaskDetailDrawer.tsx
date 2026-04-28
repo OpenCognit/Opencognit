@@ -40,6 +40,7 @@ function formatBytes(b: number | null) {
 function authFetch(url: string, options: RequestInit = {}) {
   const token = localStorage.getItem('opencognit_token');
   return fetch(url, {
+    credentials: 'include',
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -65,14 +66,14 @@ function zeitRelativ(iso: string, de: boolean) {
 const PRIORITY_COLORS: Record<string, string> = {
   critical: '#ef4444',
   high: '#eab308',
-  medium: '#23CDCB',
+  medium: '#c5a059',
   low: '#71717a',
 };
 
 const STATUS_COLORS: Record<string, string> = {
   backlog: '#71717a',
   todo: '#3b82f6',
-  in_progress: '#23CDCB',
+  in_progress: '#c5a059',
   in_review: '#eab308',
   done: '#22c55e',
   blocked: '#ef4444',
@@ -305,10 +306,10 @@ export function TaskDetailDrawer({
     bottom: 0,
     width: '480px',
     maxWidth: '100vw',
-    background: 'rgba(8, 8, 16, 0.92)',
+    background: 'linear-gradient(180deg, rgba(16,14,10,0.97) 0%, rgba(12,10,8,0.97) 100%)',
     backdropFilter: 'blur(40px)',
     WebkitBackdropFilter: 'blur(40px)',
-    borderLeft: '1px solid rgba(255,255,255,0.08)',
+    borderLeft: '1px solid rgba(197,160,89,0.15)',
     zIndex: 200,
     display: 'flex',
     flexDirection: 'column',
@@ -331,7 +332,7 @@ export function TaskDetailDrawer({
     padding: '0.5rem 0.75rem',
     background: 'rgba(255,255,255,0.04)',
     border: '1px solid rgba(255,255,255,0.08)',
-    borderRadius: '10px',
+    borderRadius: 0,
     color: '#e4e4e7',
     fontSize: '0.875rem',
     outline: 'none',
@@ -391,7 +392,7 @@ export function TaskDetailDrawer({
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
             <span style={{
               padding: '0.2rem 0.5rem',
-              borderRadius: '6px',
+              borderRadius: 0,
               fontSize: '0.6875rem',
               fontWeight: 600,
               background: PRIORITY_COLORS[aufgabe.prioritaet] + '22',
@@ -403,7 +404,7 @@ export function TaskDetailDrawer({
             </span>
             {aufgabe.isMaximizerMode && (
               <span style={{
-                padding: '0.2rem 0.5rem', borderRadius: '6px',
+                padding: '0.2rem 0.5rem', borderRadius: 0,
                 background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)',
                 color: '#ef4444', fontSize: '0.6875rem', fontWeight: 700,
                 display: 'inline-flex', alignItems: 'center', gap: '3px',
@@ -413,7 +414,7 @@ export function TaskDetailDrawer({
             )}
             {aufgabe.blockedBy && (
               <span style={{
-                padding: '0.2rem 0.5rem', borderRadius: '6px',
+                padding: '0.2rem 0.5rem', borderRadius: 0,
                 background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)',
                 color: '#ef4444', fontSize: '0.6875rem', fontWeight: 600,
                 display: 'inline-flex', alignItems: 'center', gap: '3px',
@@ -421,7 +422,7 @@ export function TaskDetailDrawer({
                 <Lock size={10} /> {de ? 'Blockiert' : 'Blocked'}
               </span>
             )}
-            {saving && <Loader2 size={12} style={{ color: '#23CDCB', animation: 'spin 1s linear infinite', marginLeft: 'auto' }} />}
+            {saving && <Loader2 size={12} style={{ color: '#c5a059', animation: 'spin 1s linear infinite', marginLeft: 'auto' }} />}
           </div>
 
           {/* Tabs */}
@@ -441,8 +442,8 @@ export function TaskDetailDrawer({
                     padding: '0.625rem 1rem',
                     background: 'none',
                     border: 'none',
-                    borderBottom: t === tab ? '2px solid #23CDCB' : '2px solid transparent',
-                    color: t === tab ? '#23CDCB' : '#71717a',
+                    borderBottom: t === tab ? '2px solid #c5a059' : '2px solid transparent',
+                    color: t === tab ? '#c5a059' : '#71717a',
                     fontSize: '0.8125rem',
                     fontWeight: t === tab ? 600 : 500,
                     cursor: 'pointer',
@@ -527,11 +528,11 @@ export function TaskDetailDrawer({
                     padding: '0.5rem 0.75rem',
                     background: 'rgba(255,255,255,0.03)',
                     border: '1px solid rgba(255,255,255,0.08)',
-                    borderRadius: '10px',
+                    borderRadius: 0,
                     marginBottom: '0.5rem',
                   }}>
                     <div style={{
-                      width: 28, height: 28, borderRadius: 8,
+                      width: 28, height: 28, borderRadius: 0,
                       background: assignedExpert.avatarFarbe + '22',
                       color: assignedExpert.avatarFarbe,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -561,7 +562,7 @@ export function TaskDetailDrawer({
                 padding: '0.75rem 1rem',
                 background: aufgabe.isMaximizerMode ? 'rgba(239,68,68,0.06)' : 'rgba(255,255,255,0.03)',
                 border: `1px solid ${aufgabe.isMaximizerMode ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.08)'}`,
-                borderRadius: '10px',
+                borderRadius: 0,
               }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.875rem', fontWeight: 600, color: aufgabe.isMaximizerMode ? '#ef4444' : '#d4d4d8' }}>
@@ -575,7 +576,7 @@ export function TaskDetailDrawer({
                 <button
                   onClick={() => patch({ isMaximizerMode: !aufgabe.isMaximizerMode } as any)}
                   style={{
-                    width: 40, height: 22, borderRadius: 11,
+                    width: 40, height: 22, borderRadius: 0,
                     background: aufgabe.isMaximizerMode ? '#ef4444' : 'rgba(255,255,255,0.1)',
                     border: 'none', cursor: 'pointer', position: 'relative', transition: 'all 0.25s',
                     flexShrink: 0,
@@ -595,7 +596,7 @@ export function TaskDetailDrawer({
                 padding: '0.875rem 1rem',
                 background: 'rgba(255,255,255,0.02)',
                 border: '1px solid rgba(255,255,255,0.06)',
-                borderRadius: '10px',
+                borderRadius: 0,
                 display: 'flex', flexDirection: 'column', gap: '0.5rem',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -606,7 +607,7 @@ export function TaskDetailDrawer({
                 </div>
                 {aufgabe.gestartetAm && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <Clock size={13} style={{ color: '#23CDCB', flexShrink: 0 }} />
+                    <Clock size={13} style={{ color: '#c5a059', flexShrink: 0 }} />
                     <span style={{ fontSize: '0.75rem', color: '#71717a' }}>
                       {de ? 'Gestartet' : 'Started'}: {zeitRelativ(aufgabe.gestartetAm, de)}
                     </span>
@@ -633,21 +634,21 @@ export function TaskDetailDrawer({
               {/* ── AI Decomposer ── */}
               <div style={{
                 padding: '0.875rem 1rem',
-                background: 'rgba(35,205,202,0.03)',
-                border: '1px solid rgba(35,205,202,0.1)',
-                borderRadius: '10px',
+                background: 'rgba(197,160,89,0.03)',
+                border: '1px solid rgba(197,160,89,0.1)',
+                borderRadius: 0,
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: decomposeSubtasks ? '0.75rem' : 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <Sparkles size={13} style={{ color: '#23CDCB' }} />
+                    <Sparkles size={13} style={{ color: '#c5a059' }} />
                     <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#a1a1aa' }}>
                       {de ? 'KI-Aufgabenzerlegung' : 'AI Task Breakdown'}
                     </span>
                     {decomposeSource === 'ai' && (
                       <span style={{
-                        fontSize: '0.5625rem', padding: '0.1rem 0.4rem', borderRadius: '4px',
-                        background: 'rgba(35,205,202,0.1)', color: '#23CDCB',
-                        border: '1px solid rgba(35,205,202,0.2)', fontWeight: 700, textTransform: 'uppercase',
+                        fontSize: '0.5625rem', padding: '0.1rem 0.4rem', borderRadius: 0,
+                        background: 'rgba(197,160,89,0.1)', color: '#c5a059',
+                        border: '1px solid rgba(197,160,89,0.2)', fontWeight: 700, textTransform: 'uppercase',
                       }}>AI</span>
                     )}
                   </div>
@@ -656,9 +657,9 @@ export function TaskDetailDrawer({
                     disabled={decomposeLoading}
                     style={{
                       display: 'flex', alignItems: 'center', gap: '0.375rem',
-                      padding: '0.3rem 0.75rem', borderRadius: '8px', cursor: decomposeLoading ? 'wait' : 'pointer',
-                      background: 'rgba(35,205,202,0.08)', border: '1px solid rgba(35,205,202,0.2)',
-                      color: '#23CDCB', fontSize: '0.75rem', fontWeight: 600, opacity: decomposeLoading ? 0.7 : 1,
+                      padding: '0.3rem 0.75rem', borderRadius: 0, cursor: decomposeLoading ? 'wait' : 'pointer',
+                      background: 'rgba(197,160,89,0.08)', border: '1px solid rgba(197,160,89,0.2)',
+                      color: '#c5a059', fontSize: '0.75rem', fontWeight: 600, opacity: decomposeLoading ? 0.7 : 1,
                     }}
                   >
                     {decomposeLoading
@@ -680,17 +681,17 @@ export function TaskDetailDrawer({
                         })}
                         style={{
                           display: 'flex', alignItems: 'center', gap: '0.5rem',
-                          padding: '0.5rem 0.625rem', borderRadius: '8px',
-                          background: selectedSubtasks.has(i) ? 'rgba(35,205,202,0.08)' : 'rgba(255,255,255,0.03)',
-                          border: `1px solid ${selectedSubtasks.has(i) ? 'rgba(35,205,202,0.25)' : 'rgba(255,255,255,0.07)'}`,
+                          padding: '0.5rem 0.625rem', borderRadius: 0,
+                          background: selectedSubtasks.has(i) ? 'rgba(197,160,89,0.08)' : 'rgba(255,255,255,0.03)',
+                          border: `1px solid ${selectedSubtasks.has(i) ? 'rgba(197,160,89,0.25)' : 'rgba(255,255,255,0.07)'}`,
                           cursor: 'pointer', textAlign: 'left', color: selectedSubtasks.has(i) ? '#e4e4e7' : '#71717a',
                           transition: 'all 0.15s', width: '100%',
                         }}
                       >
                         <div style={{
-                          width: 16, height: 16, borderRadius: '4px', flexShrink: 0,
-                          background: selectedSubtasks.has(i) ? '#23CDCB' : 'rgba(255,255,255,0.06)',
-                          border: `1px solid ${selectedSubtasks.has(i) ? '#23CDCB' : 'rgba(255,255,255,0.12)'}`,
+                          width: 16, height: 16, borderRadius: 0, flexShrink: 0,
+                          background: selectedSubtasks.has(i) ? '#c5a059' : 'rgba(255,255,255,0.06)',
+                          border: `1px solid ${selectedSubtasks.has(i) ? '#c5a059' : 'rgba(255,255,255,0.12)'}`,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                         }}>
                           {selectedSubtasks.has(i) && <Check size={10} style={{ color: '#000' }} />}
@@ -706,8 +707,8 @@ export function TaskDetailDrawer({
                         style={{
                           marginTop: '0.25rem',
                           padding: '0.5rem 0.75rem',
-                          background: 'rgba(35,205,202,0.12)', border: '1px solid rgba(35,205,202,0.3)',
-                          borderRadius: '8px', color: '#23CDCB', fontSize: '0.8125rem', fontWeight: 700,
+                          background: 'rgba(197,160,89,0.12)', border: '1px solid rgba(197,160,89,0.3)',
+                          borderRadius: 0, color: '#c5a059', fontSize: '0.8125rem', fontWeight: 700,
                           cursor: creatingSubtasks ? 'wait' : 'pointer',
                           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem',
                           opacity: creatingSubtasks ? 0.7 : 1,
@@ -746,7 +747,7 @@ export function TaskDetailDrawer({
                     padding: '0.75rem 1rem',
                     background: 'rgba(255,255,255,0.03)',
                     border: '1px solid rgba(255,255,255,0.07)',
-                    borderRadius: '10px',
+                    borderRadius: 0,
                   }}>
                     {sub.status === 'done'
                       ? <CheckCircle2 size={16} style={{ color: '#22c55e', flexShrink: 0 }} />
@@ -777,7 +778,7 @@ export function TaskDetailDrawer({
                     </div>
                     {subExpert && (
                       <div style={{
-                        width: 24, height: 24, borderRadius: 6,
+                        width: 24, height: 24, borderRadius: 0,
                         background: subExpert.avatarFarbe + '22',
                         color: subExpert.avatarFarbe,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -794,9 +795,9 @@ export function TaskDetailDrawer({
               {showAddSub ? (
                 <div style={{
                   padding: '0.875rem 1rem',
-                  background: 'rgba(35,205,202,0.04)',
-                  border: '1px solid rgba(35,205,202,0.15)',
-                  borderRadius: '10px',
+                  background: 'rgba(197,160,89,0.04)',
+                  border: '1px solid rgba(197,160,89,0.15)',
+                  borderRadius: 0,
                   display: 'flex', flexDirection: 'column', gap: '0.625rem',
                 }}>
                   <input
@@ -807,14 +808,14 @@ export function TaskDetailDrawer({
                     placeholder={de ? 'Teilaufgabe beschreiben…' : 'Describe sub-task…'}
                     style={{
                       ...inputStyle,
-                      borderColor: 'rgba(35,205,202,0.2)',
+                      borderColor: 'rgba(197,160,89,0.2)',
                     }}
                   />
                   <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                     <button
                       onClick={() => { setShowAddSub(false); setSubTitel(''); }}
                       style={{
-                        padding: '0.375rem 0.75rem', borderRadius: 8,
+                        padding: '0.375rem 0.75rem', borderRadius: 0,
                         background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
                         color: '#71717a', fontSize: '0.8125rem', cursor: 'pointer',
                       }}
@@ -825,9 +826,9 @@ export function TaskDetailDrawer({
                       onClick={addSubTask}
                       disabled={!subTitel.trim() || addingSubtask}
                       style={{
-                        padding: '0.375rem 0.875rem', borderRadius: 8,
-                        background: 'rgba(35,205,202,0.12)', border: '1px solid rgba(35,205,202,0.25)',
-                        color: '#23CDCB', fontSize: '0.8125rem', fontWeight: 600,
+                        padding: '0.375rem 0.875rem', borderRadius: 0,
+                        background: 'rgba(197,160,89,0.12)', border: '1px solid rgba(197,160,89,0.25)',
+                        color: '#c5a059', fontSize: '0.8125rem', fontWeight: 600,
                         cursor: subTitel.trim() ? 'pointer' : 'not-allowed',
                         opacity: subTitel.trim() ? 1 : 0.5,
                       }}
@@ -844,11 +845,11 @@ export function TaskDetailDrawer({
                     padding: '0.625rem 1rem',
                     background: 'rgba(255,255,255,0.02)',
                     border: '1px dashed rgba(255,255,255,0.1)',
-                    borderRadius: '10px',
+                    borderRadius: 0,
                     color: '#71717a', fontSize: '0.8125rem', cursor: 'pointer',
                     transition: 'all 0.2s', width: '100%', textAlign: 'left',
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(35,205,202,0.3)'; e.currentTarget.style.color = '#23CDCB'; }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(197,160,89,0.3)'; e.currentTarget.style.color = '#c5a059'; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#71717a'; }}
                 >
                   <Plus size={14} />
@@ -882,14 +883,14 @@ export function TaskDetailDrawer({
                 const isPreviewing = previewProduct?.id === wp.id;
                 return (
                   <div key={wp.id} style={{
-                    borderRadius: '10px',
-                    border: isPreviewing ? '1px solid rgba(35,205,202,0.3)' : '1px solid rgba(255,255,255,0.07)',
-                    background: isPreviewing ? 'rgba(35,205,202,0.04)' : 'rgba(255,255,255,0.03)',
+                    borderRadius: 0,
+                    border: isPreviewing ? '1px solid rgba(197,160,89,0.3)' : '1px solid rgba(255,255,255,0.07)',
+                    background: isPreviewing ? 'rgba(197,160,89,0.04)' : 'rgba(255,255,255,0.03)',
                     overflow: 'hidden',
                   }}>
                     {/* File header */}
                     <div style={{ padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                      <span style={{ color: '#23CDCB', flexShrink: 0 }}>
+                      <span style={{ color: '#c5a059', flexShrink: 0 }}>
                         {fileIcon(wp.mimeTyp, wp.typ)}
                       </span>
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -905,9 +906,9 @@ export function TaskDetailDrawer({
                       <div style={{ display: 'flex', gap: '0.375rem', flexShrink: 0 }}>
                         {wp.typ === 'url' && wp.pfad && (
                           <a href={wp.pfad} target="_blank" rel="noopener noreferrer" style={{
-                            padding: '0.25rem 0.5rem', borderRadius: 6,
-                            background: 'rgba(35,205,202,0.08)', border: '1px solid rgba(35,205,202,0.2)',
-                            color: '#23CDCB', fontSize: '0.75rem', textDecoration: 'none',
+                            padding: '0.25rem 0.5rem', borderRadius: 0,
+                            background: 'rgba(197,160,89,0.08)', border: '1px solid rgba(197,160,89,0.2)',
+                            color: '#c5a059', fontSize: '0.75rem', textDecoration: 'none',
                             display: 'flex', alignItems: 'center', gap: 3,
                           }}>
                             <Link size={11} /> {de ? 'Öffnen' : 'Open'}
@@ -917,10 +918,10 @@ export function TaskDetailDrawer({
                           <button
                             onClick={() => setPreviewProduct(isPreviewing ? null : wp)}
                             style={{
-                              padding: '0.25rem 0.5rem', borderRadius: 6,
-                              background: isPreviewing ? 'rgba(35,205,202,0.12)' : 'rgba(255,255,255,0.05)',
-                              border: `1px solid ${isPreviewing ? 'rgba(35,205,202,0.25)' : 'rgba(255,255,255,0.1)'}`,
-                              color: isPreviewing ? '#23CDCB' : '#71717a',
+                              padding: '0.25rem 0.5rem', borderRadius: 0,
+                              background: isPreviewing ? 'rgba(197,160,89,0.12)' : 'rgba(255,255,255,0.05)',
+                              border: `1px solid ${isPreviewing ? 'rgba(197,160,89,0.25)' : 'rgba(255,255,255,0.1)'}`,
+                              color: isPreviewing ? '#c5a059' : '#71717a',
                               fontSize: '0.75rem', cursor: 'pointer',
                               display: 'flex', alignItems: 'center', gap: 3,
                             }}
@@ -964,7 +965,7 @@ export function TaskDetailDrawer({
                       {expert && (
                         <>
                           <div style={{
-                            width: 16, height: 16, borderRadius: 4,
+                            width: 16, height: 16, borderRadius: 0,
                             background: expert.avatarFarbe + '22', color: expert.avatarFarbe,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             fontSize: '0.5rem', fontWeight: 700,
@@ -1011,9 +1012,9 @@ export function TaskDetailDrawer({
                   }}>
                     {/* Avatar */}
                     <div style={{
-                      width: 28, height: 28, borderRadius: 8, flexShrink: 0,
-                      background: isBoard ? 'rgba(139,92,246,0.2)' : (expert ? expert.avatarFarbe + '22' : 'rgba(35,205,202,0.1)'),
-                      color: isBoard ? '#8b5cf6' : (expert ? expert.avatarFarbe : '#23CDCB'),
+                      width: 28, height: 28, borderRadius: 0, flexShrink: 0,
+                      background: isBoard ? 'rgba(155,135,200,0.2)' : (expert ? expert.avatarFarbe + '22' : 'rgba(197,160,89,0.1)'),
+                      color: isBoard ? '#9b87c8' : (expert ? expert.avatarFarbe : '#c5a059'),
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: '0.625rem', fontWeight: 700,
                     }}>
@@ -1071,10 +1072,10 @@ export function TaskDetailDrawer({
                 disabled={!newComment.trim() || sendingComment}
                 style={{
                   padding: '0.5rem 0.75rem',
-                  background: 'rgba(35,205,202,0.12)',
-                  border: '1px solid rgba(35,205,202,0.25)',
-                  borderRadius: '10px',
-                  color: '#23CDCB', cursor: newComment.trim() ? 'pointer' : 'not-allowed',
+                  background: 'rgba(197,160,89,0.12)',
+                  border: '1px solid rgba(197,160,89,0.25)',
+                  borderRadius: 0,
+                  color: '#c5a059', cursor: newComment.trim() ? 'pointer' : 'not-allowed',
                   opacity: newComment.trim() ? 1 : 0.4, flexShrink: 0,
                   transition: 'all 0.2s',
                   display: 'flex', alignItems: 'center',

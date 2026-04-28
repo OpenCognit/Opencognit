@@ -2,14 +2,15 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X, Send, CheckCircle2, Circle, Clock, Wallet, Activity,
-  Settings, Monitor, Trash2, Pause, Play, Zap, Bot,
+  Settings, Monitor, Trash2, Pause, Play, Zap, Bot, Loader2,
   ChevronRight, ChevronDown, ChevronUp, AlertCircle, ToggleLeft, ToggleRight, Save, Eye, Sparkles, Wrench, BookOpen,
   LayoutDashboard, TrendingUp, BarChart3, UserCheck, ShieldQuestion, Shield, Terminal, Globe,
-  FileText, Hash, Upload
+  FileText, Hash, Upload, Volume2, VolumeX, Paperclip, ImageIcon, StopCircle
 } from 'lucide-react';
 import { useCompany } from '../hooks/useCompany';
 import { useI18n } from '../i18n';
 import { apiAufgaben, apiExperten, type Aufgabe, type Experte, type Aktivitaet } from '../api/client';
+import { translateActivity } from '../utils/activityTranslator';
 import { useToast } from './ToastProvider';
 import { Select } from './Select';
 import { GlassAgentPanel } from './GlassAgentPanel';
@@ -19,6 +20,30 @@ import {
 
 // ── OpenRouter Model Picker ───────────────────────────────────────────────────
 interface ORModel { id: string; name: string; pricing?: any }
+
+// ── Simple code block renderer ──────────────────────────────────────────────
+function MessageContent({ text }: { text: string }) {
+  if (!text) return null;
+  const parts = text.split(/(```[\s\S]*?```)/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (part.startsWith('```')) {
+          const match = part.match(/^```(\w*)\n([\s\S]*?)```$/);
+          const lang = match?.[1] || '';
+          const code = match?.[2] || part.slice(3, -3);
+          return (
+            <pre key={i} style={{ background: 'rgba(0,0,0,0.35)', padding: '10px 12px', margin: '8px 0', borderRadius: 0, overflowX: 'auto', fontSize: 12, fontFamily: 'var(--font-mono)', lineHeight: 1.5, borderLeft: '2px solid var(--color-accent)' }}>
+              {lang && <div style={{ fontSize: 10, opacity: 0.5, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{lang}</div>}
+              <code>{code}</code>
+            </pre>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+}
 
 function OpenRouterModelPicker({ models, value, onChange, de }: {
   models: ORModel[]; value: string; onChange: (v: string) => void; de: boolean;
@@ -70,8 +95,8 @@ function OpenRouterModelPicker({ models, value, onChange, de }: {
         onClick={() => open ? setOpen(false) : openDrop()}
         style={{
           width: '100%', padding: '0.5rem 2rem 0.5rem 0.75rem',
-          background: open ? 'rgba(35,205,202,0.08)' : 'rgba(255,255,255,0.05)',
-          border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8,
+          background: open ? 'rgba(197,160,89,0.08)' : 'rgba(255,255,255,0.05)',
+          border: '1px solid rgba(255,255,255,0.1)', borderRadius: 0,
           fontSize: '0.875rem', color: 'var(--color-text-primary)',
           textAlign: 'left', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
@@ -93,7 +118,7 @@ function OpenRouterModelPicker({ models, value, onChange, de }: {
             position: 'fixed', top: pos.top, left: pos.left, width: pos.width,
             zIndex: 2147483647,
             background: 'rgba(12,12,24,0.99)', backdropFilter: 'blur(20px)',
-            border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10,
+            border: '1px solid rgba(255,255,255,0.12)', borderRadius: 0,
             boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
             display: 'flex', flexDirection: 'column', maxHeight: 320,
           }}
@@ -131,8 +156,8 @@ function OpenRouterModelPicker({ models, value, onChange, de }: {
                   style={{
                     width: '100%', padding: '0.5rem 0.75rem', textAlign: 'left',
                     border: 'none', cursor: 'pointer', fontSize: '0.875rem',
-                    background: sel ? 'rgba(35,205,202,0.15)' : 'transparent',
-                    color: sel ? '#23CDCB' : 'var(--color-text-primary)',
+                    background: sel ? 'rgba(197,160,89,0.15)' : 'transparent',
+                    color: sel ? '#c5a059' : 'var(--color-text-primary)',
                     display: 'flex', alignItems: 'center', gap: 8,
                   }}
                   onMouseEnter={e => { if (!sel) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.06)'; }}
@@ -159,6 +184,7 @@ function OpenRouterModelPicker({ models, value, onChange, de }: {
 function authFetch(url: string, options: RequestInit = {}) {
   const token = localStorage.getItem('opencognit_token');
   return fetch(url, {
+    credentials: 'include',
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -189,6 +215,10 @@ function zeitRelativ(iso: string, language: string) {
 
 const verbindungsLabels: Record<string, any> = {
   claude: { de: 'Claude Code CLI', en: 'Claude Code CLI' },
+  'claude-code': { de: 'Claude Code CLI', en: 'Claude Code CLI' },
+  'codex-cli': { de: 'Codex CLI', en: 'Codex CLI' },
+  'gemini-cli': { de: 'Gemini CLI', en: 'Gemini CLI' },
+  'kimi-cli': { de: 'Kimi CLI', en: 'Kimi CLI' },
   anthropic: { de: 'Anthropic API', en: 'Anthropic API' },
   openai: { de: 'OpenAI GPT', en: 'OpenAI GPT' },
   openrouter: { de: 'OpenRouter', en: 'OpenRouter' },
@@ -241,8 +271,8 @@ function SkillRadarChart({ skills }: { skills: Array<{ name: string; konfidenz: 
     <svg viewBox={`0 0 ${size} ${size}`} style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
       <defs>
         <radialGradient id="radarGlow" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="rgba(35,205,202,0.18)" />
-          <stop offset="100%" stopColor="rgba(35,205,202,0.04)" />
+          <stop offset="0%" stopColor="rgba(197,160,89,0.18)" />
+          <stop offset="100%" stopColor="rgba(197,160,89,0.04)" />
         </radialGradient>
         <filter id="glow">
           <feGaussianBlur stdDeviation="2.5" result="coloredBlur" />
@@ -263,12 +293,12 @@ function SkillRadarChart({ skills }: { skills: Array<{ name: string; konfidenz: 
       })}
 
       {/* Filled polygon with glow */}
-      <polygon points={polyPts} fill="url(#radarGlow)" stroke="#23CDCB" strokeWidth={1.5} strokeLinejoin="round" filter="url(#glow)" />
+      <polygon points={polyPts} fill="url(#radarGlow)" stroke="#c5a059" strokeWidth={1.5} strokeLinejoin="round" filter="url(#glow)" />
 
       {/* Vertex dots */}
       {skills.map((s, i) => {
         const p = polar(i, maxR * Math.max(0.15, s.konfidenz / 100));
-        return <circle key={i} cx={p.x} cy={p.y} r={3.5} fill="#23CDCB" filter="url(#glow)" />;
+        return <circle key={i} cx={p.x} cy={p.y} r={3.5} fill="#c5a059" filter="url(#glow)" />;
       })}
 
       {/* Labels */}
@@ -284,7 +314,7 @@ function SkillRadarChart({ skills }: { skills: Array<{ name: string; konfidenz: 
       })}
 
       {/* Center dot */}
-      <circle cx={cx} cy={cy} r={3} fill="rgba(35,205,202,0.4)" />
+      <circle cx={cx} cy={cy} r={3} fill="rgba(197,160,89,0.4)" />
     </svg>
   );
 }
@@ -302,7 +332,19 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
   const de = i18n.language === 'de';
   const toastCtx = useToast();
   const [expert, setExpert] = useState<Experte>(initialExpert);
-  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+  const TAB_KEY = `expert_drawer_tab_${initialExpert.id}`;
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    // Honour explicit tab request (e.g. edit mode opening on 'einstellungen').
+    // Otherwise restore the tab the user last used for this agent.
+    if (initialTab !== 'überblick') return initialTab;
+    return (localStorage.getItem(`expert_drawer_tab_${initialExpert.id}`) as Tab | null) || 'überblick';
+  });
+  const prevInitialTabRef = useRef<Tab>(initialTab);
+
+  const handleTabChange = (tab: Tab) => {
+    setActiveTab(tab);
+    localStorage.setItem(TAB_KEY, tab);
+  };
 
   // Chat state
   const [messages, setMessages] = useState<any[]>([]);
@@ -311,11 +353,37 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
   const [agentTyping, setAgentTyping] = useState(false);
   const [showCommands, setShowCommands] = useState(false);
   const [commandFilter, setCommandFilter] = useState('');
+  const [activeCmd, setActiveCmd] = useState(-1);
   const [isDragOver, setIsDragOver] = useState(false);
   const [directChatMode, setDirectChatMode] = useState(true);
+  const [streaming, setStreaming] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const [pendingImage, setPendingImage] = useState<{ data: string; mimeType: string; name: string; previewUrl: string } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // ── Sync with parent props ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (initialExpert.id !== expert.id) {
+      setExpert(initialExpert);
+      // Restore saved tab for the newly selected agent
+      const saved = localStorage.getItem(`expert_drawer_tab_${initialExpert.id}`) as Tab | null;
+      const tab = initialTab !== 'überblick' ? initialTab : (saved || 'überblick');
+      setActiveTab(tab);
+    }
+  }, [initialExpert.id]);
+
+  // Only reset activeTab when parent explicitly requests a specific tab (e.g. edit mode)
+  useEffect(() => {
+    if (prevInitialTabRef.current !== initialTab && initialTab !== 'überblick') {
+      handleTabChange(initialTab);
+      prevInitialTabRef.current = initialTab;
+    }
+  }, [initialTab]);
 
   // Monitor state
   const [tasks, setTasks] = useState<Aufgabe[]>([]);
@@ -363,6 +431,28 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // CLI status for connection-type indicators
+  const [cliStatus, setCliStatus] = useState<{
+    tools: Array<{ name: string; installed: boolean; version: string; authenticated?: boolean }>;
+    loaded: boolean;
+  }>({ tools: [], loaded: false });
+
+  // Quick action loading state
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem('opencognit_token');
+    fetch('/api/system/cli-detect', {
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.tools) setCliStatus({ tools: data.tools, loaded: true });
+      })
+      .catch(() => {});
+  }, []);
 
   // SOUL state
   const [soulIdentity, setSoulIdentity] = useState('');
@@ -551,6 +641,15 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
   useEffect(() => {
     if (!aktivesUnternehmen) return;
 
+    // Reset chat state for new agent — clear stale messages/typing/streaming
+    setMessages([]);
+    setInputText('');
+    setLoadingChat(true);
+    setAgentTyping(false);
+    setStreaming(false);
+    setShowCommands(false);
+    if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
+
     // Chat history
     authFetch(`/api/experten/${expert.id}/chat`, { headers: { 'x-unternehmen-id': aktivesUnternehmen.id } })
       .then(r => r.json())
@@ -666,9 +765,12 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
 
   const sendMessage = async () => {
     const txt = inputText.trim();
-    if (!txt || !aktivesUnternehmen) return;
+    const img = pendingImage;
+    if ((!txt && !img) || !aktivesUnternehmen) return;
     setInputText('');
     setShowCommands(false);
+    setPendingImage(null);
+    if (inputRef.current) inputRef.current.style.height = '60px';
 
     // ── Slash command handling ────────────────────────────────────────────
     if (txt.startsWith('/')) {
@@ -758,53 +860,73 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
     // ── Normal message ────────────────────────────────────────────────────
     setAgentTyping(true);
 
-    const tempMsg = { id: `pending-${Date.now()}`, absenderTyp: 'board', nachricht: txt, erstelltAm: new Date().toISOString(), _pending: true };
+    const tempMsg = { id: `pending-${Date.now()}`, absenderTyp: 'board', nachricht: txt, images: img ? [img.previewUrl] : undefined, erstelltAm: new Date().toISOString(), _pending: true };
     setMessages(prev => [...prev, tempMsg]);
     setTimeout(scrollToBottom, 50);
 
     if (directChatMode) {
-      // Fast direct LLM call — reply comes back in HTTP response AND via WebSocket
-      // We use the HTTP response as the source of truth; WS deduplicates by id
+      // Streaming LLM call via SSE
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+      setStreaming(true);
+      setAgentTyping(false);
+
+      const agentMsgId = `stream-${Date.now()}`;
+      setMessages(prev => [...prev, {
+        id: agentMsgId, absenderTyp: 'agent', nachricht: '', thinking: '',
+        _streaming: true, erstelltAm: new Date().toISOString(),
+      }]);
+
       try {
-        const res = await authFetch(`/api/experten/${expert.id}/chat/direct`, {
+        const res = await fetch(`/api/experten/${expert.id}/chat/stream`, {
           method: 'POST',
-          headers: { 'x-unternehmen-id': aktivesUnternehmen.id },
-          body: JSON.stringify({ nachricht: txt }),
+          headers: {
+            'Content-Type': 'application/json',
+            'x-unternehmen-id': aktivesUnternehmen.id,
+            ...(localStorage.getItem('opencognit_token') ? { 'Authorization': `Bearer ${localStorage.getItem('opencognit_token')}` } : {}),
+          },
+          body: JSON.stringify({ nachricht: txt, ...(img ? { image: { data: img.data, mimeType: img.mimeType } } : {}) }),
+          signal: ctrl.signal,
         });
-        const data = await res.json();
-        if (data.error === 'no_api_key') {
-          setAgentTyping(false);
-          addSystemMsg(`⚠️ ${data.message}`);
-          return;
+        if (!res.ok || !res.body) throw new Error('stream_error');
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const ev = JSON.parse(line.slice(6));
+              if (ev.type === 'thinking_start' || ev.type === 'thinking_delta') {
+                setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, thinking: (m.thinking ?? '') + (ev.chunk ?? '') } : m));
+              } else if (ev.type === 'text_delta') {
+                setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, nachricht: m.nachricht + (ev.chunk ?? '') } : m));
+              } else if (ev.type === 'done') {
+                const final = ev.reply ?? '';
+                setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, _streaming: false, nachricht: final || m.nachricht } : m));
+                if (ttsEnabled && final) speak(final, agentMsgId);
+              } else if (ev.type === 'error') {
+                setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, _streaming: false, nachricht: m.nachricht || `❌ ${ev.message || 'Error'}` } : m));
+              }
+            } catch { /* ignore parse errors */ }
+          }
         }
-        if (data.error) {
-          setAgentTyping(false);
-          addSystemMsg(`❌ ${data.message || (de ? 'Fehler beim Antworten' : 'Error generating reply')}`);
-          return;
+        setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, _streaming: false } : m));
+      } catch (e: any) {
+        if (e.name === 'AbortError') {
+          setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, _streaming: false, nachricht: m.nachricht + '\n\n_[abgebrochen]_' } : m));
+        } else {
+          setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, _streaming: false, nachricht: `❌ ${de ? 'Verbindungsfehler' : 'Connection error'}` } : m));
         }
-        // HTTP response is authoritative — stop typing and add reply now.
-        // The WS broadcast will arrive too, but the dedup check (find by id) handles that.
-        setAgentTyping(false);
-        // Remove any pending board message (WS may not arrive if connection dropped)
-        setMessages(prev => prev.map(m => m._pending ? { ...m, _pending: false } : m));
-        if (data.reply) {
-          const replyMsg = {
-            id: `direct-${Date.now()}`,
-            absenderTyp: 'agent',
-            nachricht: data.reply,
-            erstelltAm: new Date().toISOString(),
-          };
-          setMessages(prev => {
-            // Don't add if WS already delivered an agent reply for this exchange
-            // (WS delivers with a real DB id, so it won't match 'direct-*')
-            if (prev.some(m => m.absenderTyp === 'agent' && m.nachricht === data.reply)) return prev;
-            return [...prev, replyMsg];
-          });
-          setTimeout(scrollToBottom, 50);
-        }
-      } catch {
-        setAgentTyping(false);
-        addSystemMsg(`❌ ${de ? 'Verbindungsfehler' : 'Connection error'}`);
+      } finally {
+        setStreaming(false);
+        abortRef.current = null;
+        setTimeout(scrollToBottom, 50);
       }
     } else {
       // Heartbeat-triggered response (legacy — only used if user manually switches off direct mode)
@@ -822,18 +944,52 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
     if (val.startsWith('/') && !val.includes(' ')) {
       setCommandFilter(val.slice(1).toLowerCase());
       setShowCommands(true);
+      const idx = COMMANDS.findIndex(c => c.cmd.startsWith(val.toLowerCase()));
+      setActiveCmd(idx >= 0 ? idx : -1);
     } else {
       setShowCommands(false);
+      setActiveCmd(-1);
     }
     // Auto-resize textarea
     const el = e.target;
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    el.style.height = Math.min(el.scrollHeight, 200) + 'px';
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (showCommands) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setActiveCmd(p => (p < COMMANDS.length - 1 ? p + 1 : 0)); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveCmd(p => (p > 0 ? p - 1 : COMMANDS.length - 1)); }
+      else if (e.key === 'Tab' || e.key === 'Enter') { e.preventDefault(); if (activeCmd >= 0) { setInputText(COMMANDS[activeCmd].cmd + ' '); setShowCommands(false); setTimeout(() => inputRef.current?.focus(), 30); } }
+      else if (e.key === 'Escape') { e.preventDefault(); setShowCommands(false); setActiveCmd(-1); }
+      return;
+    }
     if (e.key === 'Escape') { setShowCommands(false); return; }
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!streaming) sendMessage(); }
+  };
+
+  const speak = useCallback((text: string, msgId: string) => {
+    window.speechSynthesis.cancel();
+    if (speakingId === msgId) { setSpeakingId(null); return; }
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = de ? 'de-DE' : 'en-US'; u.rate = 1.05;
+    u.onend = () => setSpeakingId(null);
+    u.onerror = () => setSpeakingId(null);
+    setSpeakingId(msgId);
+    window.speechSynthesis.speak(u);
+  }, [speakingId, de]);
+
+  const pickImage = () => fileRef.current?.click();
+
+  const handleImageFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    const data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve((reader.result as string).split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    setPendingImage({ data, mimeType: file.type, name: file.name, previewUrl: URL.createObjectURL(file) });
   };
 
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragOver(true); };
@@ -844,6 +1000,10 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
     const files = Array.from(e.dataTransfer.files);
     if (files.length === 0) return;
     const file = files[0];
+    if (file.type.startsWith('image/')) {
+      handleImageFile(file);
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (ev) => {
       const content = (ev.target?.result as string) || '';
@@ -973,9 +1133,9 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
       <div style={{
         position: 'fixed', top: 0, right: 0, bottom: 0,
         width: 'min(1200px, 98vw)',
-        background: 'rgba(0, 0, 0, 0.45)',
+        background: 'linear-gradient(180deg, rgba(16,14,10,0.97) 0%, rgba(12,10,8,0.97) 100%)',
         backdropFilter: 'blur(24px) saturate(160%)',
-        borderLeft: '1px solid rgba(255, 255, 255, 0.1)',
+        borderLeft: '1px solid rgba(197,160,89,0.15)',
         zIndex: 9999,
         display: 'flex',
         flexDirection: 'row',
@@ -989,7 +1149,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
           {/* Header */}
           <div style={{ padding: '24px 28px', borderBottom: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.02)', flexShrink: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ width: 56, height: 56, fontSize: 22, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', background: expert.avatarFarbe + '22', color: expert.avatarFarbe }}>
+              <div style={{ width: 56, height: 56, fontSize: 22, borderRadius: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: expert.avatarFarbe + '22', color: expert.avatarFarbe }}>
                 {expert.avatar || <Bot size={24} />}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -997,7 +1157,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                   <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>{expert.name}</h3>
                   <div style={{
                     display: 'flex', alignItems: 'center', gap: 5, padding: '2px 10px',
-                    borderRadius: 20, fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                    borderRadius: 0, fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
                     background: (statusColor[expert.status] || '#888') + '22',
                     color: statusColor[expert.status] || '#888',
                     border: `1px solid ${(statusColor[expert.status] || '#888')}44`,
@@ -1016,9 +1176,9 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                   <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <div style={{ 
                       display: 'flex', alignItems: 'center', gap: 6, padding: '3px 10px', 
-                      borderRadius: '8px', background: 'rgba(168, 85, 247, 0.1)', 
-                      border: '1px solid rgba(168, 85, 247, 0.2)', fontSize: '10px', 
-                      fontWeight: 600, color: '#a855f7', textTransform: 'uppercase'
+                      borderRadius: 0, background: 'rgba(155, 135, 200, 0.1)', 
+                      border: '1px solid rgba(155, 135, 200, 0.2)', fontSize: '10px', 
+                      fontWeight: 600, color: '#9b87c8', textTransform: 'uppercase'
                     }}>
                       <UserCheck size={10} />
                       {de ? 'Advisor Aktiv' : 'Advisor Active'}
@@ -1050,7 +1210,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
             ] as const).map(tab => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabChange(tab.id)}
                 style={{
                   flex: 1, padding: '14px 0', background: 'none', border: 'none', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
@@ -1072,14 +1232,207 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                   <div style={{ textAlign: 'center', padding: 40, opacity: 0.5 }}>{de ? 'Statistiken werden geladen...' : 'Loading statistics...'}</div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-                    
+
+                    {/* ── Agent Status Header ── */}
+                    <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 0, padding: '20px 24px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                          <div style={{
+                            width: 10, height: 10, borderRadius: '50%',
+                            background: expert.status === 'running' ? '#c5a059' : expert.status === 'paused' ? '#f59e0b' : expert.status === 'error' ? '#ef4444' : '#52525b',
+                            boxShadow: expert.status === 'running' ? '0 0 10px rgba(197,160,89,0.6)' : 'none',
+                          }} />
+                          <div>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)' }}>{expert.name}</div>
+                            <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 2 }}>{expert.rolle}</div>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                          {/* Connection Type Badge */}
+                          {(() => {
+                            const vt = expert.verbindungsTyp;
+                            const labelMap: Record<string, string> = {
+                              'claude-code': 'Claude Code', 'kimi-cli': 'Kimi CLI', 'gemini-cli': 'Gemini CLI', 'codex-cli': 'Codex CLI',
+                              'anthropic': 'Anthropic', 'openai': 'OpenAI', 'openrouter': 'OpenRouter', 'google': 'Google',
+                              'ollama': 'Ollama', 'ollama_cloud': 'Ollama Cloud', 'moonshot': 'Moonshot', 'poe': 'Poe',
+                              'bash': 'Bash', 'http': 'HTTP', 'ceo': 'CEO', 'custom': 'Custom',
+                            };
+                            const colorMap: Record<string, string> = {
+                              'claude-code': '#c5a059', 'kimi-cli': '#a78bfa', 'gemini-cli': '#4285f4', 'codex-cli': '#10a37f',
+                              'anthropic': '#d4a574', 'openai': '#10a37f', 'openrouter': '#c5a059', 'google': '#4285f4',
+                              'ollama': '#22c55e', 'ollama_cloud': '#9b87c8', 'moonshot': '#a78bfa', 'poe': '#f59e0b',
+                            };
+                            const tool = cliStatus.tools.find((t: any) => t.name === vt);
+                            const isCli = ['claude-code', 'kimi-cli', 'gemini-cli', 'codex-cli'].includes(vt);
+                            const connected = isCli ? tool?.installed && (tool?.authenticated !== false) : true;
+                            return (
+                              <div style={{
+                                display: 'flex', alignItems: 'center', gap: 6,
+                                padding: '4px 10px', borderRadius: 0,
+                                background: isCli ? (connected ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)') : 'rgba(255,255,255,0.05)',
+                                border: `1px solid ${isCli ? (connected ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)') : 'rgba(255,255,255,0.1)'}`,
+                              }}>
+                                <span style={{
+                                  width: 6, height: 6, borderRadius: '50%',
+                                  background: isCli ? (connected ? '#22c55e' : '#ef4444') : (colorMap[vt] || '#c5a059'),
+                                }} />
+                                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                                  {labelMap[vt] || vt}
+                                </span>
+                                {isCli && (
+                                  <span style={{ fontSize: 9, color: connected ? '#22c55e' : '#ef4444' }}>
+                                    {connected ? (de ? 'OK' : 'OK') : (de ? 'Fehlt' : 'Missing')}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
+                          {/* Model badge */}
+                          {(() => {
+                            const model = (() => { try { return JSON.parse(expert.verbindungsConfig || '{}').model; } catch { return ''; } })();
+                            return model ? (
+                              <span style={{ fontSize: 11, color: 'var(--color-text-muted)', background: 'rgba(255,255,255,0.05)', padding: '3px 8px', borderRadius: 0 }}>
+                                {model}
+                              </span>
+                            ) : null;
+                          })()}
+                        </div>
+                      </div>
+
+                      {/* Budget mini-bar */}
+                      {expert.budgetMonatCent > 0 && (
+                        <div style={{ marginTop: 16 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 11, color: 'var(--color-text-muted)' }}>
+                            <span>{de ? 'Budget' : 'Budget'}</span>
+                            <span>{centZuEuro(expert.verbrauchtMonatCent, i18n.language)} / {centZuEuro(expert.budgetMonatCent, i18n.language)}</span>
+                          </div>
+                          <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 0, overflow: 'hidden' }}>
+                            <div style={{
+                              height: '100%', width: `${Math.min((expert.verbrauchtMonatCent / expert.budgetMonatCent) * 100, 100)}%`,
+                              background: (expert.verbrauchtMonatCent / expert.budgetMonatCent) > 0.9 ? '#ef4444' : '#c5a059',
+                              borderRadius: 0, transition: 'width 0.5s ease',
+                            }} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── Quick Actions ── */}
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      <button
+                        onClick={async () => {
+                          const action = expert.status === 'paused' ? 'Resume' : 'Pause';
+                          const url = `/api/agents/${expert.id}/${expert.status === 'paused' ? 'resume' : 'pause'}`;
+                          setLoadingAction(action);
+                          try {
+                            const token = localStorage.getItem('opencognit_token');
+                            const r = await fetch(url, { method: 'POST', credentials: 'include', headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
+                            if (r.ok) {
+                              toastCtx.success(de ? 'Erledigt' : 'Done', de ? `${action} erfolgreich` : `${action} successful`);
+                              const newStatus = action === 'Pause' ? 'paused' : 'idle';
+                              setExpert(prev => ({ ...prev, status: newStatus, zyklusAktiv: action === 'Resume' }));
+                            } else throw new Error();
+                          } catch {
+                            toastCtx.error(de ? 'Fehler' : 'Error', de ? `${action} fehlgeschlagen` : `${action} failed`);
+                          } finally { setLoadingAction(null); }
+                        }}
+                        disabled={loadingAction !== null}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          padding: '8px 14px', borderRadius: 0, border: '1px solid rgba(255,255,255,0.1)',
+                          background: expert.status === 'paused' ? 'rgba(34,197,94,0.08)' : 'rgba(245,158,11,0.08)',
+                          color: expert.status === 'paused' ? '#22c55e' : '#f59e0b',
+                          fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                        }}
+                      >
+                        {loadingAction === (expert.status === 'paused' ? 'Resume' : 'Pause') ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : (expert.status === 'paused' ? <Play size={14} /> : <Pause size={14} />)}
+                        {expert.status === 'paused' ? (de ? 'Fortsetzen' : 'Resume') : (de ? 'Pausieren' : 'Pause')}
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setLoadingAction('Run Now');
+                          try {
+                            const token = localStorage.getItem('opencognit_token');
+                            const r = await fetch(`/api/agents/${expert.id}/wakeup`, { method: 'POST', credentials: 'include', headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
+                            if (r.ok) toastCtx.success(de ? 'Erledigt' : 'Done', de ? 'Zyklus gestartet' : 'Cycle started');
+                            else throw new Error();
+                          } catch {
+                            toastCtx.error(de ? 'Fehler' : 'Error', de ? 'Start fehlgeschlagen' : 'Start failed');
+                          } finally { setLoadingAction(null); }
+                        }}
+                        disabled={loadingAction !== null || expert.status === 'paused'}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          padding: '8px 14px', borderRadius: 0, border: '1px solid rgba(197,160,89,0.25)',
+                          background: 'rgba(197,160,89,0.08)', color: '#c5a059',
+                          fontSize: 12, fontWeight: 600, cursor: expert.status === 'paused' ? 'not-allowed' : 'pointer',
+                          opacity: expert.status === 'paused' ? 0.5 : 1,
+                        }}
+                      >
+                        {loadingAction === 'Run Now' ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Zap size={14} />}
+                        {de ? 'Jetzt ausführen' : 'Run now'}
+                      </button>
+                    </div>
+
+                    {/* ── Connection Status Card ── */}
+                    {(['claude-code', 'codex-cli', 'gemini-cli', 'kimi-cli'].includes(expert.verbindungsTyp)) && (
+                      <div style={{ background: 'rgba(10,10,10,0.6)', border: '1px solid rgba(197,160,89,0.15)', borderRadius: 0, padding: 16 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div style={{ width: 8, height: 8, borderRadius: '50%', background:
+                              !cliStatus.loaded ? '#64748b'
+                              : (cliStatus.tools.find((t: any) => t.name === expert.verbindungsTyp)?.installed
+                                ? (cliStatus.tools.find((t: any) => t.name === expert.verbindungsTyp)?.authenticated ? '#22c55e' : '#f59e0b')
+                                : '#ef4444'),
+                              boxShadow: !cliStatus.loaded ? 'none'
+                              : (cliStatus.tools.find((t: any) => t.name === expert.verbindungsTyp)?.installed
+                                ? (cliStatus.tools.find((t: any) => t.name === expert.verbindungsTyp)?.authenticated ? '0 0 8px #22c55e' : '0 0 8px #f59e0b')
+                                : '0 0 8px #ef4444'),
+                            }} />
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#e4e4e7' }}>
+                              {verbindungsLabels[expert.verbindungsTyp]?.[i18n.language] || expert.verbindungsTyp}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => {
+                              const token = localStorage.getItem('opencognit_token');
+                              fetch('/api/system/cli-detect', { credentials: 'include', headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) } })
+                                .then(r => r.ok ? r.json() : null)
+                                .then(data => { if (data?.tools) setCliStatus({ tools: data.tools, loaded: true }); })
+                                .catch(() => {});
+                            }}
+                            style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}
+                          >
+                            ↻ {de ? 'Aktualisieren' : 'Refresh'}
+                          </button>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                          {!cliStatus.loaded ? (
+                            <span>{de ? 'Status wird geprüft…' : 'Checking status…'}</span>
+                          ) : (() => {
+                            const tool = cliStatus.tools.find((t: any) => t.name === expert.verbindungsTyp);
+                            if (!tool) return <span>{de ? 'Unbekanntes Tool' : 'Unknown tool'}</span>;
+                            if (!tool.installed) return <span>{de ? 'Nicht installiert' : 'Not installed'}</span>;
+                            return (
+                              <>
+                                <span style={{ color: tool.authenticated ? '#22c55e' : '#f59e0b', fontWeight: 600 }}>
+                                  {tool.authenticated ? (de ? 'Verbunden' : 'Connected') : (de ? 'Nicht eingeloggt' : 'Not logged in')}
+                                </span>
+                                {tool.version && <span style={{ color: 'var(--color-text-muted)' }}>— v{tool.version}</span>}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Latest Run Card */}
                     {stats?.latestRun && (
-                      <div style={{ background: 'rgba(35, 205, 202, 0.05)', border: '1px solid rgba(35, 205, 202, 0.2)', borderRadius: 16, padding: 20 }}>
+                      <div style={{ background: 'rgba(197, 160, 89, 0.05)', border: '1px solid rgba(197, 160, 89, 0.2)', borderRadius: 0, padding: 20 }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                             <div style={{ 
-                              padding: '4px 10px', borderRadius: 20, fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                              padding: '4px 10px', borderRadius: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
                               background: stats.latestRun.status === 'succeeded' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
                               color: stats.latestRun.status === 'succeeded' ? '#10b981' : '#ef4444'
                             }}>
@@ -1087,7 +1440,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                             </div>
                             <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{zeitRelativ(stats.latestRun.erstelltAm, i18n.language)}</span>
                           </div>
-                          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: 6 }}>
+                          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: 0 }}>
                              #{stats.latestRun.id.slice(0, 8)}
                           </span>
                         </div>
@@ -1101,9 +1454,9 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                     {expert.advisorId && (() => {
                       const lastPlan = aktivitaet.find(a => a.aktion === 'advisor_plan_created');
                       return (
-                        <div style={{ background: 'rgba(168, 85, 247, 0.05)', border: '1px solid rgba(168, 85, 247, 0.15)', borderRadius: 16, padding: 20 }}>
+                        <div style={{ background: 'rgba(155, 135, 200, 0.05)', border: '1px solid rgba(155, 135, 200, 0.15)', borderRadius: 0, padding: 20 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-                            <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(168, 85, 247, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a855f7' }}>
+                            <div style={{ width: 40, height: 40, borderRadius: 0, background: 'rgba(155, 135, 200, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9b87c8' }}>
                               <UserCheck size={20} />
                             </div>
                             <div>
@@ -1113,8 +1466,8 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                           </div>
                           
                           {lastPlan && (
-                            <div style={{ marginTop: 8, padding: 12, borderRadius: 12, background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(168, 85, 247, 0.2)', fontSize: 13, color: 'var(--color-text-secondary)', fontStyle: 'italic', lineHeight: 1.5 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, color: '#a855f7', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            <div style={{ marginTop: 8, padding: 12, borderRadius: 0, background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(155, 135, 200, 0.2)', fontSize: 13, color: 'var(--color-text-secondary)', fontStyle: 'italic', lineHeight: 1.5 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, color: '#9b87c8', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                 <Zap size={12} />
                                 {de ? 'Advisor Direktive' : 'Advisor Directive'}
                               </div>
@@ -1122,7 +1475,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                                 const details = JSON.parse(lastPlan.details);
                                 const plan = details.plan || "";
                                 return plan.startsWith('```json') ? (
-                                  <pre style={{ margin: 0, padding: 8, background: 'rgba(0,0,0,0.3)', borderRadius: 6, fontSize: 11, overflowX: 'auto', fontStyle: 'normal' }}>
+                                  <pre style={{ margin: 0, padding: 8, background: 'rgba(0,0,0,0.3)', borderRadius: 0, fontSize: 11, overflowX: 'auto', fontStyle: 'normal' }}>
                                     {plan.replace(/```json|```/g, '').trim()}
                                   </pre>
                                 ) : (
@@ -1132,7 +1485,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                             </div>
                           )}
 
-                          <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.5, background: 'rgba(0,0,0,0.2)', padding: 12, borderRadius: 10, marginTop: lastPlan ? 16 : 0 }}>
+                          <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.5, background: 'rgba(0,0,0,0.2)', padding: 12, borderRadius: 0, marginTop: lastPlan ? 16 : 0 }}>
                             {de 
                               ? `Dieser Agent wird von einem Advisor unterstützt. Bevor er Aufgaben ausführt, konsultiert er seinen Advisor für eine strategische Planung.`
                               : `This agent is supported by an advisor. Before executing tasks, it consults its advisor for strategic planning.`
@@ -1152,8 +1505,8 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                             <span style={{ fontSize: 11, fontWeight: 700, color: '#D4AF37', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                               {de ? 'Team-Status' : 'Team Status'}
                             </span>
-                            <span style={{ fontSize: 10, color: 'var(--color-text-muted)', background: 'rgba(255,255,255,0.05)', padding: '1px 6px', borderRadius: 4 }}>
-                              {teamStatus.team.length} {de ? 'Berichte' : 'reports'}
+                            <span style={{ fontSize: 10, color: 'var(--color-text-muted)', background: 'rgba(255,255,255,0.05)', padding: '1px 6px', borderRadius: 0 }}>
+                              {teamStatus?.team?.length ?? 0} {de ? 'Berichte' : 'reports'}
                             </span>
                           </div>
                           <button
@@ -1170,14 +1523,14 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                         </div>
 
                         {/* Team Members */}
-                        {teamStatus.team.length === 0 ? (
-                          <div style={{ padding: '16px', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 12, background: 'rgba(212,175,55,0.03)', border: '1px dashed rgba(212,175,55,0.15)', borderRadius: 12 }}>
+                        {teamStatus?.team?.length === 0 ? (
+                          <div style={{ padding: '16px', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 12, background: 'rgba(212,175,55,0.03)', border: '1px dashed rgba(212,175,55,0.15)', borderRadius: 0 }}>
                             {de ? 'Keine direkten Berichte.' : 'No direct reports.'}
                           </div>
                         ) : (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            {teamStatus.team.map((member: any) => {
-                              const statusColors: Record<string, string> = { active: '#23CDCB', running: '#3b82f6', idle: '#52525b', paused: '#f59e0b', error: '#ef4444', terminated: '#6b7280' };
+                            {teamStatus?.team?.map((member: any) => {
+                              const statusColors: Record<string, string> = { active: '#c5a059', running: '#3b82f6', idle: '#52525b', paused: '#f59e0b', error: '#ef4444', terminated: '#6b7280' };
                               const statusDot = statusColors[member.status] || '#52525b';
                               const lastSeen = member.letzterZyklus
                                 ? (() => { const d = Date.now() - new Date(member.letzterZyklus).getTime(); const m = Math.floor(d/60000); return m < 60 ? `${m}m` : `${Math.floor(m/60)}h`; })()
@@ -1186,7 +1539,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                                 <div key={member.id} style={{
                                   background: 'rgba(212,175,55,0.04)',
                                   border: '1px solid rgba(212,175,55,0.12)',
-                                  borderRadius: 12,
+                                  borderRadius: 0,
                                   padding: '12px 14px',
                                   display: 'flex',
                                   alignItems: 'center',
@@ -1216,7 +1569,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                                   </div>
                                   {/* Stats */}
                                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
-                                    <span style={{ fontSize: 10, color: '#23CDCB', fontWeight: 600 }}>
+                                    <span style={{ fontSize: 10, color: '#c5a059', fontWeight: 600 }}>
                                       {member.activeTasks.length} {de ? 'aktiv' : 'active'}
                                     </span>
                                     <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>
@@ -1230,21 +1583,21 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                         )}
 
                         {/* Unassigned Tasks */}
-                        {teamStatus.unassigned.length > 0 && (
+                        {teamStatus?.unassigned?.length > 0 && (
                           <div style={{ marginTop: 4 }}>
                             <div style={{ fontSize: 10, fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
-                              {de ? `${teamStatus.unassigned.length} nicht zugewiesen` : `${teamStatus.unassigned.length} unassigned`}
+                              {de ? `${teamStatus?.unassigned?.length ?? 0} nicht zugewiesen` : `${teamStatus?.unassigned?.length ?? 0} unassigned`}
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                              {teamStatus.unassigned.slice(0, 5).map((task: any) => (
+                              {teamStatus?.unassigned?.slice(0, 5).map((task: any) => (
                                 <div key={task.id} style={{
                                   background: 'rgba(245,158,11,0.04)',
                                   border: '1px solid rgba(245,158,11,0.15)',
-                                  borderRadius: 10, padding: '8px 12px',
+                                  borderRadius: 0, padding: '8px 12px',
                                   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
                                 }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                                    <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 4, background: 'rgba(245,158,11,0.1)', color: '#f59e0b', fontWeight: 700, textTransform: 'uppercase', flexShrink: 0 }}>
+                                    <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 0, background: 'rgba(245,158,11,0.1)', color: '#f59e0b', fontWeight: 700, textTransform: 'uppercase', flexShrink: 0 }}>
                                       {task.prioritaet}
                                     </span>
                                     <span style={{ fontSize: 12, color: '#e4e4e7', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1283,7 +1636,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                       const assigned = skillsLibrary.filter(s => selectedSkills.includes(s.id));
                       if (assigned.length < 3) return null;
                       return (
-                        <div style={{ background: 'rgba(35,205,202,0.03)', border: '1px solid rgba(35,205,202,0.12)', borderRadius: 16, padding: 20 }}>
+                        <div style={{ background: 'rgba(197,160,89,0.03)', border: '1px solid rgba(197,160,89,0.12)', borderRadius: 0, padding: 20 }}>
                           <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 16 }}>
                             {de ? 'Skill-Profil' : 'Skill Profile'}
                           </div>
@@ -1298,8 +1651,8 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                                     <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)' }}>{s.name}</span>
                                     <span style={{ fontSize: 10, color: 'var(--color-accent)' }}>{s.konfidenz}%</span>
                                   </div>
-                                  <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 2, overflow: 'hidden' }}>
-                                    <div style={{ height: '100%', width: `${s.konfidenz}%`, background: 'linear-gradient(90deg, #23CDCB, #26e6e2)', borderRadius: 2, transition: 'width 0.6s ease' }} />
+                                  <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 0, overflow: 'hidden' }}>
+                                    <div style={{ height: '100%', width: `${s.konfidenz}%`, background: 'linear-gradient(90deg, #c5a059, #26e6e2)', borderRadius: 0, transition: 'width 0.6s ease' }} />
                                   </div>
                                 </div>
                               ))}
@@ -1311,13 +1664,13 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
 
                     {/* Skill badges (< 3 skills) */}
                     {skillsLibrary.length > 0 && selectedSkills.length > 0 && selectedSkills.length < 3 && (
-                      <div style={{ background: 'rgba(35,205,202,0.03)', border: '1px solid rgba(35,205,202,0.12)', borderRadius: 16, padding: 20 }}>
+                      <div style={{ background: 'rgba(197,160,89,0.03)', border: '1px solid rgba(197,160,89,0.12)', borderRadius: 0, padding: 20 }}>
                         <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 12 }}>
                           {de ? 'Skill-Profil' : 'Skill Profile'}
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                           {skillsLibrary.filter(s => selectedSkills.includes(s.id)).map(s => (
-                            <span key={s.id} style={{ padding: '5px 12px', background: 'rgba(35,205,202,0.1)', border: '1px solid rgba(35,205,202,0.3)', borderRadius: 20, fontSize: 12, color: '#23CDCB', fontWeight: 600 }}>
+                            <span key={s.id} style={{ padding: '5px 12px', background: 'rgba(197,160,89,0.1)', border: '1px solid rgba(197,160,89,0.3)', borderRadius: 0, fontSize: 12, color: '#c5a059', fontWeight: 600 }}>
                               {s.name}
                             </span>
                           ))}
@@ -1334,11 +1687,11 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                         {stats?.recentTasks?.length === 0 && <div style={{ fontSize: 12, opacity: 0.5 }}>{de ? 'Keine Aufgaben gefunden' : 'No tasks found'}</div>}
                         {stats?.recentTasks?.map((task: any) => (
                           <div key={task.id} style={{ 
-                            padding: '12px 16px', background: 'var(--color-bg-secondary)', borderRadius: 12, border: '1px solid var(--color-border)', 
+                            padding: '12px 16px', background: 'var(--color-bg-secondary)', borderRadius: 0, border: '1px solid var(--color-border)', 
                             display: 'flex', alignItems: 'center', justifyContent: 'space-between' 
                           }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                              <div style={{ width: 8, height: 8, borderRadius: '50%', background: task.status === 'done' ? '#10b981' : task.status === 'in_progress' ? '#3b82f6' : '#6b7280' }} />
+                              <div style={{ width: 8, height: 8, borderRadius: '50%', background: task.status === 'done' ? '#10b981' : task.status === 'in_progress' ? '#c5a059' : '#6b7280' }} />
                               <span style={{ fontSize: 13, fontWeight: 500 }}>{task.titel}</span>
                             </div>
                             <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{zeitRelativ(task.erstelltAm, i18n.language)}</span>
@@ -1359,19 +1712,19 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                   {/* Budget */}
                   {expert.verbindungsTyp !== 'ollama' ? (
-                    <div style={{ background: 'linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '14px 16px', position: 'relative', overflow: 'hidden' }}>
-                      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,${budgetPercent > 90 ? 'rgba(239,68,68,0.6)' : 'rgba(35,205,202,0.4)'},transparent)`, borderRadius: '14px 14px 0 0' }} />
+                    <div style={{ background: 'linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 0, padding: '14px 16px', position: 'relative', overflow: 'hidden' }}>
+                      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,${budgetPercent > 90 ? 'rgba(239,68,68,0.6)' : 'rgba(197,160,89,0.4)'},transparent)`, borderRadius: '0' }} />
                       <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
                         <Wallet size={10} /> {de ? 'Budget' : 'Budget'}
                       </div>
                       <div style={{ fontWeight: 800, fontSize: 16, color: budgetPercent > 90 ? 'var(--color-error)' : 'var(--color-accent)', fontVariantNumeric: 'tabular-nums' }}>{budgetPercent}%</div>
                       <div style={{ fontSize: 10, color: 'var(--color-text-muted)', opacity: 0.6, marginTop: 2 }}>{centZuEuro(expert.verbrauchtMonatCent, i18n.language)}</div>
-                      <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 2, marginTop: 8, overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${Math.min(budgetPercent, 100)}%`, background: budgetPercent > 90 ? 'rgba(239,68,68,0.8)' : 'rgba(35,205,202,0.8)', borderRadius: 2, transition: 'width 0.5s ease' }} />
+                      <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 0, marginTop: 8, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${Math.min(budgetPercent, 100)}%`, background: budgetPercent > 90 ? 'rgba(239,68,68,0.8)' : 'rgba(197,160,89,0.8)', borderRadius: 0, transition: 'width 0.5s ease' }} />
                       </div>
                     </div>
                   ) : (
-                    <div style={{ background: 'linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '14px 16px' }}>
+                    <div style={{ background: 'linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 0, padding: '14px 16px' }}>
                       <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Ollama</div>
                       <div style={{ fontWeight: 800, fontSize: 16, color: 'var(--color-accent)' }}>Local</div>
                       <div style={{ fontSize: 10, color: 'var(--color-text-muted)', opacity: 0.6, marginTop: 2 }}>{de ? 'Kostenlos' : 'Free'}</div>
@@ -1379,21 +1732,21 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                   )}
 
                   {/* Tasks */}
-                  <div style={{ background: 'linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '14px 16px', position: 'relative', overflow: 'hidden' }}>
-                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'linear-gradient(90deg,rgba(35,205,202,0.4),transparent)', borderRadius: '14px 14px 0 0' }} />
+                  <div style={{ background: 'linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 0, padding: '14px 16px', position: 'relative', overflow: 'hidden' }}>
+                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'linear-gradient(90deg,rgba(197,160,89,0.4),transparent)', borderRadius: '0' }} />
                     <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>{de ? 'Aufgaben' : 'Tasks'}</div>
                     <div style={{ fontWeight: 800, fontSize: 24, color: 'var(--color-accent)', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{activeTasks.length}</div>
                     <div style={{ fontSize: 10, color: 'var(--color-text-muted)', opacity: 0.6, marginTop: 4 }}>{completedTasks.length} {de ? 'erledigt' : 'done'}</div>
                   </div>
 
                   {/* Cycle */}
-                  <div style={{ background: 'linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))', border: `1px solid ${expert.zyklusAktiv ? 'rgba(35,205,202,0.2)' : 'rgba(255,255,255,0.07)'}`, borderRadius: 14, padding: '14px 16px', position: 'relative', overflow: 'hidden' }}>
-                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,${expert.zyklusAktiv ? 'rgba(35,205,202,0.5)' : 'rgba(107,114,128,0.3)'},transparent)`, borderRadius: '14px 14px 0 0' }} />
+                  <div style={{ background: 'linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))', border: `1px solid ${expert.zyklusAktiv ? 'rgba(197,160,89,0.2)' : 'rgba(255,255,255,0.07)'}`, borderRadius: 0, padding: '14px 16px', position: 'relative', overflow: 'hidden' }}>
+                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,${expert.zyklusAktiv ? 'rgba(197,160,89,0.5)' : 'rgba(107,114,128,0.3)'},transparent)`, borderRadius: '0' }} />
                     <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
                       <Zap size={10} /> {de ? 'Zyklus' : 'Cycle'}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {expert.zyklusAktiv && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#23CDCB', boxShadow: '0 0 6px rgba(35,205,202,0.8)', animation: 'pulse-dot 2s ease-in-out infinite' }} />}
+                      {expert.zyklusAktiv && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#c5a059', boxShadow: '0 0 6px rgba(197,160,89,0.8)', animation: 'pulse-dot 2s ease-in-out infinite' }} />}
                       <div style={{ fontWeight: 700, fontSize: 13, color: expert.zyklusAktiv ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>
                         {expert.zyklusAktiv ? (de ? 'Aktiv' : 'Active') : (de ? 'Aus' : 'Off')}
                       </div>
@@ -1412,20 +1765,20 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {activeTasks.length === 0 ? (
-                      <div style={{ padding: '16px', textAlign: 'center', fontSize: 12, color: 'var(--color-text-muted)', opacity: 0.4, border: '1px dashed rgba(255,255,255,0.07)', borderRadius: 12 }}>
+                      <div style={{ padding: '16px', textAlign: 'center', fontSize: 12, color: 'var(--color-text-muted)', opacity: 0.4, border: '1px dashed rgba(255,255,255,0.07)', borderRadius: 0 }}>
                         {de ? 'Keine aktiven Aufgaben' : 'No active tasks'}
                       </div>
                     ) : activeTasks.slice(0, 8).map(t => {
-                      const prioColor: Record<string, string> = { critical: '#ef4444', high: '#f97316', medium: '#23CDCB', low: '#6b7280' };
+                      const prioColor: Record<string, string> = { critical: '#ef4444', high: '#f97316', medium: '#c5a059', low: '#6b7280' };
                       const statusIcon: Record<string, string> = { offen: '○', todo: '○', in_progress: '◑', in_review: '◐', blocked: '✕' };
                       return (
-                        <div key={t.id} style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div key={t.id} style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
                           <span style={{ fontSize: 14, color: prioColor[t.prioritaet] || '#6b7280', flexShrink: 0 }}>{statusIcon[t.status] || '○'}</span>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.titel}</div>
                             <div style={{ fontSize: 10, color: 'var(--color-text-muted)', opacity: 0.55, marginTop: 2 }}>{t.status.replace(/_/g, ' ')}</div>
                           </div>
-                          <div style={{ fontSize: 9, padding: '2px 7px', borderRadius: 6, background: `${prioColor[t.prioritaet] || '#6b7280'}18`, color: prioColor[t.prioritaet] || '#6b7280', fontWeight: 700, flexShrink: 0 }}>
+                          <div style={{ fontSize: 9, padding: '2px 7px', borderRadius: 0, background: `${prioColor[t.prioritaet] || '#6b7280'}18`, color: prioColor[t.prioritaet] || '#6b7280', fontWeight: 700, flexShrink: 0 }}>
                             {t.prioritaet}
                           </div>
                         </div>
@@ -1443,7 +1796,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {completedTasks.slice(0, 5).map(t => (
                         <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                          <span style={{ color: '#23CDCB', fontSize: 12, flexShrink: 0 }}>✓</span>
+                          <span style={{ color: '#c5a059', fontSize: 12, flexShrink: 0 }}>✓</span>
                           <span style={{ fontSize: 12, color: 'var(--color-text-muted)', opacity: 0.5, textDecoration: 'line-through', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.titel}</span>
                         </div>
                       ))}
@@ -1460,7 +1813,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                   {aktivitaet.map(a => (
                     <div key={a.id} style={{ display: 'flex', gap: 12, fontSize: 13 }}>
                       <div style={{ opacity: 0.5, whiteSpace: 'nowrap' }}>{zeitRelativ(a.erstelltAm, i18n.language)}</div>
-                      <div style={{ flex: 1 }}>{a.aktion}</div>
+                      <div style={{ flex: 1 }}>{translateActivity(a.aktion, i18n.language)}</div>
                     </div>
                   ))}
                 </div>
@@ -1501,7 +1854,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                     style={{ 
                       background: editForm.isOrchestrator ? 'rgba(212, 175, 55, 0.08)' : 'rgba(255, 255, 255, 0.03)', 
                       border: `1px solid ${editForm.isOrchestrator ? 'rgba(212, 175, 55, 0.4)' : 'rgba(255,255,255,0.08)'}`,
-                      borderRadius: '20px', padding: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      borderRadius: 0, padding: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       transition: 'all 0.3s ease', cursor: 'pointer',
                       boxShadow: editForm.isOrchestrator ? '0 10px 40px rgba(212, 175, 55, 0.1)' : 'none'
                     }}
@@ -1509,7 +1862,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
                       <div style={{ 
-                        width: '44px', height: '44px', borderRadius: '14px', background: editForm.isOrchestrator ? 'rgba(212, 175, 55, 0.15)' : 'rgba(255,255,255,0.05)',
+                        width: '44px', height: '44px', borderRadius: 0, background: editForm.isOrchestrator ? 'rgba(212, 175, 55, 0.15)' : 'rgba(255,255,255,0.05)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', color: editForm.isOrchestrator ? '#D4AF37' : '#71717a'
                       }}>
                         <Shield size={22} />
@@ -1524,18 +1877,18 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                       </div>
                     </div>
                     <div style={{ 
-                      width: '48px', height: '26px', borderRadius: '13px', background: editForm.isOrchestrator ? '#D4AF37' : 'rgba(255,255,255,0.1)',
+                      width: '48px', height: '26px', borderRadius: 0, background: editForm.isOrchestrator ? '#D4AF37' : 'rgba(255,255,255,0.1)',
                       padding: '3px', position: 'relative', transition: 'background 0.3s'
                     }}>
                       <div style={{ 
-                        width: '20px', height: '20px', borderRadius: '10px', background: '#fff',
+                        width: '20px', height: '20px', borderRadius: 0, background: '#fff',
                         position: 'absolute', left: editForm.isOrchestrator ? '25px' : '3px', transition: 'left 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)'
                       }} />
                     </div>
                   </div>
 
                   {/* --- VERBINDUNG & ENGINE --- */}
-                  <div style={{ padding: 20, background: 'rgba(255,255,255,0.03)', borderRadius: 16, border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ padding: 20, background: 'rgba(255,255,255,0.03)', borderRadius: 0, border: '1px solid rgba(255,255,255,0.06)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
                       <Zap size={15} style={{ color: 'var(--color-accent)' }} />
                       <h4 style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>{de ? 'KI-Engine & Modell' : 'AI Engine & Model'}</h4>
@@ -1552,9 +1905,15 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                             { value: 'openrouter', label: 'OpenRouter' },
                             { value: 'anthropic', label: 'Anthropic Claude' },
                             { value: 'openai', label: 'OpenAI GPT' },
+                            { value: 'google', label: 'Google Gemini' },
+                            { value: 'moonshot', label: 'Moonshot AI' },
+                            { value: 'poe', label: 'Poe' },
                             { value: 'custom', label: de ? '🔌 Custom API (OpenAI-kompatibel)' : '🔌 Custom API (OpenAI-compatible)' },
                             { value: 'ollama', label: de ? 'Ollama (Lokal)' : 'Ollama (Local)' },
                             { value: 'ollama_cloud', label: '☁️ Ollama (Cloud / Remote)' },
+                            { value: 'codex-cli', label: de ? '🐍 Codex CLI (OpenAI)' : '🐍 Codex CLI (OpenAI)' },
+                            { value: 'gemini-cli', label: de ? '💎 Gemini CLI (Google)' : '💎 Gemini CLI (Google)' },
+                            { value: 'kimi-cli', label: de ? '🌙 Kimi CLI (Moonshot)' : '🌙 Kimi CLI (Moonshot)' },
                             { value: 'bash', label: 'Bash Script' },
                             { value: 'http', label: 'HTTP Webhook' },
                           ]}
@@ -1571,11 +1930,11 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                                 const conn = customConnections.find(c => c.id === e.target.value);
                                 setEditForm(f => ({ ...f, connectionId: e.target.value, baseUrl: conn?.baseUrl || f.baseUrl }));
                               }}
-                              style={{ width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(35,205,202,0.2)', background: 'rgba(35,205,202,0.05)', color: 'var(--color-text-primary)', fontSize: 12, cursor: 'pointer' }}
+                              style={{ width: '100%', padding: '6px 10px', borderRadius: 0, border: '1px solid rgba(197,160,89,0.2)', background: 'rgba(197,160,89,0.05)', color: 'var(--color-text-primary)', fontSize: 12, cursor: 'pointer' }}
                             >
-                              <option value="" style={{ background: '#1a1a2e' }}>{de ? '— Global (Standard) —' : '— Global (default) —'}</option>
+                              <option value="" >{de ? '— Global (Standard) —' : '— Global (default) —'}</option>
                               {customConnections.map(c => (
-                                <option key={c.id} value={c.id} style={{ background: '#1a1a2e' }}>{c.name}</option>
+                                <option key={c.id} value={c.id} >{c.name}</option>
                               ))}
                             </select>
                           </div>
@@ -1590,13 +1949,13 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                               <div style={{
                                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                                 background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)',
-                                borderRadius: 8, padding: '6px 10px', fontSize: 11.5,
+                                borderRadius: 0, padding: '6px 10px', fontSize: 11.5,
                               }}>
                                 <span style={{ color: '#f59e0b' }}>⚡ Kein Modell gewählt — nutzt Auto Free</span>
                                 <button
                                   type="button"
                                   onClick={() => setEditForm(f => ({ ...f, modell: 'auto:free' }))}
-                                  style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', color: '#f59e0b', borderRadius: 6, padding: '2px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                                  style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', color: '#f59e0b', borderRadius: 0, padding: '2px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
                                 >
                                   Setzen
                                 </button>
@@ -1609,7 +1968,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                               de={de}
                             />
                             {editForm.isOrchestrator && (
-                              <div style={{ fontSize: 10, color: 'var(--color-accent)', opacity: 0.8, background: 'rgba(35, 205, 202, 0.1)', padding: '4px 8px', borderRadius: 4 }}>
+                              <div style={{ fontSize: 10, color: 'var(--color-accent)', opacity: 0.8, background: 'rgba(197, 160, 89, 0.1)', padding: '4px 8px', borderRadius: 0 }}>
                                 {de ? 'Tipp: High-End Modell empfohlen (z.B. Claude 3.5 Sonnet).' : 'Tip: High-end model recommended (e.g. Claude 3.5 Sonnet).'}
                               </div>
                             )}
@@ -1621,10 +1980,10 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                                 <select
                                   value={editForm.modell}
                                   onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))}
-                                  style={{ flex: 1, padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'var(--color-text-primary)', fontSize: 14, cursor: 'pointer' }}
+                                  style={{ flex: 1, padding: '8px 12px', borderRadius: 0, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'var(--color-text-primary)', fontSize: 14, cursor: 'pointer' }}
                                 >
                                   {ollamaModels.map(m => (
-                                    <option key={m.id} value={m.id} style={{ background: '#1a1a2e' }}>
+                                    <option key={m.id} value={m.id} >
                                       {m.name}{m.size ? ` (${(m.size / 1e9).toFixed(1)} GB)` : ''}
                                     </option>
                                   ))}
@@ -1632,36 +1991,48 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                               ) : (
                                 <input className="input" style={{ flex: 1 }} value={editForm.modell} placeholder={loadingOllamaModels ? 'Lade Ollama-Modelle...' : 'z.B. qwen3.5:latest'} onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))} />
                               )}
-                              <button onClick={() => loadOllamaModels(editForm.baseUrl)} disabled={loadingOllamaModels} title={de ? 'Modelle aktualisieren' : 'Refresh models'} style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'var(--color-accent)', cursor: loadingOllamaModels ? 'wait' : 'pointer', fontSize: 16, lineHeight: 1 }}>
+                              <button onClick={() => loadOllamaModels(editForm.baseUrl)} disabled={loadingOllamaModels} title={de ? 'Modelle aktualisieren' : 'Refresh models'} style={{ padding: '8px 12px', borderRadius: 0, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'var(--color-accent)', cursor: loadingOllamaModels ? 'wait' : 'pointer', fontSize: 16, lineHeight: 1 }}>
                                 {loadingOllamaModels ? '⏳' : '🔄'}
                               </button>
                             </div>
                             {ollamaModels.length === 0 && !loadingOllamaModels && (
-                              <div style={{ fontSize: 11, color: '#ef4444', padding: '4px 8px', background: 'rgba(239,68,68,0.08)', borderRadius: 6 }}>
+                              <div style={{ fontSize: 11, color: '#ef4444', padding: '4px 8px', background: 'rgba(239,68,68,0.08)', borderRadius: 0 }}>
                                 {de ? '⚠ Ollama nicht erreichbar — URL prüfen & aktualisieren' : '⚠ Ollama not reachable — check URL & refresh'}
                               </div>
                             )}
                             {ollamaModels.length > 0 && <div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>{ollamaModels.length} {de ? 'lokale Modelle gefunden' : 'local models found'}</div>}
                           </div>
                         ) : vt === 'claude-code' ? (
-                          <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '8px 12px', borderRadius: 8, background: 'rgba(35,205,202,0.07)', border: '1px solid rgba(35,205,202,0.15)' }}>
+                          <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '8px 12px', borderRadius: 0, background: 'rgba(197,160,89,0.07)', border: '1px solid rgba(197,160,89,0.15)' }}>
                             ⚡ {de ? 'Nutzt dein Claude Pro/Max-Abo — kein API Key nötig' : 'Uses your Claude Pro/Max plan — no API key needed'}
                           </div>
+                        ) : vt === 'codex-cli' ? (
+                          <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '8px 12px', borderRadius: 0, background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.15)' }}>
+                            🐍 {de ? 'Nutzt OpenAI Codex CLI — kein API Key nötig' : 'Uses OpenAI Codex CLI — no API key needed'}
+                          </div>
+                        ) : vt === 'gemini-cli' ? (
+                          <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '8px 12px', borderRadius: 0, background: 'rgba(59,130,246,0.07)', border: '1px solid rgba(59,130,246,0.15)' }}>
+                            💎 {de ? 'Nutzt Google Gemini CLI — kein API Key nötig' : 'Uses Google Gemini CLI — no API key needed'}
+                          </div>
+                        ) : vt === 'kimi-cli' ? (
+                          <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '8px 12px', borderRadius: 0, background: 'rgba(139,92,246,0.07)', border: '1px solid rgba(139,92,246,0.15)' }}>
+                            🌙 {de ? 'Nutzt Moonshot Kimi CLI — kein API Key nötig' : 'Uses Moonshot Kimi CLI — no API key needed'}
+                          </div>
                         ) : vt === 'anthropic' ? (
-                          <select value={editForm.modell} onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))} style={{ width: '100%', padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'var(--color-text-primary)', fontSize: 14, cursor: 'pointer' }}>
-                            <option value="claude-haiku-4-5-20251001" style={{ background: '#1a1a2e' }}>⚡ Claude Haiku 4.5 — schnell &amp; günstig</option>
-                            <option value="claude-sonnet-4-6" style={{ background: '#1a1a2e' }}>✨ Claude Sonnet 4.6 — ausgewogen (empfohlen)</option>
-                            <option value="claude-opus-4-6" style={{ background: '#1a1a2e' }}>🧠 Claude Opus 4.6 — stärkste Reasoning</option>
-                            <option value="claude-3-5-sonnet-20241022" style={{ background: '#1a1a2e' }}>claude-3-5-sonnet-20241022</option>
-                            <option value="claude-3-5-haiku-20241022" style={{ background: '#1a1a2e' }}>claude-3-5-haiku-20241022</option>
+                          <select value={editForm.modell} onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))} style={{ width: '100%', padding: '8px 12px', borderRadius: 0, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'var(--color-text-primary)', fontSize: 14, cursor: 'pointer' }}>
+                            <option value="claude-haiku-4-5-20251001" >⚡ Claude Haiku 4.5 — schnell &amp; günstig</option>
+                            <option value="claude-sonnet-4-6" >✨ Claude Sonnet 4.6 — ausgewogen (empfohlen)</option>
+                            <option value="claude-opus-4-6" >🧠 Claude Opus 4.6 — stärkste Reasoning</option>
+                            <option value="claude-3-5-sonnet-20241022" >claude-3-5-sonnet-20241022</option>
+                            <option value="claude-3-5-haiku-20241022" >claude-3-5-haiku-20241022</option>
                           </select>
                         ) : vt === 'openai' ? (
-                          <select value={editForm.modell} onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))} style={{ width: '100%', padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'var(--color-text-primary)', fontSize: 14, cursor: 'pointer' }}>
-                            <option value="gpt-4o-mini" style={{ background: '#1a1a2e' }}>⚡ GPT-4o mini — schnell &amp; günstig</option>
-                            <option value="gpt-4o" style={{ background: '#1a1a2e' }}>✨ GPT-4o — ausgewogen (empfohlen)</option>
-                            <option value="o4-mini" style={{ background: '#1a1a2e' }}>🧠 o4-mini — Reasoning</option>
-                            <option value="o3" style={{ background: '#1a1a2e' }}>🔬 o3 — stärkstes Reasoning</option>
-                            <option value="gpt-4-turbo" style={{ background: '#1a1a2e' }}>gpt-4-turbo</option>
+                          <select value={editForm.modell} onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))} style={{ width: '100%', padding: '8px 12px', borderRadius: 0, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'var(--color-text-primary)', fontSize: 14, cursor: 'pointer' }}>
+                            <option value="gpt-4o-mini" >⚡ GPT-4o mini — schnell &amp; günstig</option>
+                            <option value="gpt-4o" >✨ GPT-4o — ausgewogen (empfohlen)</option>
+                            <option value="o4-mini" >🧠 o4-mini — Reasoning</option>
+                            <option value="o3" >🔬 o3 — stärkstes Reasoning</option>
+                            <option value="gpt-4-turbo" >gpt-4-turbo</option>
                           </select>
                         ) : vt === 'ollama_cloud' ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1671,7 +2042,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                                 onClick={() => loadOllamaModels(editForm.baseUrl)}
                                 disabled={loadingOllamaModels || !editForm.baseUrl}
                                 title={editForm.baseUrl ? (de ? 'Modelle von Remote laden' : 'Fetch remote models') : (de ? 'Erst URL unten eintragen' : 'Enter URL below first')}
-                                style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: editForm.baseUrl ? 'rgba(168,85,247,0.1)' : 'rgba(255,255,255,0.03)', color: editForm.baseUrl ? '#a855f7' : '#475569', cursor: editForm.baseUrl && !loadingOllamaModels ? 'pointer' : 'not-allowed', fontSize: 16, lineHeight: 1 }}
+                                style={{ padding: '8px 12px', borderRadius: 0, border: '1px solid rgba(255,255,255,0.1)', background: editForm.baseUrl ? 'rgba(155,135,200,0.1)' : 'rgba(255,255,255,0.03)', color: editForm.baseUrl ? '#9b87c8' : '#475569', cursor: editForm.baseUrl && !loadingOllamaModels ? 'pointer' : 'not-allowed', fontSize: 16, lineHeight: 1 }}
                               >
                                 {loadingOllamaModels ? '⏳' : '🔄'}
                               </button>
@@ -1679,7 +2050,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                             {ollamaModels.length > 0 && (
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                                 {ollamaModels.map(m => (
-                                  <button key={m.id} onClick={() => setEditForm(f => ({ ...f, modell: m.id }))} style={{ padding: '2px 9px', borderRadius: 20, fontSize: 11, cursor: 'pointer', background: editForm.modell === m.id ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.04)', border: `1px solid ${editForm.modell === m.id ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.08)'}`, color: editForm.modell === m.id ? '#a855f7' : '#64748b', fontWeight: editForm.modell === m.id ? 700 : 400 }}>
+                                  <button key={m.id} onClick={() => setEditForm(f => ({ ...f, modell: m.id }))} style={{ padding: '2px 9px', borderRadius: 0, fontSize: 11, cursor: 'pointer', background: editForm.modell === m.id ? 'rgba(155,135,200,0.2)' : 'rgba(255,255,255,0.04)', border: `1px solid ${editForm.modell === m.id ? 'rgba(155,135,200,0.5)' : 'rgba(255,255,255,0.08)'}`, color: editForm.modell === m.id ? '#9b87c8' : '#64748b', fontWeight: editForm.modell === m.id ? 700 : 400 }}>
                                     {m.name}
                                   </button>
                                 ))}
@@ -1698,20 +2069,50 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                       </div>
                     </div>
 
-                    {editForm.verbindungsTyp === 'claude-code' && (
-                      <div style={{ marginTop: 16, padding: '10px 14px', borderRadius: 10, background: 'rgba(35,205,202,0.05)', border: '1px solid rgba(35,205,202,0.12)', fontSize: 12, color: 'var(--color-text-tertiary)' }}>
-                        💡 {de ? 'Arbeitsverzeichnis wird aus den globalen Einstellungen übernommen.' : 'Working directory is taken from global Settings.'}
+                    {(['claude-code', 'codex-cli', 'gemini-cli', 'kimi-cli'] as string[]).includes(editForm.verbindungsTyp) && (
+                      <div style={{ marginTop: 16, padding: '10px 14px', borderRadius: 0, background: 'rgba(197,160,89,0.05)', border: '1px solid rgba(197,160,89,0.12)', fontSize: 12, color: 'var(--color-text-tertiary)' }}>
+                        {(() => {
+                          const tool = cliStatus.tools.find((t: any) => t.name === editForm.verbindungsTyp);
+                          const installed = tool?.installed;
+                          const authenticated = tool?.authenticated;
+                          return (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{
+                                  width: 8, height: 8, borderRadius: '50%',
+                                  background: !cliStatus.loaded ? '#64748b' : installed ? (authenticated ? '#22c55e' : '#f59e0b') : '#ef4444',
+                                  boxShadow: !cliStatus.loaded ? 'none' : installed ? (authenticated ? '0 0 8px #22c55e' : '0 0 8px #f59e0b') : '0 0 8px #ef4444',
+                                  display: 'inline-block',
+                                }} />
+                                <span style={{ fontWeight: 600 }}>
+                                  {!cliStatus.loaded ? (de ? 'Status wird geprüft…' : 'Checking status…')
+                                    : installed
+                                      ? (authenticated !== undefined
+                                          ? (authenticated ? (de ? 'Verbunden' : 'Connected') : (de ? 'Nicht angemeldet' : 'Not logged in'))
+                                          : (de ? 'Installiert' : 'Installed'))
+                                      : (de ? 'Nicht installiert' : 'Not installed')}
+                                </span>
+                                {installed && tool?.version && (
+                                  <span style={{ color: 'var(--color-text-muted)', fontSize: 11 }}>— {tool.version}</span>
+                                )}
+                              </div>
+                              <div>
+                                💡 {de ? 'Arbeitsverzeichnis wird aus den globalen Einstellungen übernommen.' : 'Working directory is taken from global Settings.'}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
 
                     {(() => { const vt2 = editForm.verbindungsTyp as string; return (vt2 === 'ollama' || vt2 === 'ollama_cloud' || vt2 === 'openai' || vt2 === 'custom') && (
                       <div style={{
-                        marginTop: 16, padding: '12px 16px', borderRadius: 12,
-                        background: vt2 === 'ollama_cloud' ? 'rgba(168,85,247,0.05)' : 'rgba(56,189,248,0.05)',
-                        border: `1px solid ${vt2 === 'ollama_cloud' ? 'rgba(168,85,247,0.15)' : 'rgba(56,189,248,0.1)'}`,
+                        marginTop: 16, padding: '12px 16px', borderRadius: 0,
+                        background: vt2 === 'ollama_cloud' ? 'rgba(155,135,200,0.05)' : 'rgba(56,189,248,0.05)',
+                        border: `1px solid ${vt2 === 'ollama_cloud' ? 'rgba(155,135,200,0.15)' : 'rgba(56,189,248,0.1)'}`,
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                          <Globe size={14} style={{ color: vt2 === 'ollama_cloud' ? '#a855f7' : 'var(--color-accent)' }} />
+                          <Globe size={14} style={{ color: vt2 === 'ollama_cloud' ? '#9b87c8' : 'var(--color-accent)' }} />
                           <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: 1 }}>
                             {vt2 === 'custom'
                               ? 'API Base URL'
@@ -1738,7 +2139,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                         <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 6 }}>
                           {vt2 === 'custom'
                             ? (globalCustomBaseUrl && !editForm.baseUrl
-                                ? <span style={{ color: '#23CDCB' }}>{de ? `Globale URL aktiv: ${globalCustomBaseUrl}` : `Using global URL: ${globalCustomBaseUrl}`}</span>
+                                ? <span style={{ color: '#c5a059' }}>{de ? `Globale URL aktiv: ${globalCustomBaseUrl}` : `Using global URL: ${globalCustomBaseUrl}`}</span>
                                 : (de ? 'OpenAI-kompatibler Endpunkt. Leer = Wert aus den globalen Einstellungen.' : 'OpenAI-compatible endpoint. Empty = value from global Settings.'))
                             : vt2 === 'ollama_cloud'
                               ? (de ? 'IP/Domain deines Ollama-Servers. Port 11434 ist der Standard.' : 'IP/domain of your Ollama server. Port 11434 is the default.')
@@ -1789,9 +2190,9 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
 
 
                   {/* --- ADVISOR --- */}
-                  <div style={{ padding: 20, background: 'rgba(168, 85, 247, 0.05)', borderRadius: 16, border: '1px solid rgba(168, 85, 247, 0.15)' }}>
+                  <div style={{ padding: 20, background: 'rgba(155, 135, 200, 0.05)', borderRadius: 0, border: '1px solid rgba(155, 135, 200, 0.15)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                      <UserCheck size={15} style={{ color: '#a855f7' }} />
+                      <UserCheck size={15} style={{ color: '#9b87c8' }} />
                       <h4 style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>{de ? 'Agent Advisor (Strategischer Lead)' : 'Agent Advisor (Strategic Lead)'}</h4>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -1828,7 +2229,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                   </div>
 
                   {/* --- BERECHTIGUNGEN --- */}
-                  <div style={{ padding: 20, background: 'rgba(255,255,255,0.02)', borderRadius: 16, border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ padding: 20, background: 'rgba(255,255,255,0.02)', borderRadius: 0, border: '1px solid rgba(255,255,255,0.06)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
                       <Shield size={15} style={{ color: 'var(--color-success)' }} />
                       <h4 style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>{de ? 'Berechtigungen & Rechte' : 'Permissions & Rights'}</h4>
@@ -1843,8 +2244,8 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                       ].map(({ label, key }) => {
                         const val = (editForm as any)[key];
                         return (
-                          <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '10px 12px', borderRadius: 10, background: val ? 'rgba(35,205,202,0.05)' : 'transparent', border: `1px solid ${val ? 'rgba(35,205,202,0.1)' : 'transparent'}`, transition: 'all 0.2s' }}>
-                            <div onClick={() => setEditForm(f => ({ ...f, [key]: !val }))} style={{ width: 36, height: 20, borderRadius: 10, background: val ? '#23CDCB' : 'rgba(255,255,255,0.1)', position: 'relative' }}>
+                          <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '10px 12px', borderRadius: 0, background: val ? 'rgba(197,160,89,0.05)' : 'transparent', border: `1px solid ${val ? 'rgba(197,160,89,0.1)' : 'transparent'}`, transition: 'all 0.2s' }}>
+                            <div onClick={() => setEditForm(f => ({ ...f, [key]: !val }))} style={{ width: 36, height: 20, borderRadius: 0, background: val ? '#c5a059' : 'rgba(255,255,255,0.1)', position: 'relative' }}>
                               <div style={{ position: 'absolute', top: 2, left: val ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
                             </div>
                             <span style={{ fontSize: 13, color: val ? '#fff' : 'var(--color-text-tertiary)' }}>{label}</span>
@@ -1897,8 +2298,8 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                   </div>
 
                   {/* ── Heartbeat Konfiguration ─────────────────────────────────── */}
-                  <div style={{ marginTop: 20, padding: 18, borderRadius: 14, border: `1px solid ${editForm.zyklusAktiv ? 'rgba(35,205,202,0.2)' : 'rgba(255,255,255,0.07)'}`, background: 'rgba(255,255,255,0.02)', position: 'relative', overflow: 'hidden' }}>
-                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,${editForm.zyklusAktiv ? 'rgba(35,205,202,0.5)' : 'rgba(107,114,128,0.2)'},transparent)` }} />
+                  <div style={{ marginTop: 20, padding: 18, borderRadius: 0, border: `1px solid ${editForm.zyklusAktiv ? 'rgba(197,160,89,0.2)' : 'rgba(255,255,255,0.07)'}`, background: 'rgba(255,255,255,0.02)', position: 'relative', overflow: 'hidden' }}>
+                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,${editForm.zyklusAktiv ? 'rgba(197,160,89,0.5)' : 'rgba(107,114,128,0.2)'},transparent)` }} />
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
                       <Activity size={14} color={editForm.zyklusAktiv ? 'var(--color-accent)' : 'var(--color-text-muted)'} />
                       <span style={{ fontSize: 11, fontWeight: 700, color: editForm.zyklusAktiv ? 'var(--color-accent)' : 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>
@@ -1926,9 +2327,9 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                           onClick={() => setEditForm(f => ({ ...f, zyklusIntervallSek: sek }))}
                           style={{
                             padding: '7px 0',
-                            borderRadius: 8,
-                            border: `1px solid ${editForm.zyklusIntervallSek === sek ? 'rgba(35,205,202,0.6)' : 'rgba(255,255,255,0.08)'}`,
-                            background: editForm.zyklusIntervallSek === sek ? 'rgba(35,205,202,0.12)' : 'rgba(255,255,255,0.03)',
+                            borderRadius: 0,
+                            border: `1px solid ${editForm.zyklusIntervallSek === sek ? 'rgba(197,160,89,0.6)' : 'rgba(255,255,255,0.08)'}`,
+                            background: editForm.zyklusIntervallSek === sek ? 'rgba(197,160,89,0.12)' : 'rgba(255,255,255,0.03)',
                             color: editForm.zyklusIntervallSek === sek ? 'var(--color-accent)' : 'var(--color-text-muted)',
                             fontSize: 12,
                             fontWeight: editForm.zyklusIntervallSek === sek ? 700 : 500,
@@ -1971,7 +2372,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                         { icon: '⏰', label: de ? `Timer (alle ${editForm.zyklusIntervallSek < 3600 ? Math.round(editForm.zyklusIntervallSek/60)+'min' : (editForm.zyklusIntervallSek/3600).toFixed(1)+'h'})` : `Timer (every ${editForm.zyklusIntervallSek < 3600 ? Math.round(editForm.zyklusIntervallSek/60)+'min' : (editForm.zyklusIntervallSek/3600).toFixed(1)+'h'})`, timerOnly: true },
                       ].map(({ icon, label, timerOnly }) => (
                         <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{ width: 18, height: 18, borderRadius: 4, background: timerOnly ? (editForm.zyklusAktiv ? 'rgba(35,205,202,0.2)' : 'rgba(107,114,128,0.15)') : 'rgba(35,205,202,0.15)', border: `1px solid ${timerOnly ? (editForm.zyklusAktiv ? 'rgba(35,205,202,0.4)' : 'rgba(107,114,128,0.3)') : 'rgba(35,205,202,0.3)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9 }}>
+                          <div style={{ width: 18, height: 18, borderRadius: 0, background: timerOnly ? (editForm.zyklusAktiv ? 'rgba(197,160,89,0.2)' : 'rgba(107,114,128,0.15)') : 'rgba(197,160,89,0.15)', border: `1px solid ${timerOnly ? (editForm.zyklusAktiv ? 'rgba(197,160,89,0.4)' : 'rgba(107,114,128,0.3)') : 'rgba(197,160,89,0.3)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9 }}>
                             ✓
                           </div>
                           <span style={{ fontSize: 11, color: timerOnly && !editForm.zyklusAktiv ? 'var(--color-text-tertiary)' : 'var(--color-text-muted)' }}>{icon} {label}</span>
@@ -1982,7 +2383,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                   {/* ─────────────────────────────────────────────────────────── */}
 
                   <div style={{ marginTop: 10 }}>
-                    <button className="btn btn-primary" onClick={handleSaveSettings} disabled={savingSettings} style={{ width: '100%', height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 12, fontSize: 14, fontWeight: 700 }}>
+                    <button className="btn btn-primary" onClick={handleSaveSettings} disabled={savingSettings} style={{ width: '100%', height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 0, fontSize: 14, fontWeight: 700 }}>
                       <Save size={18} /> {savingSettings ? (de ? 'Speichern...' : 'Saving...') : saveSuccess ? (de ? '✓ Konfiguration Erfolgreich' : '✓ Configuration Successful') : (de ? 'Konfiguration Speichern' : 'Save Configuration')}
                     </button>
                     {saveError && <div style={{ color: 'var(--color-error)', fontSize: 12, marginTop: 10, textAlign: 'center', fontWeight: 500 }}>✗ {saveError}</div>}
@@ -1991,15 +2392,15 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                   <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--color-border)' }}>
                      <h4 style={{ fontSize: 11, color: 'var(--color-error)', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 16, fontWeight: 700 }}>{de ? 'Gefahrenzone' : 'Danger Zone'}</h4>
                      {!deleteConfirm ? (
-                       <button className="btn" onClick={() => setDeleteConfirm(true)} style={{ width: '100%', height: 44, borderRadius: 12, borderColor: 'rgba(239,68,68,0.2)', color: 'var(--color-error)', background: 'rgba(239,68,68,0.05)', fontWeight: 600 }}>
+                       <button className="btn" onClick={() => setDeleteConfirm(true)} style={{ width: '100%', height: 44, borderRadius: 0, borderColor: 'rgba(239,68,68,0.2)', color: 'var(--color-error)', background: 'rgba(239,68,68,0.05)', fontWeight: 600 }}>
                          {de ? 'Agenten aus dem Dienst entlassen' : 'Dismiss agent from service'}
                        </button>
                      ) : (
-                       <div style={{ background: 'rgba(239,68,68,0.1)', padding: 16, borderRadius: 16, border: '1px solid rgba(239,68,68,0.2)' }}>
+                       <div style={{ background: 'rgba(239,68,68,0.1)', padding: 16, borderRadius: 0, border: '1px solid rgba(239,68,68,0.2)' }}>
                           <p style={{ fontSize: 13, color: 'var(--color-error)', marginBottom: 16, textAlign: 'center', fontWeight: 600 }}>{de ? 'Agent wirklich unwiderruflich entlassen?' : 'Really dismiss agent irrevocably?'}</p>
                           <div style={{ display: 'flex', gap: 12 }}>
-                            <button className="btn btn-ghost" onClick={() => setDeleteConfirm(false)} style={{ flex: 1, borderRadius: 10 }}>{de ? 'Abbrechen' : 'Cancel'}</button>
-                            <button className="btn" onClick={handleDelete} style={{ flex: 1, background: 'var(--color-error)', color: '#fff', borderRadius: 10, fontWeight: 700 }}>{de ? 'Ja, entlassen' : 'Yes, dismiss'}</button>
+                            <button className="btn btn-ghost" onClick={() => setDeleteConfirm(false)} style={{ flex: 1, borderRadius: 0 }}>{de ? 'Abbrechen' : 'Cancel'}</button>
+                            <button className="btn" onClick={handleDelete} style={{ flex: 1, background: 'var(--color-error)', color: '#fff', borderRadius: 0, fontWeight: 700 }}>{de ? 'Ja, entlassen' : 'Yes, dismiss'}</button>
                           </div>
                           {deleteError && <div style={{ color: 'var(--color-error)', fontSize: 12, marginTop: 10, textAlign: 'center' }}>✗ {deleteError}</div>}
                        </div>
@@ -2019,7 +2420,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                 </p>
 
                 {skillsLibrary.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '40px 20px', background: 'var(--color-bg-secondary)', borderRadius: 14, border: '1px dashed var(--color-border)' }}>
+                  <div style={{ textAlign: 'center', padding: '40px 20px', background: 'var(--color-bg-secondary)', borderRadius: 0, border: '1px dashed var(--color-border)' }}>
                     <BookOpen size={28} style={{ color: 'var(--color-text-muted)', marginBottom: 12, opacity: 0.4 }} />
                     <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 4 }}>
                       {de ? 'Keine Skills in der Bibliothek' : 'No skills in library'}
@@ -2043,15 +2444,15 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                           style={{
                             display: 'flex', alignItems: 'flex-start', gap: 14,
                             padding: '14px 16px',
-                            background: isActive ? 'rgba(35, 205, 202, 0.08)' : 'var(--color-bg-secondary)',
-                            border: `1px solid ${isActive ? 'rgba(35, 205, 202, 0.4)' : 'var(--color-border)'}`,
-                            borderRadius: 12, cursor: 'pointer', transition: 'all 0.2s', textAlign: 'left',
+                            background: isActive ? 'rgba(197, 160, 89, 0.08)' : 'var(--color-bg-secondary)',
+                            border: `1px solid ${isActive ? 'rgba(197, 160, 89, 0.4)' : 'var(--color-border)'}`,
+                            borderRadius: 0, cursor: 'pointer', transition: 'all 0.2s', textAlign: 'left',
                           }}
                         >
                           <div style={{
                             width: 20, height: 20, borderRadius: '50%', flexShrink: 0, marginTop: 1,
-                            background: isActive ? '#23CDCB' : 'rgba(255,255,255,0.08)',
-                            border: `2px solid ${isActive ? '#23CDCB' : 'rgba(255,255,255,0.2)'}`,
+                            background: isActive ? '#c5a059' : 'rgba(255,255,255,0.08)',
+                            border: `2px solid ${isActive ? '#c5a059' : 'rgba(255,255,255,0.2)'}`,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                           }}>
                             {isActive && <CheckCircle2 size={12} style={{ color: '#000' }} />}
@@ -2096,7 +2497,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                 {/* Header */}
                 <div style={{ marginBottom: 24 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg,rgba(35,205,202,0.2),rgba(35,205,202,0.05))', border: '1px solid rgba(35,205,202,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 0, background: 'linear-gradient(135deg,rgba(197,160,89,0.2),rgba(197,160,89,0.05))', border: '1px solid rgba(197,160,89,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <Sparkles size={18} color="var(--color-accent)" />
                     </div>
                     <div>
@@ -2106,7 +2507,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                       </p>
                     </div>
                   </div>
-                  <p style={{ fontSize: 12, color: 'var(--color-text-muted)', lineHeight: 1.6, padding: '10px 14px', background: 'rgba(35,205,202,0.04)', borderRadius: 10, border: '1px solid rgba(35,205,202,0.1)', margin: 0 }}>
+                  <p style={{ fontSize: 12, color: 'var(--color-text-muted)', lineHeight: 1.6, padding: '10px 14px', background: 'rgba(197,160,89,0.04)', borderRadius: 0, border: '1px solid rgba(197,160,89,0.1)', margin: 0 }}>
                     {de
                       ? 'SOUL löst das "Memento Man Problem": Beim Aufwachen weiß der Agent sofort wer er ist, wie er entscheidet und was er tun soll — ohne menschliche Eingabe.'
                       : 'SOUL solves the "Memento Man Problem": on wakeup the agent instantly knows who it is, how it decides, and what to do — no human input needed.'}
@@ -2129,7 +2530,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                     setGeneratingSoul(false);
                   }}
                   disabled={generatingSoul}
-                  style={{ width: '100%', marginBottom: 20, padding: '12px 0', borderRadius: 12, border: '1px solid rgba(35,205,202,0.3)', background: 'linear-gradient(135deg,rgba(35,205,202,0.1),rgba(35,205,202,0.05))', color: 'var(--color-accent)', fontWeight: 700, fontSize: 13, cursor: generatingSoul ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all 0.2s', opacity: generatingSoul ? 0.6 : 1 }}
+                  style={{ width: '100%', marginBottom: 20, padding: '12px 0', borderRadius: 0, border: '1px solid rgba(197,160,89,0.3)', background: 'linear-gradient(135deg,rgba(197,160,89,0.1),rgba(197,160,89,0.05))', color: 'var(--color-accent)', fontWeight: 700, fontSize: 13, cursor: generatingSoul ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all 0.2s', opacity: generatingSoul ? 0.6 : 1 }}
                 >
                   <Sparkles size={16} />
                   {generatingSoul
@@ -2154,14 +2555,14 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                       placeholder={placeholder}
                       rows={rows}
                       className="input"
-                      style={{ width: '100%', resize: 'vertical', fontFamily: 'monospace', fontSize: 12, lineHeight: 1.6, background: 'rgba(255,255,255,0.02)', borderColor: value ? 'rgba(35,205,202,0.25)' : 'rgba(255,255,255,0.07)' }}
+                      style={{ width: '100%', resize: 'vertical', fontFamily: 'monospace', fontSize: 12, lineHeight: 1.6, background: 'rgba(255,255,255,0.02)', borderColor: value ? 'rgba(197,160,89,0.25)' : 'rgba(255,255,255,0.07)' }}
                     />
                   </div>
                 ))}
 
                 {/* Preview */}
                 {(soulIdentity || soulPrinciples || soulChecklist || soulPersonality) && (
-                  <div style={{ marginBottom: 18, padding: 14, borderRadius: 10, background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ marginBottom: 18, padding: 14, borderRadius: 0, background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)' }}>
                     <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
                       {de ? 'Vorschau — wird als System Prompt gespeichert' : 'Preview — saved as system prompt'}
                     </div>
@@ -2200,7 +2601,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                     setSavingSoul(false);
                   }}
                   disabled={savingSoul || (!soulIdentity && !soulPrinciples && !soulChecklist && !soulPersonality)}
-                  style={{ width: '100%', padding: '13px 0', borderRadius: 12, border: 'none', background: soulSaved ? 'rgba(34,197,94,0.2)' : 'var(--color-accent)', color: soulSaved ? '#22c55e' : '#000', fontWeight: 700, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all 0.2s', opacity: (savingSoul || (!soulIdentity && !soulPrinciples && !soulChecklist && !soulPersonality)) ? 0.5 : 1 }}
+                  style={{ width: '100%', padding: '13px 0', borderRadius: 0, border: 'none', background: soulSaved ? 'rgba(34,197,94,0.2)' : 'var(--color-accent)', color: soulSaved ? '#22c55e' : '#000', fontWeight: 700, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all 0.2s', opacity: (savingSoul || (!soulIdentity && !soulPrinciples && !soulChecklist && !soulPersonality)) ? 0.5 : 1 }}
                 >
                   <Save size={16} />
                   {savingSoul ? (de ? 'Speichern...' : 'Saving...') : soulSaved ? (de ? '✓ SOUL gespeichert' : '✓ SOUL saved') : (de ? 'SOUL speichern' : 'Save SOUL')}
@@ -2220,7 +2621,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
         >
           {/* Drag overlay */}
           {isDragOver && (
-            <div style={{ position: 'absolute', inset: 0, zIndex: 10, background: 'rgba(35,205,202,0.12)', border: '2px dashed var(--color-accent)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+            <div style={{ position: 'absolute', inset: 0, zIndex: 10, background: 'rgba(197,160,89,0.12)', border: '2px dashed var(--color-accent)', borderRadius: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
               <div style={{ textAlign: 'center', color: 'var(--color-accent)' }}>
                 <Upload size={28} style={{ marginBottom: 8 }} />
                 <div style={{ fontWeight: 600 }}>{de ? 'Datei hier ablegen' : 'Drop file here'}</div>
@@ -2245,31 +2646,58 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
               const isAgent = m.absenderTyp === 'agent';
               const isSystem = m.absenderTyp === 'system';
               if (isSystem) return (
-                <div key={i} style={{ alignSelf: 'center', background: 'rgba(255,255,255,0.05)', padding: '8px 14px', borderRadius: 8, fontSize: 11, opacity: 0.65, maxWidth: '90%', whiteSpace: 'pre-line', wordBreak: 'break-word' }}>
+                <div key={m.id ?? i} style={{ alignSelf: 'center', background: 'rgba(255,255,255,0.05)', padding: '8px 14px', borderRadius: 0, fontSize: 11, opacity: 0.65, maxWidth: '90%', whiteSpace: 'pre-line', wordBreak: 'break-word' }}>
                   {m.nachricht}
                 </div>
               );
 
+              const hasThinking = isAgent && m.thinking;
+              const isStreaming = isAgent && m._streaming;
+              const msgText = m.nachricht || '';
+
               return (
-                <div key={i} style={{ alignSelf: isAgent ? 'flex-start' : 'flex-end', maxWidth: '88%' }}>
-                   <div style={{
-                     padding: '12px 16px', borderRadius: 16, fontSize: 13, lineHeight: 1.55,
-                     background: isAgent ? 'var(--color-bg-elevated)' : 'var(--color-accent)',
-                     color: isAgent ? 'inherit' : '#fff',
-                     border: isAgent ? '1px solid var(--color-border)' : 'none',
-                     borderBottomLeftRadius: isAgent ? 2 : 16, borderBottomRightRadius: isAgent ? 16 : 2,
-                     whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                   }}>
-                     {m.nachricht}
-                   </div>
-                   <div style={{ fontSize: 10, opacity: 0.3, marginTop: 4, textAlign: isAgent ? 'left' : 'right' }}>
-                     {new Date(m.erstelltAm).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                   </div>
+                <div key={m.id ?? i} style={{ alignSelf: isAgent ? 'flex-start' : 'flex-end', maxWidth: '88%', width: '100%' }}>
+                  {hasThinking && (
+                    <details style={{ marginBottom: 8, border: '1px solid rgba(197,160,89,0.15)', background: 'rgba(197,160,89,0.02)', fontSize: 11 }}>
+                      <summary style={{ padding: '6px 10px', cursor: 'pointer', color: 'var(--color-accent)', fontFamily: 'var(--font-mono)', userSelect: 'none' }}>
+                        🧠 {de ? 'Denkprozess' : 'Chain of thought'}
+                      </summary>
+                      <div style={{ padding: '8px 12px', borderTop: '1px solid rgba(197,160,89,0.1)', color: 'var(--color-text-muted)', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', lineHeight: 1.5, maxHeight: 200, overflowY: 'auto' }}>
+                        {m.thinking}
+                      </div>
+                    </details>
+                  )}
+                  <div style={{
+                    padding: '12px 16px', borderRadius: 0, fontSize: 13, lineHeight: 1.55,
+                    background: isAgent ? 'var(--color-bg-elevated)' : 'var(--color-accent)',
+                    color: isAgent ? 'inherit' : '#fff',
+                    border: isAgent ? '1px solid var(--color-border)' : 'none',
+                    borderBottomLeftRadius: isAgent ? 2 : 16, borderBottomRightRadius: isAgent ? 16 : 2,
+                    whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                    maxHeight: 350, overflowY: 'auto',
+                  }}>
+                    {m.images && m.images.map((img: string, idx: number) => (
+                      <img key={idx} src={img} alt="" style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 0, marginBottom: 8, display: 'block' }} />
+                    ))}
+                    {!m.nachricht && isStreaming
+                      ? <span style={{ color: 'var(--color-text-muted)', fontStyle: 'italic', fontSize: 12 }}>{m.thinking || (de ? 'Denkt nach…' : 'Thinking…')}</span>
+                      : <MessageContent text={m.nachricht} />
+                    }
+                    {isStreaming && <span style={{ display: 'inline-block', width: 6, height: 6, background: 'var(--color-accent)', marginLeft: 4, verticalAlign: 'middle', animation: 'pulse 1s infinite' }} />}
+                  </div>
+                  <div style={{ fontSize: 10, opacity: 0.3, marginTop: 4, textAlign: isAgent ? 'left' : 'right', display: 'flex', alignItems: 'center', gap: 8, justifyContent: isAgent ? 'flex-start' : 'flex-end' }}>
+                    <span>{new Date(m.erstelltAm).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    {isAgent && msgText && (
+                      <button onClick={() => speak(msgText, m.id)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', opacity: speakingId === m.id ? 1 : 0.5, color: speakingId === m.id ? 'var(--color-accent)' : 'inherit' }} title={de ? 'Vorlesen' : 'Read aloud'}>
+                        {speakingId === m.id ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}
             {agentTyping && (
-              <div style={{ alignSelf: 'flex-start', display: 'flex', gap: 4, padding: '10px 14px', background: 'var(--color-bg-elevated)', borderRadius: 12, border: '1px solid var(--color-border)' }}>
+              <div style={{ alignSelf: 'flex-start', display: 'flex', gap: 4, padding: '10px 14px', background: 'var(--color-bg-elevated)', borderRadius: 0, border: '1px solid var(--color-border)' }}>
                 {[0,1,2].map(d => (
                   <div key={d} style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-accent)', animation: 'bounce 1.2s infinite', animationDelay: `${d * 0.2}s` }} />
                 ))}
@@ -2281,14 +2709,14 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
           <div style={{ padding: '12px 20px 20px', borderTop: '1px solid var(--color-border)' }}>
             {/* Command autocomplete */}
             {showCommands && (
-              <div style={{ marginBottom: 8, background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden' }}>
-                {COMMANDS.filter(c => !commandFilter || c.cmd.slice(1).startsWith(commandFilter)).map(c => (
+              <div style={{ marginBottom: 8, background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)', borderRadius: 0, overflow: 'hidden' }}>
+                {COMMANDS.filter(c => !commandFilter || c.cmd.slice(1).startsWith(commandFilter)).map((c, idx) => (
                   <button
                     key={c.cmd}
-                    onClick={() => { setInputText(c.cmd + ' '); setShowCommands(false); inputRef.current?.focus(); }}
-                    style={{ width: '100%', textAlign: 'left', padding: '8px 14px', background: 'transparent', border: 'none', borderBottom: '1px solid var(--color-border)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: 'inherit' }}
-                    onMouseOver={e => (e.currentTarget.style.background = 'rgba(35,205,202,0.08)')}
-                    onMouseOut={e => (e.currentTarget.style.background = 'transparent')}
+                    onClick={() => { setInputText(c.cmd + ' '); setShowCommands(false); setActiveCmd(-1); inputRef.current?.focus(); }}
+                    style={{ width: '100%', textAlign: 'left', padding: '8px 14px', background: idx === activeCmd ? 'rgba(197,160,89,0.12)' : 'transparent', border: 'none', borderBottom: '1px solid var(--color-border)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: 'inherit' }}
+                    onMouseOver={e => { (e.currentTarget.style.background = 'rgba(197,160,89,0.08)'); setActiveCmd(idx); }}
+                    onMouseOut={e => (e.currentTarget.style.background = idx === activeCmd ? 'rgba(197,160,89,0.12)' : 'transparent')}
                   >
                     <span>{c.icon}</span>
                     <span style={{ fontFamily: 'monospace', color: 'var(--color-accent)', fontWeight: 600 }}>{c.cmd}</span>
@@ -2297,30 +2725,58 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                 ))}
               </div>
             )}
+            {/* Pending image preview */}
+            {pendingImage && (
+              <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, padding: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border)', borderRadius: 0 }}>
+                <img src={pendingImage.previewUrl} alt="" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 0 }} />
+                <span style={{ fontSize: 11, opacity: 0.6, flex: 1 }}>{pendingImage.name}</span>
+                <button onClick={() => setPendingImage(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', opacity: 0.5 }}><X size={14} /></button>
+              </div>
+            )}
             {/* Mode indicator + hint */}
-            <div style={{ fontSize: 10, opacity: 0.4, marginBottom: 6, display: 'flex', gap: 8 }}>
+            <div style={{ fontSize: 10, opacity: 0.4, marginBottom: 6, display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
               <span>{de ? 'Tippe / für Befehle · Datei per Drag & Drop einfügen' : 'Type / for commands · drag & drop files'}</span>
-              <span>·</span>
-              <span style={{ color: directChatMode ? 'var(--color-accent)' : undefined }}>{directChatMode ? '⚡ direct' : '🔄 heartbeat'}</span>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button onClick={() => setTtsEnabled(!ttsEnabled)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', opacity: ttsEnabled ? 1 : 0.4, color: ttsEnabled ? 'var(--color-accent)' : 'inherit' }} title={de ? 'Text-to-Speech' : 'Text-to-Speech'}>
+                  {ttsEnabled ? <Volume2 size={12} /> : <VolumeX size={12} />}
+                </button>
+                <span style={{ color: directChatMode ? 'var(--color-accent)' : undefined }}>{directChatMode ? '⚡ direct' : '🔄 heartbeat'}</span>
+              </div>
             </div>
             <div style={{ position: 'relative' }}>
+              <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleImageFile(f); e.target.value = ''; }} />
               <textarea
                 ref={inputRef}
                 className="input"
                 rows={1}
-                style={{ width: '100%', paddingRight: 48, minHeight: 44, resize: 'none', overflowY: 'hidden', lineHeight: 1.5 }}
+                style={{ width: '100%', paddingRight: 80, minHeight: 44, resize: 'none', overflowY: 'hidden', lineHeight: 1.5 }}
                 placeholder={de ? 'Nachricht an Expert... (/ für Befehle)' : 'Message expert... (/ for commands)'}
                 value={inputText}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
               />
-              <button
-                onClick={sendMessage}
-                disabled={!inputText.trim()}
-                style={{ position: 'absolute', right: 8, top: 6, width: 32, height: 32, background: inputText.trim() ? 'var(--color-accent)' : 'rgba(35,205,202,0.3)', border: 'none', borderRadius: 8, color: '#fff', cursor: inputText.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }}
-              >
-                <Send size={15} />
-              </button>
+              <div style={{ position: 'absolute', right: 8, top: 6, display: 'flex', gap: 4 }}>
+                <button onClick={pickImage} style={{ width: 32, height: 32, background: 'transparent', border: 'none', borderRadius: 0, color: 'var(--color-text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title={de ? 'Bild hinzufügen' : 'Add image'}>
+                  <Paperclip size={15} />
+                </button>
+                {streaming ? (
+                  <button
+                    onClick={() => { abortRef.current?.abort(); }}
+                    style={{ width: 32, height: 32, background: '#dc2626', border: 'none', borderRadius: 0, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s', animation: 'pulse 1.5s infinite' }}
+                    title={de ? 'Antwort abbrechen' : 'Stop response'}
+                  >
+                    <StopCircle size={15} />
+                  </button>
+                ) : (
+                  <button
+                    onClick={sendMessage}
+                    disabled={!inputText.trim() && !pendingImage}
+                    style={{ width: 32, height: 32, background: (inputText.trim() || pendingImage) ? 'var(--color-accent)' : 'rgba(197,160,89,0.3)', border: 'none', borderRadius: 0, color: '#fff', cursor: (inputText.trim() || pendingImage) ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }}
+                  >
+                    <Send size={15} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

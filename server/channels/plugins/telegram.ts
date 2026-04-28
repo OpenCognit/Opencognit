@@ -4,7 +4,7 @@
 import type { ChannelPlugin, ChannelConfig, ChannelStatus, OutboundMessage, InboundMessage } from '../types.js';
 import { channelRegistry } from '../registry.js';
 import { db } from '../../db/client.js';
-import { einstellungen } from '../../db/schema.js';
+import { settings } from '../../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 
 export class TelegramChannel implements ChannelPlugin {
@@ -25,25 +25,25 @@ export class TelegramChannel implements ChannelPlugin {
   async send(message: OutboundMessage): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
       // Bot-Token und Chat-ID aus Einstellungen laden
-      const unternehmenIds = db.select().from(einstellungen)
-        .where(eq(einstellungen.schluessel, 'telegram_bot_token'))
+      const unternehmenIds = db.select().from(settings)
+        .where(eq(settings.key, 'telegram_bot_token'))
         .all();
 
       for (const setting of unternehmenIds) {
-        if (!setting.wert || !setting.unternehmenId) continue;
+        if (!setting.value || !setting.companyId) continue;
 
-        const chatIdSetting = db.select().from(einstellungen)
+        const chatIdSetting = db.select().from(settings)
           .where(and(
-            eq(einstellungen.schluessel, 'telegram_chat_id'),
-            eq(einstellungen.unternehmenId, setting.unternehmenId)
+            eq(settings.key, 'telegram_chat_id'),
+            eq(settings.companyId, setting.companyId)
           ))
           .get();
 
-        if (!chatIdSetting?.wert) continue;
+        if (!chatIdSetting?.value) continue;
 
         // Security: always use configured chat_id — never allow agents to redirect messages to arbitrary IDs
-        const recipientId = chatIdSetting.wert;
-        const url = `https://api.telegram.org/bot${setting.wert}/sendMessage`;
+        const recipientId = chatIdSetting.value;
+        const url = `https://api.telegram.org/bot${setting.value}/sendMessage`;
 
         const res = await fetch(url, {
           method: 'POST',
@@ -87,14 +87,14 @@ export class TelegramChannel implements ChannelPlugin {
       const payload = req.body;
 
       try {
-        const setting = db.select().from(einstellungen)
+        const setting = db.select().from(settings)
           .where(and(
-            eq(einstellungen.schluessel, 'webhook_secret'),
-            eq(einstellungen.wert, secret)
+            eq(settings.key, 'webhook_secret'),
+            eq(settings.value, secret)
           ))
           .get();
 
-        if (!setting?.unternehmenId) {
+        if (!setting?.companyId) {
           return res.status(403).json({ error: 'Invalid secret' });
         }
 
@@ -103,15 +103,15 @@ export class TelegramChannel implements ChannelPlugin {
           const incomingSenderId = String(msg.from?.id || msg.chat?.id || '');
 
           // Security: only accept messages from the configured chat_id (whitelist)
-          const chatIdSetting = db.select().from(einstellungen)
+          const chatIdSetting = db.select().from(settings)
             .where(and(
-              eq(einstellungen.schluessel, 'telegram_chat_id'),
-              eq(einstellungen.unternehmenId, setting.unternehmenId)
+              eq(settings.key, 'telegram_chat_id'),
+              eq(settings.companyId, setting.companyId)
             ))
             .get();
 
-          if (!chatIdSetting?.wert || incomingSenderId !== chatIdSetting.wert) {
-            console.warn(`Telegram: eingehende Nachricht von unbekannter Chat-ID ${incomingSenderId} blockiert (erwartet: ${chatIdSetting?.wert ?? 'nicht konfiguriert'})`);
+          if (!chatIdSetting?.value || incomingSenderId !== chatIdSetting.value) {
+            console.warn(`Telegram: eingehende Nachricht von unbekannter Chat-ID ${incomingSenderId} blockiert (erwartet: ${chatIdSetting?.value ?? 'nicht konfiguriert'})`);
             return res.json({ ok: true }); // acknowledge but discard
           }
 
@@ -125,7 +125,7 @@ export class TelegramChannel implements ChannelPlugin {
           };
 
           this.lastActivity = normalized.timestamp;
-          await channelRegistry.handleInbound(setting.unternehmenId, normalized);
+          await channelRegistry.handleInbound(setting.companyId, normalized);
         }
 
         res.json({ ok: true });

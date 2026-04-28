@@ -6,7 +6,10 @@ import { HttpAdapter } from './http.js';
 import { ClaudeCodeAdapter } from './claude-code.js';
 import { CodexCLIAdapter } from './codex-cli.js';
 import { GeminiCLIAdapter } from './gemini-cli.js';
+import { KimiCLIAdapter } from './kimi-cli.js';
 import { OpenClawAdapter } from './openclaw.js';
+import { EmailAdapter } from './email.js';
+import { BrowserAdapter } from './browser.js';
 import { createLLMWrapper } from './llm-wrapper.js';
 import { loadAdapterPlugins, type LoadedAdapterPlugin } from './plugin-loader.js';
 
@@ -51,7 +54,10 @@ export class AdapterRegistry {
     this.register('claude-code', new ClaudeCodeAdapter());
     this.register('codex-cli', new CodexCLIAdapter());
     this.register('gemini-cli', new GeminiCLIAdapter());
+    this.register('kimi-cli', new KimiCLIAdapter());
     this.register('openclaw', new OpenClawAdapter());
+    this.register('email', new EmailAdapter());
+    this.register('browser', new BrowserAdapter());
     // API-key adapters (claude, openrouter, anthropic, openai, ollama, ceo)
     // are handled via createLLMWrapper() below — they use run() not execute()
   }
@@ -71,7 +77,7 @@ export class AdapterRegistry {
     // First pass: Check all adapters if they can handle the task
     for (const [, adapter] of this.adapters) {
       if (adapter.canHandle(task)) {
-        console.log(`Adapter ausgewählt: ${adapter.name} für Aufgabe: ${task.titel}`);
+        console.log(`Adapter ausgewählt: ${adapter.name} für Aufgabe: ${task.title}`);
         return adapter;
       }
     }
@@ -79,7 +85,7 @@ export class AdapterRegistry {
     // Fallback: Always use Claude Code as default
     const defaultAdapter = this.adapters.get('claude-code');
     if (defaultAdapter) {
-      console.log(`Fallback Adapter: claude-code für Aufgabe: ${task.titel}`);
+      console.log(`Fallback Adapter: claude-code für Aufgabe: ${task.title}`);
       return defaultAdapter;
     }
 
@@ -97,18 +103,18 @@ export class AdapterRegistry {
     let adapter = this.selectAdapter(task);
     
     // Wenn verbindungsTyp gesetzt ist, versuche zuerst registrierte Adapter, dann LLM-Wrapper
-    if (config.verbindungsTyp && config.verbindungsTyp !== 'bash' && config.verbindungsTyp !== 'http' && config.verbindungsTyp !== 'claude-code') {
+    if (config.connectionType && config.connectionType !== 'bash' && config.connectionType !== 'http' && config.connectionType !== 'claude-code' && config.connectionType !== 'codex-cli' && config.connectionType !== 'gemini-cli' && config.connectionType !== 'kimi-cli') {
       // CLI-Subscription-Adapter haben Vorrang (direkt registriert)
-      const directAdapter = this.adapters.get(config.verbindungsTyp);
+      const directAdapter = this.adapters.get(config.connectionType);
       if (directAdapter) {
         adapter = directAdapter;
-        console.log(`Using registered adapter: ${config.verbindungsTyp} für Aufgabe: ${task.titel}`);
+        console.log(`Using registered adapter: ${config.connectionType} für Aufgabe: ${task.title}`);
       } else {
         // Fallback: LLM-Wrapper für API-Key-basierte Adapter
-        const llmAdapter = createLLMWrapper(config.verbindungsTyp);
+        const llmAdapter = createLLMWrapper(config.connectionType);
         if (llmAdapter) {
           adapter = llmAdapter;
-          console.log(`Using LLM wrapper adapter: ${config.verbindungsTyp} für Aufgabe: ${task.titel}`);
+          console.log(`Using LLM wrapper adapter: ${config.connectionType} für Aufgabe: ${task.title}`);
         }
       }
     }

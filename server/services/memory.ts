@@ -12,7 +12,7 @@
 // - memory_kg_query
 
 import { db } from '../db/client.js';
-import { palaceWings, palaceDrawers, palaceDiary, palaceKg, experten } from '../db/schema.js';
+import { palaceWings, palaceDrawers, palaceDiary, palaceKg, agents } from '../db/schema.js';
 import { eq, and, like, isNull, desc } from 'drizzle-orm';
 import { v4 as uuid } from 'uuid';
 
@@ -39,7 +39,7 @@ function getOrCreateWing(wingName: string, expertId?: string): typeof palaceWing
   // Wing erstellen — braucht einen Expert-Kontext
   if (!expertId) {
     // Versuche Expert anhand des Wing-Namens zu finden
-    const allExperts = db.select().from(experten).all();
+    const allExperts = db.select().from(agents).all();
     const match = allExperts.find(e =>
       e.name.toLowerCase().replace(/\s+/g, '_') === wingName
     );
@@ -47,17 +47,17 @@ function getOrCreateWing(wingName: string, expertId?: string): typeof palaceWing
     expertId = match.id;
   }
 
-  const expert = db.select().from(experten).where(eq(experten.id, expertId)).get();
+  const expert = db.select().from(agents).where(eq(agents.id, expertId)).get();
   if (!expert) return null;
 
   const id = uuid();
   db.insert(palaceWings).values({
     id,
-    unternehmenId: expert.unternehmenId,
-    expertId: expert.id,
+    companyId: expert.companyId,
+    agentId: expert.id,
     name: wingName,
-    erstelltAm: now(),
-    aktualisiertAm: now(),
+    createdAt: now(),
+    updatedAt: now(),
   }).run();
 
   return db.select().from(palaceWings).where(eq(palaceWings.id, id)).get() ?? null;
@@ -86,7 +86,7 @@ function memoryStatus(_args: any) {
 - Aktive Fakten (KG): ${kgCount}
 
 ## Wings
-${wings.map(w => `- ${w.name} (Expert: ${w.expertId})`).join('\n') || '(keine)'}`;
+${wings.map(w => `- ${w.name} (Expert: ${w.agentId})`).join('\n') || '(keine)'}`;
 
   return mcpResult(text);
 }
@@ -107,7 +107,7 @@ function memorySearch(args: { query?: string; wing?: string }) {
 
   // Keyword-Suche (case-insensitive)
   const treffer = query && query !== '*'
-    ? drawers.filter(d => d.inhalt.toLowerCase().includes(query) || d.room.toLowerCase().includes(query))
+    ? drawers.filter(d => d.content.toLowerCase().includes(query) || d.room.toLowerCase().includes(query))
     : drawers;
 
   // Diary auch durchsuchen
@@ -135,7 +135,7 @@ function memorySearch(args: { query?: string; wing?: string }) {
   if (treffer.length > 0) {
     parts.push(`## Drawer-Treffer (${treffer.length})`);
     for (const d of treffer.slice(0, 10)) {
-      parts.push(`### [${d.room}] ${d.erstelltAm.slice(0, 10)}\n${d.inhalt.slice(0, 500)}`);
+      parts.push(`### [${d.room}] ${d.createdAt.slice(0, 10)}\n${d.content.slice(0, 500)}`);
     }
   }
 
@@ -157,12 +157,12 @@ function memoryAddDrawer(args: { wing: string; room: string; content: string }) 
     id: uuid(),
     wingId: wing.id,
     room: args.room || 'general',
-    inhalt: args.content || '',
-    erstelltAm: now(),
+    content: args.content || '',
+    createdAt: now(),
   }).run();
 
   // Wing aktualisieren
-  db.update(palaceWings).set({ aktualisiertAm: now() }).where(eq(palaceWings.id, wing.id)).run();
+  db.update(palaceWings).set({ updatedAt: now() }).where(eq(palaceWings.id, wing.id)).run();
 
   return mcpResult(`Drawer in Wing "${args.wing}" / Room "${args.room}" gespeichert.`);
 }
@@ -187,10 +187,10 @@ function memoryDiaryWrite(args: { date?: string; thought?: string; action?: stri
     thought: args.thought || null,
     action: args.action || null,
     knowledge: args.knowledge || null,
-    erstelltAm: now(),
+    createdAt: now(),
   }).run();
 
-  db.update(palaceWings).set({ aktualisiertAm: now() }).where(eq(palaceWings.id, wing.id)).run();
+  db.update(palaceWings).set({ updatedAt: now() }).where(eq(palaceWings.id, wing.id)).run();
 
   return mcpResult(`Tagebuch-Eintrag für ${datum} in Wing "${wingName}" gespeichert.`);
 }
@@ -203,7 +203,7 @@ function memoryListWings(_args: any) {
   const lines = wings.map(w => {
     const drawerCount = db.select().from(palaceDrawers).where(eq(palaceDrawers.wingId, w.id)).all().length;
     const diaryCount = db.select().from(palaceDiary).where(eq(palaceDiary.wingId, w.id)).all().length;
-    return `- **${w.name}** (${drawerCount} Drawers, ${diaryCount} Diary-Einträge) — Aktualisiert: ${w.aktualisiertAm.slice(0, 10)}`;
+    return `- **${w.name}** (${drawerCount} Drawers, ${diaryCount} Diary-Einträge) — Aktualisiert: ${w.updatedAt.slice(0, 10)}`;
   });
 
   return mcpResult(`# Wings im Palace\n\n${lines.join('\n')}`);
@@ -221,7 +221,7 @@ function memoryTraverse(args: { wing: string; room?: string }) {
 
     if (drawers.length === 0) return mcpResult(`Room "${args.room}" in Wing "${args.wing}" ist leer.`);
 
-    const parts = drawers.map(d => `### ${d.erstelltAm.slice(0, 16)}\n${d.inhalt}`);
+    const parts = drawers.map(d => `### ${d.createdAt.slice(0, 16)}\n${d.content}`);
     return mcpResult(`# ${args.wing} / ${args.room}\n\n${parts.join('\n\n---\n\n')}`);
   }
 
@@ -254,23 +254,23 @@ function memoryKgAdd(args: { subject: string; predicate: string; object: string;
 
   // Unternehmen ermitteln (über den Subject, der oft ein Agent-Name ist)
   let unternehmenId = '';
-  const allExperts = db.select().from(experten).all();
+  const allExperts = db.select().from(agents).all();
   const match = allExperts.find(e =>
     e.name.toLowerCase() === args.subject.toLowerCase() ||
     e.name.toLowerCase().replace(/\s+/g, '_') === args.subject.toLowerCase()
   );
-  unternehmenId = match?.unternehmenId || allExperts[0]?.unternehmenId || '';
+  unternehmenId = match?.companyId || allExperts[0]?.companyId || '';
 
   db.insert(palaceKg).values({
     id: uuid(),
-    unternehmenId,
+    companyId: unternehmenId,
     subject: args.subject,
     predicate: args.predicate,
     object: args.object,
     validFrom: args.valid_from || now().split('T')[0],
     validUntil: null,
-    erstelltVon: null,
-    erstelltAm: now(),
+    createdBy: null,
+    createdAt: now(),
   }).run();
 
   const invalidiert = existierend.length > 0 ? ` (${existierend.length} alte(r) Fakt(en) invalidiert)` : '';

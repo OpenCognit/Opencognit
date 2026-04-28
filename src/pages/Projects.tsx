@@ -9,6 +9,7 @@ import { GlassCard } from '../components/GlassCard';
 import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 import { StatusBadge } from '../components/StatusBadge';
 import { Select } from '../components/Select';
+import { ModalShell, FieldLabel, inputStyle as msInputStyle, inputFocus, textareaStyle, btnPrimary, btnPrimaryHover, btnSecondary, btnSecondaryHover, ErrorBox } from '../components/ModalShell';
 import { useI18n } from '../i18n';
 import { PageHelp } from '../components/PageHelp';
 import { useCompany } from '../hooks/useCompany';
@@ -23,7 +24,7 @@ function ProjektStatusBadge({ status }: { status: Projekt['status'] }) {
   const colorMap: Record<string, { bg: string; color: string }> = {
     aktiv:         { bg: 'rgba(34, 197, 94, 0.15)',  color: '#22c55e' },
     pausiert:      { bg: 'rgba(234, 179, 8, 0.15)',  color: '#eab308' },
-    abgeschlossen: { bg: 'rgba(35, 205, 202, 0.15)', color: '#23CDCB' },
+    abgeschlossen: { bg: 'rgba(197, 160, 89, 0.15)', color: '#c5a059' },
     archiviert:    { bg: 'rgba(113, 113, 122, 0.15)',color: '#71717a' },
   };
   const { bg, color } = colorMap[status] ?? colorMap.aktiv;
@@ -37,7 +38,7 @@ function ProjektStatusBadge({ status }: { status: Projekt['status'] }) {
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: '0.375rem',
-      padding: '0.25rem 0.625rem', borderRadius: '20px',
+      padding: '0.25rem 0.625rem', borderRadius: 0,
       fontSize: '0.6875rem', fontWeight: 600,
       background: bg, color,
     }}>
@@ -51,11 +52,11 @@ function ProjektStatusBadge({ status }: { status: Projekt['status'] }) {
 function ProgressBar({ value, color }: { value: number; color: string }) {
   return (
     <div style={{
-      height: '6px', borderRadius: '3px',
+      height: '6px', borderRadius: 0,
       background: 'rgba(255,255,255,0.07)', overflow: 'hidden',
     }}>
       <div style={{
-        height: '100%', borderRadius: '3px',
+        height: '100%', borderRadius: 0,
         width: `${Math.min(100, Math.max(0, value))}%`,
         background: color,
         transition: 'width 0.5s ease',
@@ -80,13 +81,13 @@ function ProjektModal({ unternehmenId, experten, onClose, onSaved }: ProjektModa
   const [prioritaet, setPrioritaet] = useState<Projekt['prioritaet']>('medium');
   const [deadline, setDeadline] = useState('');
   const [eigentuemerId, setEigentuemerId] = useState('');
-  const [farbe, setFarbe] = useState('#23CDCB');
+  const [farbe, setFarbe] = useState('#c5a059');
   const [workDir, setWorkDir] = useState('');
   const [showFolderPicker, setShowFolderPicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const FARBEN = ['#23CDCB', '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#22c55e', '#ef4444', '#f97316'];
+  const FARBEN = ['#c5a059', '#3b82f6', '#9b87c8', '#ec4899', '#f59e0b', '#22c55e', '#ef4444', '#f97316'];
 
   const handleSave = async () => {
     if (!name.trim()) return;
@@ -105,237 +106,233 @@ function ProjektModal({ unternehmenId, experten, onClose, onSaved }: ProjektModa
       });
       onSaved();
     } catch (e: any) {
-      setError(e.message || 'Fehler beim Erstellen');
+      setError(e.message || 'Error creating project');
     } finally {
       setSaving(false);
     }
   };
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '0.625rem 0.75rem',
-    background: 'rgba(255,255,255,0.04)',
-    border: '1px solid rgba(255,255,255,0.12)',
-    borderRadius: '10px', color: '#ffffff',
-    fontSize: '0.875rem', outline: 'none', boxSizing: 'border-box',
-    colorScheme: 'dark',
+  const focusBlur = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>, focused: boolean) => {
+    if (focused) {
+      Object.assign(e.currentTarget.style, inputFocus);
+    } else {
+      e.currentTarget.style.borderColor = (msInputStyle as any).borderColor;
+      e.currentTarget.style.boxShadow = 'none';
+    }
   };
-  const labelStyle: React.CSSProperties = {
-    display: 'block', fontSize: '0.75rem', fontWeight: 600,
-    color: '#a1a1aa', marginBottom: '0.375rem',
-  };
+
+  const footer = (
+    <>
+      <button
+        style={btnSecondary}
+        onMouseEnter={e => Object.assign(e.currentTarget.style, btnSecondaryHover)}
+        onMouseLeave={e => {
+          e.currentTarget.style.background = btnSecondary.background;
+          e.currentTarget.style.borderColor = btnSecondary.borderColor;
+          e.currentTarget.style.color = btnSecondary.color;
+        }}
+        onClick={onClose}
+      >
+        {i18n.t.actions.abbrechen}
+      </button>
+      <button
+        style={{
+          ...btnPrimary,
+          cursor: saving || !name.trim() ? 'not-allowed' : 'pointer',
+          opacity: name.trim() && !saving ? 1 : 0.5,
+          display: 'flex', alignItems: 'center', gap: '0.5rem',
+        }}
+        onMouseEnter={e => { if (name.trim() && !saving) Object.assign(e.currentTarget.style, btnPrimaryHover); }}
+        onMouseLeave={e => {
+          e.currentTarget.style.background = btnPrimary.background;
+          e.currentTarget.style.borderColor = btnPrimary.borderColor;
+          e.currentTarget.style.boxShadow = 'none';
+        }}
+        onClick={handleSave}
+        disabled={!name.trim() || saving}
+      >
+        {saving ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : null}
+        {i18n.t.actions.erstellen}
+      </button>
+    </>
+  );
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-    }} onClick={onClose}>
-      <div style={{
-        background: 'rgba(12, 12, 20, 0.75)',
-        backdropFilter: 'blur(32px)',
-        WebkitBackdropFilter: 'blur(32px)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        borderRadius: '24px', padding: '1.75rem',
-        width: '100%', maxWidth: '520px',
-        boxShadow: '0 30px 80px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)',
-      }} onClick={e => e.stopPropagation()}>
-        <h2 style={{ margin: '0 0 1.25rem', fontSize: '1.125rem', fontWeight: 700, color: '#ffffff' }}>
-          {i18n.t.projekte.neuesProjektErstellen}
-        </h2>
+    <ModalShell
+      isOpen={true}
+      onClose={onClose}
+      title={i18n.t.projekte.neuesProjektErstellen}
+      titleIcon={<Layout size={18} />}
+      maxWidth="540px"
+      footer={footer}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        {error && <ErrorBox>{error}</ErrorBox>}
 
-        {error && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            padding: '0.75rem', borderRadius: '10px', marginBottom: '1rem',
-            background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)',
-            color: '#ef4444', fontSize: '0.8125rem',
-          }}>
-            <AlertCircle size={14} /> {error}
-          </div>
-        )}
+        {/* Name */}
+        <div>
+          <FieldLabel required>{i18n.t.projekte.formName}</FieldLabel>
+          <input
+            style={msInputStyle}
+            onFocus={e => focusBlur(e, true)}
+            onBlur={e => focusBlur(e, false)}
+            placeholder={i18n.t.projekte.formNamePlaceholder}
+            value={name}
+            onChange={e => setName(e.target.value)}
+            autoFocus
+          />
+        </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-          {/* Name */}
+        {/* Description */}
+        <div>
+          <FieldLabel>{i18n.t.projekte.formBeschreibung}</FieldLabel>
+          <textarea
+            style={{ ...textareaStyle, minHeight: 80 }}
+            onFocus={e => focusBlur(e, true)}
+            onBlur={e => focusBlur(e, false)}
+            placeholder={i18n.t.projekte.formBeschreibungPlaceholder}
+            value={beschreibung}
+            onChange={e => setBeschreibung(e.target.value)}
+          />
+        </div>
+
+        {/* Status + Priority */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
           <div>
-            <label style={labelStyle}>{i18n.t.projekte.formName}</label>
+            <FieldLabel>{i18n.t.projekte.formStatus}</FieldLabel>
+            <Select
+              value={status}
+              onChange={v => setStatus(v as Projekt['status'])}
+              options={[
+                { value: 'aktiv', label: i18n.t.projekte.statusAktiv },
+                { value: 'pausiert', label: i18n.t.projekte.statusPausiert },
+                { value: 'abgeschlossen', label: i18n.t.projekte.statusAbgeschlossen },
+                { value: 'archiviert', label: i18n.t.projekte.statusArchiviert },
+              ]}
+            />
+          </div>
+          <div>
+            <FieldLabel>{i18n.t.projekte.formPrioritaet}</FieldLabel>
+            <Select
+              value={prioritaet}
+              onChange={v => setPrioritaet(v as Projekt['prioritaet'])}
+              options={[
+                { value: 'critical', label: i18n.t.priority.critical },
+                { value: 'high', label: i18n.t.priority.high },
+                { value: 'medium', label: i18n.t.priority.medium },
+                { value: 'low', label: i18n.t.priority.low },
+              ]}
+            />
+          </div>
+        </div>
+
+        {/* Deadline + Owner */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <div>
+            <FieldLabel>{i18n.t.projekte.formDeadline}</FieldLabel>
             <input
-              style={inputStyle}
-              placeholder={i18n.t.projekte.formNamePlaceholder}
-              value={name} onChange={e => setName(e.target.value)}
-              autoFocus
+              type="date"
+              style={{ ...msInputStyle, colorScheme: 'dark' }}
+              onFocus={e => focusBlur(e, true)}
+              onBlur={e => focusBlur(e, false)}
+              value={deadline}
+              onChange={e => setDeadline(e.target.value)}
             />
           </div>
-
-          {/* Beschreibung */}
           <div>
-            <label style={labelStyle}>{i18n.t.projekte.formBeschreibung}</label>
-            <textarea
-              style={{ ...inputStyle, resize: 'vertical', minHeight: '80px' }}
-              placeholder={i18n.t.projekte.formBeschreibungPlaceholder}
-              value={beschreibung} onChange={e => setBeschreibung(e.target.value)}
+            <FieldLabel>{i18n.t.projekte.eigentuemer}</FieldLabel>
+            <Select
+              value={eigentuemerId}
+              onChange={setEigentuemerId}
+              options={[
+                { value: '', label: i18n.t.projekte.keinEigentuemer },
+                ...experten.map(e => ({ value: e.id, label: e.name })),
+              ]}
             />
           </div>
+        </div>
 
-          {/* Status + Priorität */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <div>
-              <label style={labelStyle}>{i18n.t.projekte.formStatus}</label>
-              <Select
-                value={status}
-                onChange={v => setStatus(v as Projekt['status'])}
-                options={[
-                  { value: 'aktiv', label: i18n.t.projekte.statusAktiv },
-                  { value: 'pausiert', label: i18n.t.projekte.statusPausiert },
-                  { value: 'abgeschlossen', label: i18n.t.projekte.statusAbgeschlossen },
-                  { value: 'archiviert', label: i18n.t.projekte.statusArchiviert },
-                ]}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>{i18n.t.projekte.formPrioritaet}</label>
-              <Select
-                value={prioritaet}
-                onChange={v => setPrioritaet(v as Projekt['prioritaet'])}
-                options={[
-                  { value: 'critical', label: i18n.t.priority.critical },
-                  { value: 'high', label: i18n.t.priority.high },
-                  { value: 'medium', label: i18n.t.priority.medium },
-                  { value: 'low', label: i18n.t.priority.low },
-                ]}
-              />
-            </div>
-          </div>
-
-          {/* Deadline + Eigentümer */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <div>
-              <label style={labelStyle}>{i18n.t.projekte.formDeadline}</label>
-              <input
-                type="date"
-                style={{ ...inputStyle }}
-                value={deadline} onChange={e => setDeadline(e.target.value)}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>{i18n.t.projekte.eigentuemer}</label>
-              <Select
-                value={eigentuemerId}
-                onChange={setEigentuemerId}
-                options={[
-                  { value: '', label: i18n.t.projekte.keinEigentuemer },
-                  ...experten.map(e => ({ value: e.id, label: e.name })),
-                ]}
-              />
-            </div>
-          </div>
-
-          {/* Farbe */}
-          <div>
-            <label style={labelStyle}>{i18n.t.projekte.formFarbe}</label>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              {FARBEN.map(f => (
-                <button
-                  key={f} type="button"
-                  onClick={() => setFarbe(f)}
-                  style={{
-                    width: 28, height: 28, borderRadius: '8px',
-                    background: f, border: farbe === f ? '2px solid #ffffff' : '2px solid transparent',
-                    cursor: 'pointer', transition: 'all 0.15s',
-                    boxShadow: farbe === f ? `0 0 0 2px ${f}55` : 'none',
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Arbeitsverzeichnis */}
-          <div>
-            <label style={labelStyle}>
-              <FolderOpen size={11} style={{ marginRight: 4, verticalAlign: 'middle' }} />
-              {i18n.language === 'de' ? 'Arbeitsverzeichnis (optional)' : 'Working Directory (optional)'}
-            </label>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <input
-                style={{ ...inputStyle, flex: 1, fontFamily: 'monospace', fontSize: '0.8125rem' }}
-                placeholder={i18n.language === 'de' ? '/pfad/zum/projekt' : '/path/to/project'}
-                value={workDir}
-                onChange={e => setWorkDir(e.target.value)}
-              />
+        {/* Color */}
+        <div>
+          <FieldLabel>{i18n.t.projekte.formFarbe}</FieldLabel>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {FARBEN.map(f => (
               <button
+                key={f}
                 type="button"
-                onClick={() => setShowFolderPicker(true)}
-                title={i18n.language === 'de' ? 'Ordner durchsuchen' : 'Browse folders'}
+                onClick={() => setFarbe(f)}
                 style={{
-                  padding: '0 0.75rem', borderRadius: '10px', cursor: 'pointer',
-                  background: 'rgba(35,205,202,0.08)', border: '1px solid rgba(35,205,202,0.2)',
-                  color: '#23CDCB', display: 'flex', alignItems: 'center', gap: '0.375rem',
-                  fontSize: '0.8125rem', fontWeight: 600, flexShrink: 0,
-                  transition: 'all 0.15s',
+                  width: 28, height: 28, borderRadius: 0,
+                  background: f,
+                  border: farbe === f ? '2px solid rgba(255,255,255,0.85)' : '2px solid rgba(255,255,255,0.08)',
+                  cursor: 'pointer', transition: 'all 0.15s',
+                  boxShadow: farbe === f ? `0 0 0 2px ${f}66, 0 0 12px ${f}44` : 'none',
                 }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(35,205,202,0.14)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(35,205,202,0.08)'; }}
-              >
-                <SearchIcon size={13} />
-                {i18n.language === 'de' ? 'Durchsuchen' : 'Browse'}
-              </button>
-            </div>
-            {workDir.trim() && (
-              <div style={{ fontSize: '0.7rem', color: '#23CDCB', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <FolderOpen size={10} />
-                {i18n.language === 'de'
-                  ? 'Agenten dieses Projekts arbeiten in diesem Ordner.'
-                  : 'Agents in this project will use this folder.'}
-              </div>
-            )}
-            {!workDir.trim() && (
-              <div style={{ fontSize: '0.7rem', color: '#52525b', marginTop: 4 }}>
-                {i18n.language === 'de'
-                  ? 'Leer = Firmen-Verzeichnis oder isolierter Workspace'
-                  : 'Empty = company directory or isolated workspace'}
-              </div>
-            )}
+              />
+            ))}
           </div>
+        </div>
 
-          {/* Folder Picker Modal */}
-          {showFolderPicker && (
-            <FolderPickerModal
-              initialPath={workDir.trim() || undefined}
-              onSelect={p => { setWorkDir(p); setShowFolderPicker(false); }}
-              onClose={() => setShowFolderPicker(false)}
+        {/* Working Directory */}
+        <div>
+          <FieldLabel>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <FolderOpen size={11} style={{ verticalAlign: 'middle' }} />
+              {i18n.language === 'de' ? 'Arbeitsverzeichnis (optional)' : 'Working Directory (optional)'}
+            </span>
+          </FieldLabel>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <input
+              style={{ ...msInputStyle, flex: 1, fontFamily: 'monospace', fontSize: '0.8125rem' }}
+              onFocus={e => focusBlur(e, true)}
+              onBlur={e => focusBlur(e, false)}
+              placeholder={i18n.language === 'de' ? '/pfad/zum/projekt' : '/path/to/project'}
+              value={workDir}
+              onChange={e => setWorkDir(e.target.value)}
             />
+            <button
+              type="button"
+              onClick={() => setShowFolderPicker(true)}
+              title={i18n.language === 'de' ? 'Ordner durchsuchen' : 'Browse folders'}
+              style={{
+                padding: '0 0.75rem', borderRadius: 0, cursor: 'pointer',
+                background: 'rgba(197,160,89,0.08)', border: '1px solid rgba(197,160,89,0.2)',
+                color: '#c5a059', display: 'flex', alignItems: 'center', gap: '0.375rem',
+                fontSize: '0.8125rem', fontWeight: 600, flexShrink: 0,
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(197,160,89,0.14)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(197,160,89,0.08)'; }}
+            >
+              <SearchIcon size={13} />
+              {i18n.language === 'de' ? 'Durchsuchen' : 'Browse'}
+            </button>
+          </div>
+          {workDir.trim() ? (
+            <div style={{ fontSize: '0.7rem', color: '#c5a059', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <FolderOpen size={10} />
+              {i18n.language === 'de'
+                ? 'Agenten dieses Projekts arbeiten in diesem Ordner.'
+                : 'Agents in this project will use this folder.'}
+            </div>
+          ) : (
+            <div style={{ fontSize: '0.7rem', color: 'var(--color-text-tertiary)', marginTop: 6 }}>
+              {i18n.language === 'de'
+                ? 'Leer = Firmen-Verzeichnis oder isolierter Workspace'
+                : 'Empty = company directory or isolated workspace'}
+            </div>
           )}
         </div>
 
-        {/* Buttons */}
-        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem', justifyContent: 'flex-end' }}>
-          <button
-            onClick={onClose}
-            style={{
-              padding: '0.625rem 1.25rem', borderRadius: '10px',
-              background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
-              color: '#a1a1aa', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 500,
-            }}
-          >
-            {i18n.t.actions.abbrechen}
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={!name.trim() || saving}
-            style={{
-              padding: '0.625rem 1.25rem', borderRadius: '10px',
-              background: !name.trim() || saving ? 'rgba(35,205,202,0.3)' : 'rgba(35,205,202,0.9)',
-              border: '1px solid rgba(35,205,202,0.3)',
-              color: '#ffffff', cursor: !name.trim() || saving ? 'not-allowed' : 'pointer',
-              fontSize: '0.875rem', fontWeight: 600,
-              display: 'flex', alignItems: 'center', gap: '0.5rem',
-            }}
-          >
-            {saving ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : null}
-            {i18n.t.actions.erstellen}
-          </button>
-        </div>
+        {showFolderPicker && (
+          <FolderPickerModal
+            initialPath={workDir.trim() || undefined}
+            onSelect={p => { setWorkDir(p); setShowFolderPicker(false); }}
+            onClose={() => setShowFolderPicker(false)}
+          />
+        )}
       </div>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -368,7 +365,7 @@ export function Projects() {
   if (loading || !projekte || !alleAufgaben) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' }}>
-        <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#23CDCB' }} />
+        <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#c5a059' }} />
       </div>
     );
   }
@@ -419,18 +416,18 @@ export function Projects() {
               onClick={() => setShowModal(true)}
               style={{
                 display: 'flex', alignItems: 'center', gap: '0.5rem',
-                padding: '0.625rem 1.25rem', borderRadius: '12px',
-                background: 'rgba(35,205,202,0.15)', border: '1px solid rgba(35,205,202,0.35)',
-                color: '#23CDCB', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600,
+                padding: '0.625rem 1.25rem', borderRadius: 0,
+                background: 'rgba(197,160,89,0.15)', border: '1px solid rgba(197,160,89,0.35)',
+                color: '#c5a059', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600,
                 transition: 'all 0.2s',
               }}
               onMouseEnter={e => {
-                e.currentTarget.style.background = 'rgba(35,205,202,0.25)';
-                e.currentTarget.style.borderColor = 'rgba(35,205,202,0.6)';
+                e.currentTarget.style.background = 'rgba(197,160,89,0.25)';
+                e.currentTarget.style.borderColor = 'rgba(197,160,89,0.6)';
               }}
               onMouseLeave={e => {
-                e.currentTarget.style.background = 'rgba(35,205,202,0.15)';
-                e.currentTarget.style.borderColor = 'rgba(35,205,202,0.35)';
+                e.currentTarget.style.background = 'rgba(197,160,89,0.15)';
+                e.currentTarget.style.borderColor = 'rgba(197,160,89,0.35)';
               }}
             >
               <Plus size={16} />
@@ -443,10 +440,10 @@ export function Projects() {
             {[
               { label: i18n.t.projekte.statusAktiv, value: projekte.filter(p => p.status === 'aktiv').length, color: '#22c55e' },
               { label: i18n.t.projekte.statusPausiert, value: projekte.filter(p => p.status === 'pausiert').length, color: '#eab308' },
-              { label: i18n.t.projekte.statusAbgeschlossen, value: projekte.filter(p => p.status === 'abgeschlossen').length, color: '#23CDCB' },
+              { label: i18n.t.projekte.statusAbgeschlossen, value: projekte.filter(p => p.status === 'abgeschlossen').length, color: '#c5a059' },
               { label: i18n.t.projekte.aufgaben, value: alleAufgaben.length, color: '#3b82f6' },
             ].map(stat => (
-              <GlassCard key={stat.label} style={{ padding: '1rem 1.25rem', borderRadius: '16px' }} accent={stat.color}>
+              <GlassCard key={stat.label} style={{ padding: '1rem 1.25rem', borderRadius: 0 }} accent={stat.color}>
                 <div style={{ fontSize: '1.75rem', fontWeight: 700, color: stat.color }}>{stat.value}</div>
                 <div style={{ fontSize: '0.75rem', color: '#71717a', marginTop: '0.25rem' }}>{stat.label}</div>
               </GlassCard>
@@ -459,7 +456,7 @@ export function Projects() {
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
               padding: '5rem 2rem', textAlign: 'center',
               background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.12)',
-              borderRadius: '20px',
+              borderRadius: 0,
             }}>
               <FolderOpen size={48} style={{ color: '#3f3f46', marginBottom: '1rem' }} />
               <div style={{ fontSize: '1rem', fontWeight: 600, color: '#71717a', marginBottom: '0.5rem' }}>
@@ -489,7 +486,7 @@ export function Projects() {
                     >
                       {/* Farbe + Expand */}
                       <div style={{
-                        width: 4, alignSelf: 'stretch', borderRadius: '2px',
+                        width: 4, alignSelf: 'stretch', borderRadius: 0,
                         background: projekt.farbe, flexShrink: 0,
                       }} />
                       <div style={{
@@ -507,7 +504,7 @@ export function Projects() {
                           <ProjektStatusBadge status={projekt.status} />
                           <span style={{
                             fontSize: '0.6875rem', fontWeight: 600, padding: '0.2rem 0.5rem',
-                            borderRadius: '6px', background: `${priorityColors[projekt.prioritaet]}22`,
+                            borderRadius: 0, background: `${priorityColors[projekt.prioritaet]}22`,
                             color: priorityColors[projekt.prioritaet],
                           }}>
                             {i18n.t.priority[projekt.prioritaet]}
@@ -555,8 +552,8 @@ export function Projects() {
                         {/* Whiteboard */}
                         <button
                           onClick={e => { e.stopPropagation(); setWhiteboardProjekt({ id: projekt.id, name: projekt.name }); }}
-                          style={{ padding: '0.375rem', borderRadius: '8px', background: 'transparent', border: 'none', color: '#334155', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center' }}
-                          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#23CDCA'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(35,205,202,0.1)'; }}
+                          style={{ padding: '0.375rem', borderRadius: 0, background: 'transparent', border: 'none', color: '#334155', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center' }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#c5a059'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(197,160,89,0.1)'; }}
                           onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#334155'; (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
                           title="Whiteboard"
                         >
@@ -567,7 +564,7 @@ export function Projects() {
                         <button
                           onClick={e => { e.stopPropagation(); handleDelete(projekt.id); }}
                           style={{
-                            padding: '0.375rem', borderRadius: '8px',
+                            padding: '0.375rem', borderRadius: 0,
                             background: 'transparent', border: 'none',
                             color: '#52525b', cursor: 'pointer', transition: 'all 0.2s',
                           }}
@@ -593,7 +590,7 @@ export function Projects() {
                               return (
                                 <div key={a.id} style={{
                                   display: 'flex', alignItems: 'center', gap: '0.75rem',
-                                  padding: '0.625rem 0.875rem', borderRadius: '10px',
+                                  padding: '0.625rem 0.875rem', borderRadius: 0,
                                   background: 'rgba(255,255,255,0.03)',
                                   border: '1px solid rgba(255,255,255,0.06)',
                                 }}>
@@ -601,7 +598,7 @@ export function Projects() {
                                   <span style={{ flex: 1, fontSize: '0.8125rem', color: '#e4e4e7' }}>{a.titel}</span>
                                   <span style={{
                                     fontSize: '0.6875rem', fontWeight: 600,
-                                    padding: '0.2rem 0.5rem', borderRadius: '6px',
+                                    padding: '0.2rem 0.5rem', borderRadius: 0,
                                     background: `${priorityColors[a.prioritaet]}22`,
                                     color: priorityColors[a.prioritaet],
                                   }}>
@@ -613,7 +610,7 @@ export function Projects() {
                                       fontSize: '0.75rem', color: '#71717a',
                                     }}>
                                       <div style={{
-                                        width: 20, height: 20, borderRadius: '6px',
+                                        width: 20, height: 20, borderRadius: 0,
                                         background: assignee.avatarFarbe + '33',
                                         border: `1px solid ${assignee.avatarFarbe}55`,
                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -646,7 +643,7 @@ export function Projects() {
                     }}
                     onClick={() => toggleExpand('__no_project__')}
                   >
-                    <div style={{ width: 4, alignSelf: 'stretch', borderRadius: '2px', background: '#52525b', flexShrink: 0 }} />
+                    <div style={{ width: 4, alignSelf: 'stretch', borderRadius: 0, background: '#52525b', flexShrink: 0 }} />
                     <div style={{ color: '#71717a', flexShrink: 0 }}>
                       {expandedProjects.has('__no_project__') ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                     </div>
@@ -667,7 +664,7 @@ export function Projects() {
                         return (
                           <div key={a.id} style={{
                             display: 'flex', alignItems: 'center', gap: '0.75rem',
-                            padding: '0.625rem 0.875rem', borderRadius: '10px',
+                            padding: '0.625rem 0.875rem', borderRadius: 0,
                             background: 'rgba(255,255,255,0.03)',
                             border: '1px solid rgba(255,255,255,0.06)',
                           }}>
@@ -675,7 +672,7 @@ export function Projects() {
                             <span style={{ flex: 1, fontSize: '0.8125rem', color: '#e4e4e7' }}>{a.titel}</span>
                             <span style={{
                               fontSize: '0.6875rem', fontWeight: 600,
-                              padding: '0.2rem 0.5rem', borderRadius: '6px',
+                              padding: '0.2rem 0.5rem', borderRadius: 0,
                               background: `${priorityColors2[a.prioritaet]}22`,
                               color: priorityColors2[a.prioritaet],
                             }}>
@@ -684,7 +681,7 @@ export function Projects() {
                             {assignee && (
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.75rem', color: '#71717a' }}>
                                 <div style={{
-                                  width: 20, height: 20, borderRadius: '6px',
+                                  width: 20, height: 20, borderRadius: 0,
                                   background: assignee.avatarFarbe + '33',
                                   border: `1px solid ${assignee.avatarFarbe}55`,
                                   display: 'flex', alignItems: 'center', justifyContent: 'center',

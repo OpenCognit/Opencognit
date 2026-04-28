@@ -48,9 +48,9 @@ function timeAgo(ts: number) {
 
 const TYPE_CONFIG: Record<Notification['type'], { icon: React.ReactNode; color: string; label: string }> = {
   task_completed: { icon: <CheckCircle2 size={14} />, color: '#22c55e', label: 'Task done' },
-  task_started:   { icon: <Play size={14} />, color: '#23CDCB', label: 'Task started' },
+  task_started:   { icon: <Play size={14} />, color: '#c5a059', label: 'Task started' },
   agent_error:    { icon: <AlertCircle size={14} />, color: '#ef4444', label: 'Agent error' },
-  chat_message:   { icon: <MessageSquare size={14} />, color: '#8b5cf6', label: 'Message' },
+  chat_message:   { icon: <MessageSquare size={14} />, color: '#9b87c8', label: 'Message' },
   approval:       { icon: <Bell size={14} />, color: '#eab308', label: 'Approval' },
 };
 
@@ -101,10 +101,10 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
             const newApprovals: Notification[] = pending.slice(0, 5).map(g => ({
               id: `approval-${g.id}`,
               type: 'approval',
-              title: g.titel,
+              title: g.title ?? g.titel ?? 'Approval',
               body: `Pending approval`,
               link: '/approvals',
-              at: new Date(g.erstelltAm).getTime(),
+              at: new Date(g.createdAt ?? g.erstelltAm ?? Date.now()).getTime(),
               read: false,
             }));
             const next = [...nonApprovals, ...newApprovals];
@@ -121,7 +121,7 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
     if (!aktivesUnternehmen?.id) return;
     const token = localStorage.getItem('opencognit_token');
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${window.location.hostname}:3201/ws${token ? `?token=${token}` : ''}`);
+    const ws = new WebSocket(`${proto}//${window.location.host}/ws${token ? `?token=${token}` : ''}`);
     wsRef.current = ws;
 
     ws.onmessage = ev => {
@@ -172,7 +172,12 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
       } catch {}
     };
 
-    return () => { ws.close(); wsRef.current = null; };
+    return () => {
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
+        ws.close();
+      }
+      wsRef.current = null;
+    };
   }, [aktivesUnternehmen?.id, addNotification]);
 
   // Close dropdown on outside click
@@ -218,14 +223,11 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
     <header className="app-topbar">
       <div className="topbar-left">
         {displayCrumbs && displayCrumbs.length > 0 && (
-          <div className="topbar-breadcrumb" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#71717a', fontSize: '0.8125rem' }}>
+          <div className="topbar-breadcrumb">
             {displayCrumbs.map((item, i) => (
               <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                {i > 0 && <span style={{ opacity: 0.3 }}>/</span>}
-                <span style={{
-                  color: i === displayCrumbs.length - 1 ? '#e4e4e7' : 'inherit',
-                  fontWeight: i === displayCrumbs.length - 1 ? 500 : 400
-                }}>
+                {i > 0 && <span className="topbar-breadcrumb-sep">/</span>}
+                <span className={i === displayCrumbs.length - 1 ? 'topbar-breadcrumb-current' : undefined}>
                   {item}
                 </span>
               </span>
@@ -238,21 +240,22 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
         {/* Live agent indicator */}
         {runningAgents > 0 && (
           <button
+            data-tour-step="war-room"
             onClick={() => navigate('/war-room')}
             title={i18n.t.tooltips.agentsRunning}
             style={{
               display: 'flex', alignItems: 'center', gap: '0.5rem',
-              padding: '0.3rem 0.75rem', borderRadius: '999px',
-              background: 'rgba(35,205,202,0.12)', border: '1px solid rgba(35,205,202,0.45)',
-              color: '#23CDCB', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700,
-              boxShadow: '0 0 16px rgba(35,205,202,0.25)',
+              padding: '0.3rem 0.75rem', borderRadius: 0,
+              background: 'rgba(197,160,89,0.12)', border: '1px solid rgba(197,160,89,0.45)',
+              color: '#c5a059', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700,
+              boxShadow: '0 0 16px rgba(197,160,89,0.25)',
               animation: 'agentBadgePulse 2s ease-in-out infinite',
             }}>
             {/* Pulsing dot */}
             <span style={{
               width: 7, height: 7, borderRadius: '50%',
-              background: '#23CDCB',
-              boxShadow: '0 0 8px rgba(35,205,202,0.8)',
+              background: '#c5a059',
+              boxShadow: '0 0 8px rgba(197,160,89,0.8)',
               animation: 'agentDotPulse 1s ease-in-out infinite',
               flexShrink: 0,
             }} />
@@ -269,9 +272,9 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
             alignItems: 'center',
             gap: '0.625rem',
             padding: '0.375rem 0.625rem',
-            background: 'rgba(255, 255, 255, 0.02)',
-            border: '1px solid rgba(255, 255, 255, 0.06)',
-            borderRadius: '8px',
+            background: 'rgba(197, 160, 89, 0.04)',
+            border: '1px solid rgba(197, 160, 89, 0.14)',
+            borderRadius: 0,
             color: '#71717a',
             fontSize: '0.8125rem',
             cursor: 'text',
@@ -286,9 +289,9 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
           <kbd style={{
             fontSize: '9px',
             padding: '1px 4px',
-            background: 'rgba(255,255,255,0.05)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: '4px',
+            background: 'rgba(197, 160, 89, 0.05)',
+            border: '1px solid rgba(197, 160, 89, 0.14)',
+            borderRadius: 0,
             color: '#52525b',
             fontFamily: 'monospace'
           }}>
@@ -305,13 +308,13 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
               position: 'relative',
               width: '40px',
               height: '40px',
-              borderRadius: '10px',
+              borderRadius: 0,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: bellOpen ? '#23CDCB' : (hasAgentEvents ? '#23CDCB' : unreadCount > 0 ? '#eab308' : '#71717a'),
-              background: bellOpen ? 'rgba(35,205,202,0.08)' : 'transparent',
-              border: bellOpen ? '1px solid rgba(35,205,202,0.2)' : '1px solid transparent',
+              color: bellOpen ? '#c5a059' : (hasAgentEvents ? '#c5a059' : unreadCount > 0 ? '#eab308' : '#71717a'),
+              background: bellOpen ? 'rgba(197,160,89,0.08)' : 'transparent',
+              border: bellOpen ? '1px solid rgba(197,160,89,0.2)' : '1px solid transparent',
               transition: 'all 0.2s',
             }}
           >
@@ -320,7 +323,7 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
               <span style={{
                 position: 'absolute', top: 7, right: 7,
                 minWidth: 8, height: 8, borderRadius: '50%',
-                background: '#ef4444', border: '2px solid #0a0a0f',
+                background: '#ef4444', border: '2px solid #060403',
                 boxShadow: '0 0 10px rgba(239, 68, 68, 0.5)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '0.5rem', fontWeight: 800, color: '#fff',
@@ -335,12 +338,12 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
             <div style={{
               position: 'absolute', top: 'calc(100% + 8px)', right: 0,
               width: 340,
-              background: 'rgba(10, 10, 18, 0.97)',
+              background: 'rgba(8, 6, 4, 0.98)',
               backdropFilter: 'blur(40px)',
               WebkitBackdropFilter: 'blur(40px)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '16px',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)',
+              border: '1px solid rgba(197,160,89,0.18)',
+              borderRadius: 0,
+              boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(197,160,89,0.06)',
               zIndex: 500,
               overflow: 'hidden',
               animation: 'slideDown 0.2s ease',
@@ -348,7 +351,7 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
               {/* Header */}
               <div style={{
                 padding: '0.875rem 1rem',
-                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                borderBottom: '1px solid rgba(197,160,89,0.12)',
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               }}>
                 <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#f4f4f5' }}>
@@ -357,11 +360,11 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
                     <span style={{
                       marginLeft: '0.5rem',
                       padding: '0.1rem 0.4rem',
-                      background: 'rgba(35,205,202,0.15)',
-                      border: '1px solid rgba(35,205,202,0.3)',
-                      borderRadius: '999px',
+                      background: 'rgba(197,160,89,0.15)',
+                      border: '1px solid rgba(197,160,89,0.3)',
+                      borderRadius: 0,
                       fontSize: '0.6875rem',
-                      color: '#23CDCB',
+                      color: '#c5a059',
                     }}>
                       {unreadCount} new
                     </span>
@@ -373,7 +376,7 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
                     style={{
                       background: 'none', border: 'none', cursor: 'pointer',
                       fontSize: '0.75rem', color: '#52525b',
-                      padding: '0.25rem 0.5rem', borderRadius: 6,
+                      padding: '0.25rem 0.5rem', borderRadius: 0,
                       transition: 'color 0.2s',
                     }}
                     onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
@@ -402,21 +405,21 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
                         key={n.id}
                         style={{
                           padding: '0.75rem 1rem',
-                          borderBottom: '1px solid rgba(255,255,255,0.04)',
+                          borderBottom: '1px solid rgba(197,160,89,0.08)',
                           display: 'flex', gap: '0.625rem', alignItems: 'flex-start',
                           cursor: n.link ? 'pointer' : 'default',
-                          background: n.read ? 'transparent' : 'rgba(255,255,255,0.015)',
+                          background: n.read ? 'transparent' : 'rgba(197,160,89,0.03)',
                           transition: 'background 0.15s',
                         }}
-                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = n.read ? 'transparent' : 'rgba(255,255,255,0.015)'; }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(197,160,89,0.07)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = n.read ? 'transparent' : 'rgba(197,160,89,0.03)'; }}
                         onClick={() => {
                           if (n.link) { navigate(n.link); setBellOpen(false); }
                         }}
                       >
                         {/* Icon */}
                         <div style={{
-                          width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                          width: 28, height: 28, borderRadius: 0, flexShrink: 0,
                           background: cfg.color + '18',
                           color: cfg.color,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -433,7 +436,7 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
                             {!n.read && (
                               <span style={{
                                 width: 6, height: 6, borderRadius: '50%',
-                                background: '#23CDCB', flexShrink: 0,
+                                background: '#c5a059', flexShrink: 0,
                               }} />
                             )}
                           </div>
@@ -471,7 +474,7 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
               {notifications.length > 0 && (
                 <div style={{
                   padding: '0.625rem 1rem',
-                  borderTop: '1px solid rgba(255,255,255,0.06)',
+                  borderTop: '1px solid rgba(197,160,89,0.12)',
                   display: 'flex', justifyContent: 'center',
                 }}>
                   <button
@@ -482,7 +485,7 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
                       display: 'flex', alignItems: 'center', gap: '0.25rem',
                       transition: 'color 0.2s',
                     }}
-                    onMouseEnter={e => e.currentTarget.style.color = '#23CDCB'}
+                    onMouseEnter={e => e.currentTarget.style.color = '#c5a059'}
                     onMouseLeave={e => e.currentTarget.style.color = '#52525b'}
                   >
                     View all activity <ChevronRight size={12} />
@@ -498,14 +501,14 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
         __html: `
         .search-btn-hover:hover {
           background: rgba(255, 255, 255, 0.08) !important;
-          border-color: rgba(35, 205, 202, 0.3) !important;
+          border-color: rgba(197, 160, 89, 0.3) !important;
           color: #d4d4d8 !important;
         }
         .notif-dismiss:hover { opacity: 1 !important; color: #ef4444 !important; }
         div:hover .notif-dismiss { opacity: 0.6 !important; }
         @keyframes agentBadgePulse {
-          0%, 100% { box-shadow: 0 0 12px rgba(35,205,202,0.2); border-color: rgba(35,205,202,0.4); }
-          50% { box-shadow: 0 0 24px rgba(35,205,202,0.5); border-color: rgba(35,205,202,0.75); }
+          0%, 100% { box-shadow: 0 0 12px rgba(197,160,89,0.2); border-color: rgba(197,160,89,0.4); }
+          50% { box-shadow: 0 0 24px rgba(197,160,89,0.5); border-color: rgba(197,160,89,0.75); }
         }
         @keyframes agentDotPulse {
           0%, 100% { opacity: 1; transform: scale(1); }

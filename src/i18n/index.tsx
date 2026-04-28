@@ -34,13 +34,12 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     document.documentElement.lang = language;
     // Persist to backend so agents respond in the right language
     const token = localStorage.getItem('opencognit_token');
-    if (token) {
-      fetch('/api/einstellungen/ui_language', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ wert: language, unternehmenId: '' }),
-      }).catch(() => {/* fire-and-forget */});
-    }
+    fetch('/api/einstellungen/ui_language', {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ wert: language, unternehmenId: '' }),
+    }).catch(() => {/* fire-and-forget */});
   }, [language]);
 
   const setLanguage = useCallback((lang: Language) => {

@@ -2,16 +2,10 @@
 
 import React, { useEffect, useRef } from "react";
 
-const colors = {
-  300: "#23CDCB",
-  500: "#089191",
-};
-
 export function GlobalBackground() {
   const gradientRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Mouse gradient
     const gradient = gradientRef.current;
     function onMouseMove(e: MouseEvent) {
       if (gradient) {
@@ -26,7 +20,6 @@ export function GlobalBackground() {
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseleave", onMouseLeave);
 
-    // Click ripple effect
     function onClick(e: MouseEvent) {
       const ripple = document.createElement("div");
       ripple.style.position = "fixed";
@@ -34,7 +27,7 @@ export function GlobalBackground() {
       ripple.style.top = e.clientY + "px";
       ripple.style.width = "4px";
       ripple.style.height = "4px";
-      ripple.style.background = "rgba(35, 205, 202, 0.6)";
+      ripple.style.background = "rgba(197, 160, 89, 0.6)";
       ripple.style.borderRadius = "50%";
       ripple.style.transform = "translate(-50%, -50%)";
       ripple.style.pointerEvents = "none";
@@ -54,17 +47,27 @@ export function GlobalBackground() {
 
   return (
     <div className="fixed inset-0 z-0 pointer-events-none">
-      {/* Background gradient */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#0a0a0f] via-black to-[#0c1525]" />
+      {/* Warm dark background — matches WarRoom palette */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        background: 'linear-gradient(160deg, #0a0806 0%, #060403 45%, #080604 100%)',
+      }} />
 
-      {/* Grid Pattern */}
+      {/* Vignette — darker edges, lighter center (vintage photo feel) */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        background: 'radial-gradient(ellipse at 50% 40%, transparent 40%, rgba(0,0,0,0.45) 100%)',
+        pointerEvents: 'none',
+      }} />
+
+      {/* Subtle warm-gold grid — replaces cold cyan grid */}
       <svg className="absolute inset-0 w-full h-full" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
             <path
               d="M 60 0 L 0 0 0 60"
               fill="none"
-              stroke="rgba(56, 189, 248, 0.12)"
+              stroke="rgba(197, 160, 89, 0.05)"
               strokeWidth="0.5"
             />
           </pattern>
@@ -89,40 +92,35 @@ export function GlobalBackground() {
 
       {/* Corner elements */}
       <div className="corner-element top-8 left-8" style={{ animationDelay: "3.5s" }}>
-        <div className="absolute top-0 left-0 w-2 h-2 opacity-30" style={{ background: colors[300] }} />
+        <div className="absolute top-0 left-0 w-2 h-2 opacity-20" style={{ background: '#c5a059' }} />
       </div>
       <div className="corner-element top-8 right-8" style={{ animationDelay: "3.7s" }}>
-        <div className="absolute top-0 right-0 w-2 h-2 opacity-30" style={{ background: colors[300] }} />
+        <div className="absolute top-0 right-0 w-2 h-2 opacity-20" style={{ background: '#c5a059' }} />
       </div>
       <div className="corner-element bottom-8 left-8" style={{ animationDelay: "3.9s" }}>
-        <div className="absolute bottom-0 left-0 w-2 h-2 opacity-30" style={{ background: colors[300] }} />
+        <div className="absolute bottom-0 left-0 w-2 h-2 opacity-20" style={{ background: '#c5a059' }} />
       </div>
       <div className="corner-element bottom-8 right-8" style={{ animationDelay: "4.1s" }}>
-        <div className="absolute bottom-0 right-0 w-2 h-2 opacity-30" style={{ background: colors[300] }} />
+        <div className="absolute bottom-0 right-0 w-2 h-2 opacity-20" style={{ background: '#c5a059' }} />
       </div>
 
-      {/* Floating elements - staggered across the screen */}
-      <div className="floating-element" style={{ top: "25%", left: "15%", animationDelay: "2s", animationPlayState: "running" }} />
-      <div className="floating-element" style={{ top: "60%", left: "85%", animationDelay: "2.5s", animationPlayState: "running" }} />
-      <div className="floating-element" style={{ top: "40%", left: "10%", animationDelay: "3s", animationPlayState: "running" }} />
-      <div className="floating-element" style={{ top: "75%", left: "90%", animationDelay: "3.5s", animationPlayState: "running" }} />
-      <div className="floating-element" style={{ top: "15%", left: "45%", animationDelay: "4s", animationPlayState: "running" }} />
-      <div className="floating-element" style={{ top: "85%", left: "30%", animationDelay: "4.5s", animationPlayState: "running" }} />
-      <div className="floating-element" style={{ top: "30%", left: "70%", animationDelay: "5s", animationPlayState: "running" }} />
-      <div className="floating-element" style={{ top: "50%", left: "40%", animationDelay: "5.5s", animationPlayState: "running" }} />
-      <div className="floating-element" style={{ top: "10%", left: "80%", animationDelay: "6s", animationPlayState: "running" }} />
-      <div className="floating-element" style={{ top: "90%", left: "60%", animationDelay: "6.5s", animationPlayState: "running" }} />
-      <div className="floating-element" style={{ top: "45%", left: "25%", animationDelay: "7s", animationPlayState: "running" }} />
-      <div className="floating-element" style={{ top: "70%", left: "15%", animationDelay: "7.5s", animationPlayState: "running" }} />
-      <div className="floating-element" style={{ top: "20%", left: "95%", animationDelay: "8s", animationPlayState: "running" }} />
-      <div className="floating-element" style={{ top: "55%", left: "35%", animationDelay: "8.5s", animationPlayState: "running" }} />
-      <div className="floating-element" style={{ top: "80%", left: "50%", animationDelay: "9s", animationPlayState: "running" }} />
+      {/* Floating gold particles */}
+      <div className="floating-element" style={{ top: "25%", left: "15%", animationDelay: "2s" }} />
+      <div className="floating-element" style={{ top: "60%", left: "85%", animationDelay: "2.5s" }} />
+      <div className="floating-element" style={{ top: "40%", left: "10%", animationDelay: "3s" }} />
+      <div className="floating-element" style={{ top: "75%", left: "90%", animationDelay: "3.5s" }} />
+      <div className="floating-element" style={{ top: "15%", left: "45%", animationDelay: "4s" }} />
+      <div className="floating-element" style={{ top: "85%", left: "30%", animationDelay: "4.5s" }} />
+      <div className="floating-element" style={{ top: "30%", left: "70%", animationDelay: "5s" }} />
+      <div className="floating-element" style={{ top: "50%", left: "40%", animationDelay: "5.5s" }} />
+      <div className="floating-element" style={{ top: "10%", left: "80%", animationDelay: "6s" }} />
+      <div className="floating-element" style={{ top: "90%", left: "60%", animationDelay: "6.5s" }} />
 
-      {/* Mouse gradient */}
+      {/* Mouse follow glow — warm gold instead of teal */}
       <div
         ref={gradientRef}
         className="fixed pointer-events-none w-96 h-96 rounded-full blur-3xl transition-all duration-500 ease-out opacity-0 z-0"
-        style={{ background: `radial-gradient(circle, ${colors[500]}1A 0%, transparent 100%)` }}
+        style={{ background: 'radial-gradient(circle, rgba(197,160,89,0.12) 0%, transparent 100%)' }}
       />
     </div>
   );

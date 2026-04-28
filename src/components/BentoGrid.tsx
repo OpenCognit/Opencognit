@@ -15,6 +15,7 @@ export interface BentoItem {
   accent?: string;
   onClick?: () => void;
   children?: React.ReactNode;
+  tourId?: string;
 }
 
 interface BentoGridProps {
@@ -39,19 +40,20 @@ export function BentoGrid({ items, columns = 3 }: BentoGridProps) {
 function BentoCard({ item }: { item: BentoItem }) {
   const [hovered, setHovered] = useState(false);
   const active = hovered || item.hasPersistentHover;
-  const accent = item.accent || '#23CDCB';
+  const accent = item.accent || '#c5a059';
 
   return (
     <div
       onClick={item.onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      {...(item.tourId ? { 'data-dashboard-step': item.tourId } : {})}
       style={{
         gridColumn: item.colSpan ? `span ${item.colSpan}` : 'span 1',
         gridRow: item.rowSpan ? `span ${item.rowSpan}` : 'span 1',
         position: 'relative',
         padding: '1.25rem',
-        borderRadius: '16px',
+        borderRadius: 0,
         border: `1px solid ${active ? `${accent}30` : 'rgba(255,255,255,0.09)'}`,
         background: active
           ? 'rgba(255,255,255,0.07)'
@@ -79,7 +81,7 @@ function BentoCard({ item }: { item: BentoItem }) {
 
       {/* Gradient border glow */}
       <div style={{
-        position: 'absolute', inset: 0, borderRadius: '16px', pointerEvents: 'none',
+        position: 'absolute', inset: 0, borderRadius: 0, pointerEvents: 'none',
         background: `linear-gradient(135deg, ${accent}12, transparent 60%, ${accent}08)`,
         opacity: active ? 1 : 0, transition: 'opacity 0.3s',
       }} />
@@ -87,7 +89,7 @@ function BentoCard({ item }: { item: BentoItem }) {
       {/* Header row */}
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{
-          width: 36, height: 36, borderRadius: 10,
+          width: 36, height: 36, borderRadius: 0,
           background: active ? `${accent}20` : 'rgba(255,255,255,0.06)',
           border: `1px solid ${active ? `${accent}30` : 'rgba(255,255,255,0.08)'}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -141,7 +143,7 @@ function BentoCard({ item }: { item: BentoItem }) {
             {item.tags?.map((tag, i) => (
               <span key={i} style={{
                 fontSize: '0.6875rem', fontWeight: 500,
-                padding: '0.2rem 0.5rem', borderRadius: '6px',
+                padding: '0.2rem 0.5rem', borderRadius: 0,
                 background: 'rgba(255,255,255,0.05)',
                 color: '#64748b', border: '1px solid rgba(255,255,255,0.07)',
               }}>

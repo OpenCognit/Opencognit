@@ -18,6 +18,7 @@ import { useToast } from '../components/ToastProvider';
 function authFetch(url: string, options: RequestInit = {}) {
   const token = localStorage.getItem('opencognit_token');
   return fetch(url, {
+    credentials: 'include',
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -53,17 +54,35 @@ export function Settings() {
       .catch(e => setClaudeStatus({ installed: false, authenticated: false, loading: false, error: e.message }));
   };
 
-  // Other CLI status (Gemini, Codex)
-  const [cliStatus, setCliStatus] = useState<{
-    gemini: { installed: boolean; version: string };
-    codex: { installed: boolean; version: string };
+  // Generic CLI auto-detection (all supported CLI tools)
+  const [cliDetect, setCliDetect] = useState<{
+    tools: Array<{
+      name: string;
+      cmd: string;
+      installed: boolean;
+      version: string;
+      authenticated?: boolean;
+      authHint?: string;
+    }>;
+    anyInstalled: boolean;
+    installedCount: number;
   } | null>(null);
+
+  // CLI path overrides
+  const [cliPaths, setCliPaths] = useState<Record<string, string>>({});
+  const [testingCliPath, setTestingCliPath] = useState<string | null>(null);
+  const [cliPathTestResult, setCliPathTestResult] = useState<Record<string, { ok: boolean; version?: string; error?: string }>>({});
+  const [activeCliTab, setActiveCliTab] = useState<'claude-code' | 'kimi-cli' | 'gemini-cli' | 'codex-cli'>('claude-code');
 
   useEffect(() => {
     checkClaudeStatus();
-    authFetch('/api/system/cli-status')
+    authFetch('/api/system/cli-detect')
       .then(r => r.json())
-      .then(data => setCliStatus(data))
+      .then(data => setCliDetect(data))
+      .catch(() => {});
+    authFetch('/api/system/cli-paths')
+      .then(r => r.json())
+      .then((data: Record<string, string>) => setCliPaths(data))
       .catch(() => {});
   }, []);
 
@@ -71,6 +90,10 @@ export function Settings() {
   const [anthropicKey, setAnthropicKey] = useState('');
   const [openaiKey, setOpenaiKey] = useState('');
   const [openrouterKey, setOpenrouterKey] = useState('');
+  const [googleKey, setGoogleKey] = useState('');
+  const [moonshotKey, setMoonshotKey] = useState('');
+  const [poeKey, setPoeKey] = useState('');
+  const [activeProviderTab, setActiveProviderTab] = useState<'openrouter' | 'anthropic' | 'openai' | 'google' | 'moonshot' | 'poe'>('openrouter');
   const [ollamaUrl, setOllamaUrl] = useState('');
   const [ollamaStatus, setOllamaStatus] = useState<'idle' | 'checking' | 'online' | 'offline'>('idle');
   const [ollamaModels, setOllamaModels] = useState<{ id: string; name: string; size?: number }[]>([]);
@@ -123,7 +146,7 @@ export function Settings() {
       const r = await authFetch(`/api/unternehmen/${aktivesUnternehmen.id}/workspace/check?path=${encodeURIComponent(dir.trim())}`);
       const data = await r.json();
       setWorkDirStatus(data);
-    } catch { setWorkDirStatus({ exists: false, writable: false, error: 'Verbindungsfehler' }); }
+    } catch { setWorkDirStatus({ exists: false, writable: false, error: 'Connection error' }); }
     finally { setCheckingWorkDir(false); }
   };
 
@@ -156,6 +179,9 @@ export function Settings() {
         setAnthropicKey(data.anthropic_api_key || '');
         setOpenaiKey(data.openai_api_key || '');
         setOpenrouterKey(data.openrouter_api_key || '');
+        setGoogleKey(data.google_api_key || '');
+        setMoonshotKey(data.moonshot_api_key || '');
+        setPoeKey(data.poe_api_key || '');
         setDefaultModel(data.openrouter_default_model || 'openrouter/auto');
         setOllamaUrl(data.ollama_base_url || '');
         setOllamaDefaultModel(data.ollama_default_model || '');
@@ -204,7 +230,7 @@ export function Settings() {
     if (!aktivesUnternehmen) return;
     const wsToken = localStorage.getItem('opencognit_token');
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${window.location.hostname}:3201/ws${wsToken ? `?token=${wsToken}` : ''}`);
+    const ws = new WebSocket(`${proto}//${window.location.host}/ws${wsToken ? `?token=${wsToken}` : ''}`);
     ws.onmessage = ev => {
       try {
         const msg = JSON.parse(ev.data);
@@ -228,7 +254,11 @@ export function Settings() {
       } catch {}
     };
     ws.onerror = () => {};
-    return () => { ws.close(); };
+    return () => {
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
+        ws.close();
+      }
+    };
   }, [aktivesUnternehmen?.id]);
 
   const regenerateOpenclawToken = async () => {
@@ -313,6 +343,7 @@ export function Settings() {
     try {
       const token = localStorage.getItem('opencognit_token');
       const res = await fetch(`/api/unternehmen/${aktivesUnternehmen.id}/export`, {
+        credentials: 'include',
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error(`Export fehlgeschlagen: ${res.status}`);
@@ -379,6 +410,9 @@ export function Settings() {
         ['anthropic_api_key', anthropicKey],
         ['openai_api_key', openaiKey],
         ['openrouter_api_key', openrouterKey],
+        ['google_api_key', googleKey],
+        ['moonshot_api_key', moonshotKey],
+        ['poe_api_key', poeKey],
         ['openrouter_default_model', defaultModel],
         ['ollama_base_url', ollamaUrl],
         ['ollama_default_model', ollamaDefaultModel],
@@ -410,8 +444,8 @@ export function Settings() {
       setTimeout(() => setSaved(false), 2500);
       toastCtx.success(i18n.t.einstellungen.saved, 'API Keys & Einstellungen gespeichert');
     } catch (e: any) {
-      setSaveError(e.message || 'Fehler beim Speichern');
-      toastCtx.error('Fehler beim Speichern', (e as any)?.message);
+      setSaveError(e.message || 'Save failed');
+      toastCtx.error('Save failed', (e as any)?.message);
     } finally {
       setSaving(false);
     }
@@ -437,7 +471,7 @@ export function Settings() {
       setTimeout(() => setSavedSection(s => s === sectionId ? null : s), 2500);
       toastCtx.success(i18n.t.einstellungen.saved, 'Einstellungen gespeichert');
     } catch (e: any) {
-      toastCtx.error('Fehler beim Speichern', e.message);
+      toastCtx.error('Save failed', e.message);
     } finally {
       setSavingSection(null);
     }
@@ -451,10 +485,10 @@ export function Settings() {
         disabled={!!savingSection}
         style={{
           display: 'flex', alignItems: 'center', gap: 6,
-          padding: '0.4375rem 0.875rem', borderRadius: 10, cursor: savingSection ? 'not-allowed' : 'pointer',
-          background: savedSection === id ? 'rgba(34,197,94,0.1)' : 'rgba(35,205,202,0.08)',
-          border: `1px solid ${savedSection === id ? 'rgba(34,197,94,0.25)' : 'rgba(35,205,202,0.18)'}`,
-          color: savedSection === id ? '#22c55e' : '#23CDCB',
+          padding: '0.4375rem 0.875rem', borderRadius: 0, cursor: savingSection ? 'not-allowed' : 'pointer',
+          background: savedSection === id ? 'rgba(34,197,94,0.1)' : 'rgba(197,160,89,0.08)',
+          border: `1px solid ${savedSection === id ? 'rgba(34,197,94,0.25)' : 'rgba(197,160,89,0.18)'}`,
+          color: savedSection === id ? '#22c55e' : '#c5a059',
           fontWeight: 600, fontSize: '0.8125rem', transition: 'all 0.2s',
           opacity: savingSection && savingSection !== id ? 0.5 : 1,
         }}
@@ -483,15 +517,15 @@ export function Settings() {
           }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                <Sparkles size={20} style={{ color: '#23CDCB' }} />
-                <span style={{ fontSize: '12px', fontWeight: 600, color: '#23CDCB', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                <Sparkles size={20} style={{ color: '#c5a059' }} />
+                <span style={{ fontSize: '12px', fontWeight: 600, color: '#c5a059', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                   {i18n.t.nav.einstellungen}
                 </span>
               </div>
               <h1 style={{
                 fontSize: '2rem',
                 fontWeight: 700,
-                background: 'linear-gradient(to bottom right, #23CDCB 0%, #ffffff 100%)',
+                background: 'linear-gradient(to bottom right, #c5a059 0%, #ffffff 100%)',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
@@ -507,10 +541,10 @@ export function Settings() {
                   alignItems: 'center',
                   gap: '0.5rem',
                   padding: '0.75rem 1.25rem',
-                  backgroundColor: saved ? 'rgba(34, 197, 94, 0.1)' : 'rgba(35, 205, 202, 0.1)',
-                  border: `1px solid ${saved ? 'rgba(34, 197, 94, 0.2)' : 'rgba(35, 205, 202, 0.2)'}`,
-                  borderRadius: '12px',
-                  color: saved ? '#22c55e' : '#23CDCB',
+                  backgroundColor: saved ? 'rgba(34, 197, 94, 0.1)' : 'rgba(197, 160, 89, 0.1)',
+                  border: `1px solid ${saved ? 'rgba(34, 197, 94, 0.2)' : 'rgba(197, 160, 89, 0.2)'}`,
+                  borderRadius: 0,
+                  color: saved ? '#22c55e' : '#c5a059',
                   fontWeight: 600,
                   fontSize: '0.875rem',
                   cursor: saving ? 'not-allowed' : 'pointer',
@@ -537,13 +571,13 @@ export function Settings() {
               padding: '1.5rem',
               background: 'rgba(255,255,255,0.04)',
               backdropFilter: 'blur(24px) saturate(160%)',
-              borderRadius: '20px',
+              borderRadius: 0,
               border: '1px solid rgba(255,255,255,0.09)',
               animation: 'fadeInUp 0.5s ease-out', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.2)',
             }}>
               <div onClick={() => toggleSection('general')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none', marginBottom: collapsed.has('general') ? 0 : '1rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <Globe size={18} style={{ color: '#23CDCB' }} />
+                  <Globe size={18} style={{ color: '#c5a059' }} />
                   <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>{i18n.t.einstellungen.sectionGeneral}</h2>
                 </div>
                 <ChevronDown size={16} style={{ color: '#52525b', transition: 'transform 0.2s', transform: collapsed.has('general') ? 'rotate(-90deg)' : 'rotate(0deg)', flexShrink: 0 }} />
@@ -577,6 +611,31 @@ export function Settings() {
                     style={{ maxWidth: 300 }}
                   />
                 </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, color: '#d4d4d8', marginBottom: '0.5rem' }}>
+                    {i18n.language === 'de' ? 'Onboarding' : 'Onboarding'}
+                  </label>
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem('oc_onboarding_tour_done');
+                      window.location.href = '/';
+                    }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.5rem',
+                      padding: '0.5rem 1rem', background: 'rgba(197,160,89,0.08)',
+                      border: '1px solid rgba(197,160,89,0.25)', color: '#c5a059',
+                      fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer',
+                    }}
+                  >
+                    <Sparkles size={14} />
+                    {i18n.language === 'de' ? 'Onboarding-Tour wiederholen' : 'Restart onboarding tour'}
+                  </button>
+                  <p style={{ fontSize: '0.75rem', color: '#52525b', marginTop: '0.375rem' }}>
+                    {i18n.language === 'de'
+                      ? 'Zeigt die interaktive Interface-Tour erneut an.'
+                      : 'Shows the interactive interface tour again.'}
+                  </p>
+                </div>
               </div>}
             </div>
 
@@ -585,17 +644,17 @@ export function Settings() {
               padding: '1.5rem',
               background: 'rgba(255,255,255,0.04)',
               backdropFilter: 'blur(24px) saturate(160%)',
-              borderRadius: '20px',
+              borderRadius: 0,
               border: openclawToken ? '1px solid rgba(35,205,203,0.3)' : '1px solid rgba(255,255,255,0.08)',
               animation: 'fadeInUp 0.5s ease-out 0.05s both',
               position: 'relative', overflow: 'hidden',
             }}>
-              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, transparent, #23CDCB, transparent)' }} />
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, transparent, #c5a059, transparent)' }} />
 
               <div onClick={() => toggleSection('openclaw')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none', marginBottom: collapsed.has('openclaw') ? 0 : '1.25rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(35,205,203,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Zap size={18} style={{ color: '#23CDCB' }} />
+                  <div style={{ width: '32px', height: '32px', borderRadius: 0, background: 'rgba(35,205,203,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Zap size={18} style={{ color: '#c5a059' }} />
                   </div>
                   <div>
                     <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>{i18n.t.einstellungen.openclawGatewayTitle}</h2>
@@ -618,14 +677,14 @@ export function Settings() {
                     style={{
                       flex: 1, padding: '0.625rem 0.875rem', fontFamily: 'monospace', fontSize: '0.8rem',
                       backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                      borderRadius: '12px', color: '#23CDCB', outline: 'none',
+                      borderRadius: 0, color: '#c5a059', outline: 'none',
                     }}
                   />
                   <button
                     onClick={() => { navigator.clipboard.writeText(openclawToken); setOpenclawTokenCopied(true); setTimeout(() => setOpenclawTokenCopied(false), 2000); }}
                     disabled={!openclawToken}
                     title={i18n.t.einstellungen.openclawCopy}
-                    style={{ padding: '0.625rem 0.875rem', borderRadius: '12px', cursor: openclawToken ? 'pointer' : 'not-allowed', background: openclawTokenCopied ? 'rgba(35,205,203,0.2)' : 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: openclawTokenCopied ? '#23CDCB' : '#d4d4d8', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                    style={{ padding: '0.625rem 0.875rem', borderRadius: 0, cursor: openclawToken ? 'pointer' : 'not-allowed', background: openclawTokenCopied ? 'rgba(35,205,203,0.2)' : 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: openclawTokenCopied ? '#c5a059' : '#d4d4d8', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
                   >
                     {openclawTokenCopied ? <CheckCircle2 size={14} /> : i18n.t.einstellungen.openclawCopy}
                   </button>
@@ -633,7 +692,7 @@ export function Settings() {
                     onClick={regenerateOpenclawToken}
                     disabled={openclawTokenLoading}
                     title={i18n.t.einstellungen.openclawRegenerate}
-                    style={{ padding: '0.625rem 0.875rem', borderRadius: '12px', cursor: 'pointer', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a', fontSize: '0.8rem' }}
+                    style={{ padding: '0.625rem 0.875rem', borderRadius: 0, cursor: 'pointer', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a', fontSize: '0.8rem' }}
                   >
                     {openclawTokenLoading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={14} />}
                   </button>
@@ -644,8 +703,8 @@ export function Settings() {
               </div>
 
               {/* How it works */}
-              <div style={{ padding: '1rem', borderRadius: '14px', background: 'rgba(35,205,203,0.05)', border: '1px solid rgba(35,205,203,0.12)', marginBottom: openclawAgents.length > 0 ? '1.25rem' : 0, fontSize: '0.75rem', color: '#a1a1aa' }}>
-                <div style={{ fontWeight: 600, color: '#23CDCB', marginBottom: '0.5rem' }}>{i18n.t.einstellungen.openclawHowItWorks}</div>
+              <div style={{ padding: '1rem', borderRadius: 0, background: 'rgba(35,205,203,0.05)', border: '1px solid rgba(35,205,203,0.12)', marginBottom: openclawAgents.length > 0 ? '1.25rem' : 0, fontSize: '0.75rem', color: '#a1a1aa' }}>
+                <div style={{ fontWeight: 600, color: '#c5a059', marginBottom: '0.5rem' }}>{i18n.t.einstellungen.openclawHowItWorks}</div>
                 <ol style={{ margin: 0, paddingLeft: '1.25rem', lineHeight: 1.7 }}>
                   <li>{i18n.t.einstellungen.openclawStep1}</li>
                   <li>{i18n.t.einstellungen.openclawStep2}</li>
@@ -656,7 +715,7 @@ export function Settings() {
 
               {/* CEO suggestion banner — shown when a new OpenClaw agent just connected */}
               {openclawNewAgent && (
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '1rem 1.125rem', borderRadius: '14px', background: 'rgba(35,205,203,0.08)', border: '1px solid rgba(35,205,203,0.3)', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '1rem 1.125rem', borderRadius: 0, background: 'rgba(35,205,203,0.08)', border: '1px solid rgba(35,205,203,0.3)', marginBottom: '1rem' }}>
                   <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>🎉</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#ffffff', marginBottom: '0.25rem' }}>
@@ -688,7 +747,7 @@ export function Settings() {
                             setOpenclawNewAgent(null);
                           } catch { /* ignore */ } finally { setSettingCEO(false); }
                         }}
-                        style={{ padding: '0.4rem 0.875rem', borderRadius: '8px', background: 'rgba(35,205,203,0.15)', border: '1px solid rgba(35,205,203,0.4)', color: '#23CDCB', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
+                        style={{ padding: '0.4rem 0.875rem', borderRadius: 0, background: 'rgba(35,205,203,0.15)', border: '1px solid rgba(35,205,203,0.4)', color: '#c5a059', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
                       >
                         {settingCEO
                           ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
@@ -696,7 +755,7 @@ export function Settings() {
                       </button>
                       <button
                         onClick={() => setOpenclawNewAgent(null)}
-                        style={{ padding: '0.4rem 0.875rem', borderRadius: '8px', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a', fontSize: '0.8rem', cursor: 'pointer' }}
+                        style={{ padding: '0.4rem 0.875rem', borderRadius: 0, background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a', fontSize: '0.8rem', cursor: 'pointer' }}
                       >
                         {i18n.language === 'de' ? 'Später' : 'Later'}
                       </button>
@@ -713,13 +772,13 @@ export function Settings() {
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     {openclawAgents.map((agent: any) => (
-                      <div key={agent.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 1rem', borderRadius: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                      <div key={agent.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 1rem', borderRadius: 0, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
                         <div>
                           <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#ffffff' }}>{agent.name}</div>
                           <div style={{ fontSize: '0.75rem', color: '#71717a' }}>{agent.rolle} · {agent.gatewayUrl || i18n.t.einstellungen.openclawNoGateway}</div>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.7rem', color: '#23CDCB', background: 'rgba(35,205,203,0.1)', padding: '0.25rem 0.625rem', borderRadius: '99px' }}>
-                          <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#23CDCB' }} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.7rem', color: '#c5a059', background: 'rgba(35,205,203,0.1)', padding: '0.25rem 0.625rem', borderRadius: 0 }}>
+                          <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#c5a059' }} />
                           OpenClaw
                         </div>
                       </div>
@@ -735,7 +794,7 @@ export function Settings() {
               padding: '1.5rem',
               background: 'rgba(255,255,255,0.04)',
               backdropFilter: 'blur(24px) saturate(160%)',
-              borderRadius: '20px',
+              borderRadius: 0,
               border: (telegramBotToken && telegramChatId) ? '1px solid rgba(0, 136, 204, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)',
               animation: 'fadeInUp 0.5s ease-out 0.38s both',
               position: 'relative',
@@ -747,7 +806,7 @@ export function Settings() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: collapsed.has('telegram') ? 0 : '1.5rem' }}>
                 <div onClick={() => toggleSection('telegram')} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, cursor: 'pointer', userSelect: 'none' }}>
                   <div style={{
-                    width: '32px', height: '32px', borderRadius: '8px',
+                    width: '32px', height: '32px', borderRadius: 0,
                     background: 'rgba(0, 136, 204, 0.1)', display: 'flex',
                     alignItems: 'center', justifyContent: 'center'
                   }}>
@@ -780,7 +839,7 @@ export function Settings() {
                   disabled={!telegramBotToken || !telegramChatId || testSending}
                   style={{
                     padding: '0.5rem 1rem',
-                    borderRadius: '10px',
+                    borderRadius: 0,
                     background: 'rgba(0, 136, 204, 0.1)',
                     border: '1px solid rgba(0, 136, 204, 0.2)',
                     color: '#0088cc',
@@ -813,7 +872,7 @@ export function Settings() {
                       style={{
                         width: '100%', padding: '0.625rem 0.875rem',
                         backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', color: '#ffffff', fontSize: '0.875rem',
+                        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: 0, color: '#ffffff', fontSize: '0.875rem',
                         outline: 'none', transition: 'border-color 0.2s'
                       }}
                     />
@@ -833,7 +892,7 @@ export function Settings() {
                       style={{
                         width: '100%', padding: '0.625rem 0.875rem',
                         backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', color: '#ffffff', fontSize: '0.875rem',
+                        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: 0, color: '#ffffff', fontSize: '0.875rem',
                         outline: 'none'
                       }}
                     />
@@ -846,7 +905,7 @@ export function Settings() {
 
                 {aktivesUnternehmen && (
                   <div style={{
-                    padding: '1rem', borderRadius: '14px',
+                    padding: '1rem', borderRadius: 0,
                     background: 'linear-gradient(135deg, rgba(0,136,204,0.08) 0%, rgba(0,136,204,0.03) 100%)',
                     border: '1px solid rgba(0,136,204,0.15)',
                     fontSize: '0.75rem', color: '#d4d4d8'
@@ -857,7 +916,7 @@ export function Settings() {
                     </div>
                     <div style={{
                       background: 'rgba(0,0,0,0.2)', padding: '0.5rem',
-                      borderRadius: '8px', fontFamily: 'monospace', color: '#0088cc',
+                      borderRadius: 0, fontFamily: 'monospace', color: '#0088cc',
                       wordBreak: 'break-all', marginBottom: '0.5rem'
                     }}>
                       {window.location.origin}/api/webhooks/telegram/{aktivesUnternehmen.id}
@@ -870,8 +929,8 @@ export function Settings() {
 
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: '0.5rem',
-                  padding: '0.75rem', borderRadius: '12px', background: 'rgba(35, 205, 202, 0.05)',
-                  border: '1px solid rgba(35, 205, 202, 0.1)'
+                  padding: '0.75rem', borderRadius: 0, background: 'rgba(197, 160, 89, 0.05)',
+                  border: '1px solid rgba(197, 160, 89, 0.1)'
                 }}>
                   <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 10px #22c55e' }} />
                   <span style={{ fontSize: '0.75rem', fontWeight: 500, color: '#d4d4d8' }}>
@@ -884,28 +943,27 @@ export function Settings() {
                 ['telegram_chat_id', telegramChatId],
               ])} />}
             </div>
-            {/* Claude Code Status */}
+            {/* CLI Tools — unified tabbed view */}
             <div className="glass-card" style={{
               padding: '1.5rem',
               background: 'rgba(255,255,255,0.04)',
               backdropFilter: 'blur(24px) saturate(160%)',
-              borderRadius: '20px',
+              borderRadius: 0,
               border: '1px solid rgba(255,255,255,0.09)',
               animation: 'fadeInUp 0.5s ease-out 0.05s both',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: collapsed.has('claude') ? 0 : '1rem' }}>
-                <div onClick={() => toggleSection('claude')} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, cursor: 'pointer', userSelect: 'none' }}>
-                  <Terminal size={18} style={{ color: '#23CDCB' }} />
-                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>{i18n.t.einstellungen.claudeCodeTitle}</h2>
-                  <ChevronDown size={16} style={{ color: '#52525b', transition: 'transform 0.2s', transform: collapsed.has('claude') ? 'rotate(-90deg)' : 'rotate(0deg)' }} />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <Terminal size={18} style={{ color: '#c5a059' }} />
+                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>CLI Tools</h2>
                 </div>
                 <button
                   type="button"
-                  onClick={checkClaudeStatus}
+                  onClick={() => { checkClaudeStatus(); authFetch('/api/system/cli-detect').then(r => r.json()).then(data => setCliDetect(data)).catch(() => {}); }}
                   disabled={claudeStatus.loading}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '0.375rem 0.75rem', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)',
+                    padding: '0.375rem 0.75rem', borderRadius: 0, border: '1px solid rgba(255,255,255,0.1)',
                     background: 'rgba(255,255,255,0.04)', color: '#94a3b8',
                     fontSize: '0.8125rem', cursor: 'pointer',
                   }}
@@ -915,189 +973,323 @@ export function Settings() {
                 </button>
               </div>
 
-              {!collapsed.has('claude') && (claudeStatus.loading ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#64748b', fontSize: '0.875rem' }}>
-                  <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> {i18n.t.einstellungen.checkingStatus}
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {/* Install status */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {claudeStatus.installed ? (
-                      <CheckCircle2 size={16} style={{ color: '#22c55e', flexShrink: 0 }} />
-                    ) : (
-                      <AlertCircle size={16} style={{ color: '#ef4444', flexShrink: 0 }} />
-                    )}
-                    <span style={{ fontSize: '0.875rem', color: claudeStatus.installed ? '#d4d4d8' : '#ef4444' }}>
-                      {claudeStatus.installed
-                        ? `Claude Code CLI ${i18n.t.einstellungen.cliInstalled} — ${claudeStatus.version}`
-                        : `Claude Code CLI ${i18n.t.einstellungen.cliNotFound}`}
-                    </span>
-                  </div>
+              {(() => {
+                const CLI_TABS = [
+                  { id: 'claude-code' as const, label: 'Claude Code', icon: '⚡', color: '#c5a059' },
+                  { id: 'kimi-cli' as const, label: 'Kimi CLI', icon: '🌙', color: '#a78bfa' },
+                  { id: 'gemini-cli' as const, label: 'Gemini CLI', icon: '✨', color: '#4285f4' },
+                  { id: 'codex-cli' as const, label: 'Codex CLI', icon: '🐍', color: '#10a37f' },
+                ];
+                const active = CLI_TABS.find(t => t.id === activeCliTab)!;
+                const tool = cliDetect?.tools?.find((t: any) => t.name === activeCliTab);
+                const isClaude = activeCliTab === 'claude-code';
+                const toolKey = activeCliTab.replace('-cli', '').replace('-code', '');
+                const currentPath = cliPaths[toolKey] || '';
+                const testResult = cliPathTestResult[toolKey];
+                const installed = isClaude ? claudeStatus.installed : tool?.installed;
+                const version = isClaude ? claudeStatus.version : tool?.version;
+                const authenticated = isClaude ? claudeStatus.authenticated : tool?.authenticated;
+                const authHint = tool?.authHint || (isClaude ? 'claude login' : '');
+                const subscriptionType = isClaude ? claudeStatus.subscriptionType : undefined;
+                const tokenExpired = isClaude ? claudeStatus.tokenExpired : false;
 
-                  {/* Auth status */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {claudeStatus.authenticated ? (
-                      <Zap size={16} style={{ color: '#23CDCB', flexShrink: 0 }} />
-                    ) : (
-                      <AlertCircle size={16} style={{ color: claudeStatus.tokenExpired ? '#f59e0b' : '#64748b', flexShrink: 0 }} />
-                    )}
-                    <span style={{ fontSize: '0.875rem', color: claudeStatus.authenticated ? '#d4d4d8' : '#94a3b8' }}>
-                      {claudeStatus.authenticated
-                        ? <>{i18n.t.einstellungen.connected} · <span style={{
-                            fontWeight: 700,
-                            color: claudeStatus.subscriptionType === 'max' ? '#23CDCB'
-                                 : claudeStatus.subscriptionType === 'pro' ? '#818cf8' : '#94a3b8',
-                            textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: 1,
-                          }}>{claudeStatus.subscriptionType}</span></>
-                        : claudeStatus.tokenExpired
-                          ? i18n.t.einstellungen.sessionExpired
-                          : i18n.t.einstellungen.notLoggedIn}
-                    </span>
-                  </div>
+                return (
+                  <>
+                    {/* Tabs */}
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                      {CLI_TABS.map(tab => {
+                        const t = cliDetect?.tools?.find((x: any) => x.name === tab.id);
+                        const isInstalled = tab.id === 'claude-code' ? claudeStatus.installed : t?.installed;
+                        return (
+                          <button
+                            key={tab.id}
+                            onClick={() => setActiveCliTab(tab.id)}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '0.375rem',
+                              padding: '0.375rem 0.75rem', borderRadius: 0, border: 'none',
+                              cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
+                              background: activeCliTab === tab.id ? `${tab.color}22` : 'rgba(255,255,255,0.04)',
+                              color: activeCliTab === tab.id ? tab.color : '#a1a1aa',
+                              borderBottom: activeCliTab === tab.id ? `2px solid ${tab.color}` : '2px solid transparent',
+                            }}
+                          >
+                            <span>{tab.icon}</span>
+                            {tab.label}
+                            {isInstalled && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />}
+                          </button>
+                        );
+                      })}
+                    </div>
 
-                  {/* Not installed / not logged in instructions */}
-                  {!claudeStatus.installed && (
-                    <div style={{
-                      marginTop: 4, padding: '0.875rem 1rem',
-                      background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)',
-                      borderRadius: 10, fontSize: '0.8125rem', color: '#fca5a5',
-                    }}>
-                      <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>Installation:</p>
-                      <code style={{ display: 'block', padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.3)', borderRadius: 6, fontFamily: 'monospace', color: '#e2e8f0', marginBottom: 8 }}>
-                        npm install -g @anthropic-ai/claude-code
-                      </code>
-                      <p style={{ margin: 0 }}>
-                        {i18n.language === 'de'
-                          ? <>Danach einmalig <code style={{ background: 'rgba(0,0,0,0.3)', padding: '1px 6px', borderRadius: 4 }}>claude</code> im Terminal ausführen, um dich einzuloggen.</>
-                          : <>Then run <code style={{ background: 'rgba(0,0,0,0.3)', padding: '1px 6px', borderRadius: 4 }}>claude</code> once in your terminal to log in.</>}
-                      </p>
+                    {/* Tab Content */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      {/* Install status */}
+                      {claudeStatus.loading && isClaude ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#64748b', fontSize: '0.875rem' }}>
+                          <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> {i18n.t.einstellungen.checkingStatus}
+                        </div>
+                      ) : (
+                        <>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            {installed ? (
+                              <CheckCircle2 size={16} style={{ color: '#22c55e', flexShrink: 0 }} />
+                            ) : (
+                              <AlertCircle size={16} style={{ color: '#ef4444', flexShrink: 0 }} />
+                            )}
+                            <span style={{ fontSize: '0.875rem', color: installed ? '#d4d4d8' : '#ef4444' }}>
+                              {installed
+                                ? `${active.label} ${i18n.t.einstellungen.cliInstalled} — ${version}`
+                                : `${active.label} ${i18n.t.einstellungen.cliNotFound}`}
+                            </span>
+                          </div>
+
+                          {/* Auth status */}
+                          {authenticated !== undefined && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              {authenticated ? (
+                                <Zap size={16} style={{ color: '#c5a059', flexShrink: 0 }} />
+                              ) : (
+                                <AlertCircle size={16} style={{ color: tokenExpired ? '#f59e0b' : '#64748b', flexShrink: 0 }} />
+                              )}
+                              <span style={{ fontSize: '0.875rem', color: authenticated ? '#d4d4d8' : '#94a3b8' }}>
+                                {authenticated
+                                  ? <>{i18n.t.einstellungen.connected}{subscriptionType ? ' · ' : ''}<span style={{
+                                      fontWeight: 700,
+                                      color: subscriptionType === 'max' ? '#c5a059' : subscriptionType === 'pro' ? '#818cf8' : '#94a3b8',
+                                      textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: 1,
+                                    }}>{subscriptionType}</span></>
+                                  : tokenExpired
+                                    ? i18n.t.einstellungen.sessionExpired
+                                    : i18n.t.einstellungen.notLoggedIn}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Instructions */}
+                          {!installed && (
+                            <div style={{
+                              marginTop: 4, padding: '0.875rem 1rem',
+                              background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)',
+                              borderRadius: 0, fontSize: '0.8125rem', color: '#fca5a5',
+                            }}>
+                              <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>Installation:</p>
+                              <code style={{ display: 'block', padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.3)', borderRadius: 0, fontFamily: 'monospace', color: '#e2e8f0', marginBottom: 8 }}>
+                                {isClaude ? 'npm install -g @anthropic-ai/claude-code'
+                                  : activeCliTab === 'kimi-cli' ? 'pip install kimi-cli'
+                                  : activeCliTab === 'gemini-cli' ? 'npm install -g @google/gemini-cli'
+                                  : 'npm install -g @openai/codex'}
+                              </code>
+                              <p style={{ margin: 0 }}>
+                                {i18n.language === 'de'
+                                  ? <>Danach einmalig <code style={{ background: 'rgba(0,0,0,0.3)', padding: '1px 6px', borderRadius: 0 }}>{authHint.split(' ')[0]}</code> im Terminal ausführen, um dich einzuloggen.</>
+                                  : <>Then run <code style={{ background: 'rgba(0,0,0,0.3)', padding: '1px 6px', borderRadius: 0 }}>{authHint.split(' ')[0]}</code> once in your terminal to log in.</>}
+                              </p>
+                            </div>
+                          )}
+                          {installed && !authenticated && (
+                            <div style={{
+                              marginTop: 4, padding: '0.875rem 1rem',
+                              background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)',
+                              borderRadius: 0, fontSize: '0.8125rem', color: '#fcd34d',
+                            }}>
+                              <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>{i18n.t.einstellungen.loginOnce}</p>
+                              <code style={{ display: 'block', padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.3)', borderRadius: 0, fontFamily: 'monospace', color: '#e2e8f0', marginBottom: 8 }}>
+                                {authHint}
+                              </code>
+                              <p style={{ margin: 0 }}>{i18n.t.einstellungen.loginInstructions}</p>
+                            </div>
+                          )}
+                          {isClaude && authenticated && subscriptionType !== 'max' && subscriptionType !== 'pro' && (
+                            <p style={{ margin: 0, fontSize: '0.8rem', color: '#71717a' }}>{i18n.t.einstellungen.proMaxHint}</p>
+                          )}
+
+                          {/* CLI Path Override */}
+                          <div style={{ marginTop: '0.5rem', paddingTop: '0.875rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 500, color: '#71717a', marginBottom: '0.375rem' }}>
+                              CLI Path (optional)
+                            </label>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                              <input
+                                type="text"
+                                placeholder={tool?.cmd || authHint.split(' ')[0]}
+                                value={currentPath}
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  setCliPaths(prev => ({ ...prev, [toolKey]: val }));
+                                  setCliPathTestResult(prev => { const n = { ...prev }; delete n[toolKey]; return n; });
+                                }}
+                                style={{
+                                  flex: 1, padding: '0.5rem 0.625rem', fontFamily: 'monospace', fontSize: '0.8rem',
+                                  backgroundColor: 'rgba(255,255,255,0.05)', border: `1px solid ${currentPath ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.1)'}`,
+                                  borderRadius: 0, color: '#d4d4d8', outline: 'none',
+                                }}
+                              />
+                              <button
+                                onClick={() => {
+                                  setCliPaths(prev => ({ ...prev, [toolKey]: '' }));
+                                  setCliPathTestResult(prev => { const n = { ...prev }; delete n[toolKey]; return n; });
+                                }}
+                                title="Clear override"
+                                style={{ padding: '0.5rem 0.625rem', borderRadius: 0, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#71717a', fontSize: '0.75rem', cursor: 'pointer' }}
+                              >
+                                Clear
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  const pathToTest = cliPaths[toolKey] || '';
+                                  setTestingCliPath(toolKey);
+                                  try {
+                                    await authFetch(`/api/system/cli-paths/${toolKey}`, {
+                                      method: 'PUT',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ path: pathToTest }),
+                                    });
+                                    const r = await authFetch('/api/system/cli-detect');
+                                    const data = await r.json();
+                                    setCliDetect(data);
+                                    if (isClaude) checkClaudeStatus();
+                                    const found = data.tools.find((t: any) => t.name === activeCliTab);
+                                    setCliPathTestResult(prev => ({
+                                      ...prev,
+                                      [toolKey]: found?.installed
+                                        ? { ok: true, version: found.version }
+                                        : { ok: false, error: 'Version check failed' },
+                                    }));
+                                  } catch (e: any) {
+                                    setCliPathTestResult(prev => ({ ...prev, [toolKey]: { ok: false, error: e.message } }));
+                                  } finally {
+                                    setTestingCliPath(null);
+                                  }
+                                }}
+                                disabled={testingCliPath === toolKey}
+                                style={{
+                                  padding: '0.5rem 0.75rem', borderRadius: 0, border: '1px solid rgba(35,205,203,0.3)',
+                                  background: 'rgba(35,205,203,0.1)', color: '#c5a059', fontSize: '0.75rem', fontWeight: 600,
+                                  cursor: 'pointer', whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {testingCliPath === toolKey ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={12} />}
+                                Save & Test
+                              </button>
+                            </div>
+                            {testResult && (
+                              <div style={{
+                                marginTop: '0.375rem', fontSize: '0.75rem',
+                                color: testResult.ok ? '#22c55e' : '#ef4444',
+                                display: 'flex', alignItems: 'center', gap: 4,
+                              }}>
+                                {testResult.ok ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+                                {testResult.ok ? `OK — ${testResult.version}` : testResult.error}
+                              </div>
+                            )}
+                            <p style={{ margin: '0.375rem 0 0', fontSize: '0.7rem', color: '#52525b' }}>
+                              Override the auto-detected binary path. Useful for Docker, custom installs, or multi-user systems.
+                            </p>
+                          </div>
+
+                          <p style={{ margin: '0.5rem 0 0', fontSize: '0.8rem', color: '#71717a' }}>
+                            {isClaude ? i18n.t.einstellungen.autoUseAccount
+                              : activeCliTab === 'kimi-cli' ? i18n.t.einstellungen.kimiAutoUse
+                              : activeCliTab === 'gemini-cli' ? i18n.t.einstellungen.geminiAutoUse
+                              : i18n.t.einstellungen.codexAutoUse}
+                          </p>
+                        </>
+                      )}
                     </div>
-                  )}
-                  {claudeStatus.installed && !claudeStatus.authenticated && (
-                    <div style={{
-                      marginTop: 4, padding: '0.875rem 1rem',
-                      background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)',
-                      borderRadius: 10, fontSize: '0.8125rem', color: '#fcd34d',
-                    }}>
-                      <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>{i18n.t.einstellungen.loginOnce}</p>
-                      <code style={{ display: 'block', padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.3)', borderRadius: 6, fontFamily: 'monospace', color: '#e2e8f0', marginBottom: 8 }}>claude</code>
-                      <p style={{ margin: 0 }}>{i18n.t.einstellungen.loginInstructions}</p>
-                    </div>
-                  )}
-                  {claudeStatus.authenticated && claudeStatus.subscriptionType !== 'max' && claudeStatus.subscriptionType !== 'pro' && (
-                    <p style={{ margin: 0, fontSize: '0.8rem', color: '#71717a' }}>{i18n.t.einstellungen.proMaxHint}</p>
-                  )}
-                  {claudeStatus.authenticated && (
-                    <p style={{ margin: 0, fontSize: '0.8rem', color: '#71717a' }}>{i18n.t.einstellungen.autoUseAccount}</p>
-                  )}
-                </div>
-              ))}
+                  </>
+                );
+              })()}
             </div>
-
-            {/* Gemini CLI — only shown when installed */}
-            {cliStatus?.gemini?.installed && (
-              <div className="glass-card" style={{
-                padding: '1.5rem',
-                background: 'rgba(255,255,255,0.04)',
-                backdropFilter: 'blur(24px) saturate(160%)',
-                borderRadius: '20px',
-                border: '1px solid rgba(255,255,255,0.09)',
-                animation: 'fadeInUp 0.5s ease-out 0.15s both',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-                  <span style={{ fontSize: '1.1rem' }}>✨</span>
-                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>
-                    {i18n.language === 'de' ? 'Gemini CLI' : 'Gemini CLI'}
-                  </h2>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <CheckCircle2 size={16} style={{ color: '#22c55e', flexShrink: 0 }} />
-                  <span style={{ fontSize: '0.875rem', color: '#d4d4d8' }}>
-                    Gemini CLI {i18n.t.einstellungen.cliInstalled} — {cliStatus.gemini.version}
-                  </span>
-                </div>
-                <p style={{ margin: '0.75rem 0 0', fontSize: '0.8rem', color: '#71717a' }}>{i18n.t.einstellungen.geminiAutoUse}</p>
-              </div>
-            )}
-
-            {/* Codex CLI — only shown when installed */}
-            {cliStatus?.codex?.installed && (
-              <div className="glass-card" style={{
-                padding: '1.5rem',
-                background: 'rgba(255,255,255,0.04)',
-                backdropFilter: 'blur(24px) saturate(160%)',
-                borderRadius: '20px',
-                border: '1px solid rgba(255,255,255,0.09)',
-                animation: 'fadeInUp 0.5s ease-out 0.2s both',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-                  <span style={{ fontSize: '1.1rem' }}>⚡</span>
-                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>
-                    {i18n.language === 'de' ? 'Codex CLI' : 'Codex CLI'}
-                  </h2>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <CheckCircle2 size={16} style={{ color: '#22c55e', flexShrink: 0 }} />
-                  <span style={{ fontSize: '0.875rem', color: '#d4d4d8' }}>
-                    Codex CLI {i18n.t.einstellungen.cliInstalled} — {cliStatus.codex.version}
-                  </span>
-                </div>
-                <p style={{ margin: '0.75rem 0 0', fontSize: '0.8rem', color: '#71717a' }}>{i18n.t.einstellungen.codexAutoUse}</p>
-              </div>
-            )}
 
             {/* API Keys */}
             <div className="glass-card" style={{
               padding: '1.5rem',
               background: 'rgba(255,255,255,0.04)',
               backdropFilter: 'blur(24px) saturate(160%)',
-              borderRadius: '20px',
+              borderRadius: 0,
               border: '1px solid rgba(255,255,255,0.09)',
               animation: 'fadeInUp 0.5s ease-out 0.1s both',
             }}>
               <div onClick={() => toggleSection('apikeys')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none', marginBottom: collapsed.has('apikeys') ? 0 : '1rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <Key size={18} style={{ color: '#23CDCB' }} />
+                  <Key size={18} style={{ color: '#c5a059' }} />
                   <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>{i18n.t.einstellungen.sectionApiKeys}</h2>
                 </div>
                 <ChevronDown size={16} style={{ color: '#52525b', transition: 'transform 0.2s', transform: collapsed.has('apikeys') ? 'rotate(-90deg)' : 'rotate(0deg)', flexShrink: 0 }} />
               </div>
               {!collapsed.has('apikeys') && <><div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {([
-                  { label: 'Anthropic API Key', placeholder: 'sk-ant-api03-...', hint: i18n.t.einstellungen.anthropicHint, type: 'password', value: anthropicKey, onChange: setAnthropicKey },
-                  { label: 'OpenAI API Key', placeholder: 'sk-proj-...', hint: i18n.t.einstellungen.openaiHint, type: 'password', value: openaiKey, onChange: setOpenaiKey },
-                  { label: 'OpenRouter API Key', placeholder: 'sk-or-v1-...', hint: i18n.t.einstellungen.openrouterHint, type: 'password', value: openrouterKey, onChange: setOpenrouterKey },
-                ] as const).map(({ label, placeholder, hint, type, value, onChange }) => (
-                  <div key={label}>
-                    <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, color: '#d4d4d8', marginBottom: '0.5rem' }}>
-                      {label}
-                      {value && <span style={{ marginLeft: '0.5rem', fontSize: '0.6875rem', color: '#22c55e', fontWeight: 600 }}>{i18n.t.einstellungen.apiKeySaved}</span>}
-                    </label>
-                    <input
-                      type={type}
-                      placeholder={placeholder}
-                      value={value}
-                      onChange={e => onChange(e.target.value)}
-                      autoComplete="new-password"
-                      style={{
-                        maxWidth: 400,
-                        width: '100%',
-                        padding: '0.625rem 0.875rem',
-                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                        border: `1px solid ${value ? 'rgba(34, 197, 94, 0.3)' : 'rgba(255, 255, 255, 0.1)'}`,
-                        borderRadius: '12px',
-                        color: '#ffffff',
-                        fontSize: '0.875rem',
-                      }}
-                    />
-                    <p style={{ fontSize: '0.75rem', color: '#71717a', marginTop: '0.375rem' }}>{hint}</p>
-                  </div>
-                ))}
+                {/* Provider Tabs */}
+                {(() => {
+                  const PROVIDER_TABS = [
+                    { id: 'openrouter' as const, label: 'OpenRouter', badge: 'Empfohlen', color: '#c5a059', keyState: openrouterKey },
+                    { id: 'anthropic' as const, label: 'Anthropic', badge: 'Claude', color: '#d4a574', keyState: anthropicKey },
+                    { id: 'openai' as const, label: 'OpenAI', badge: 'GPT', color: '#10a37f', keyState: openaiKey },
+                    { id: 'google' as const, label: 'Google', badge: 'Gemini', color: '#4285f4', keyState: googleKey },
+                    { id: 'moonshot' as const, label: 'Moonshot', badge: 'Kimi', color: '#a78bfa', keyState: moonshotKey },
+                    { id: 'poe' as const, label: 'Poe', badge: 'Multi', color: '#f59e0b', keyState: poeKey },
+                  ];
+                  const active = PROVIDER_TABS.find(t => t.id === activeProviderTab)!;
+                  const inputMap: Record<string, { label: string; placeholder: string; hint: string; value: string; onChange: (v: string) => void }> = {
+                    openrouter: { label: 'OpenRouter API Key', placeholder: 'sk-or-v1-...', hint: i18n.t.einstellungen.openrouterHint, value: openrouterKey, onChange: setOpenrouterKey },
+                    anthropic: { label: 'Anthropic API Key', placeholder: 'sk-ant-api03-...', hint: i18n.t.einstellungen.anthropicHint, value: anthropicKey, onChange: setAnthropicKey },
+                    openai: { label: 'OpenAI API Key', placeholder: 'sk-proj-...', hint: i18n.t.einstellungen.openaiHint, value: openaiKey, onChange: setOpenaiKey },
+                    google: { label: 'Google Gemini API Key', placeholder: 'AIza...', hint: 'Google AI Studio → Create API key', value: googleKey, onChange: setGoogleKey },
+                    moonshot: { label: 'Moonshot API Key', placeholder: 'sk-kimi-...', hint: 'Moonshot Console → API Key', value: moonshotKey, onChange: setMoonshotKey },
+                    poe: { label: 'Poe API Key', placeholder: 'sk-poe-...', hint: 'poe.com/api_key → Create API key', value: poeKey, onChange: setPoeKey },
+                  };
+                  const inp = inputMap[activeProviderTab];
+                  return (
+                    <>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
+                        {PROVIDER_TABS.map(tab => (
+                          <button
+                            key={tab.id}
+                            onClick={() => setActiveProviderTab(tab.id)}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '0.375rem',
+                              padding: '0.375rem 0.75rem',
+                              borderRadius: 0,
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontSize: '0.75rem', fontWeight: 600,
+                              background: activeProviderTab === tab.id ? `${tab.color}22` : 'rgba(255,255,255,0.04)',
+                              color: activeProviderTab === tab.id ? tab.color : '#a1a1aa',
+                              borderBottom: activeProviderTab === tab.id ? `2px solid ${tab.color}` : '2px solid transparent',
+                            }}
+                          >
+                            {tab.label}
+                            {tab.badge && <span style={{ fontSize: '0.625rem', padding: '1px 5px', borderRadius: 0, background: activeProviderTab === tab.id ? `${tab.color}33` : 'rgba(255,255,255,0.08)', color: activeProviderTab === tab.id ? tab.color : '#71717a' }}>{tab.badge}</span>}
+                            {tab.keyState && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />}
+                          </button>
+                        ))}
+                      </div>
+                      <div key={activeProviderTab}>
+                        <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, color: '#d4d4d8', marginBottom: '0.5rem' }}>
+                          {inp.label}
+                          {inp.value && <span style={{ marginLeft: '0.5rem', fontSize: '0.6875rem', color: '#22c55e', fontWeight: 600 }}>{i18n.t.einstellungen.apiKeySaved}</span>}
+                        </label>
+                        <input
+                          type="password"
+                          placeholder={inp.placeholder}
+                          value={inp.value}
+                          onChange={e => inp.onChange(e.target.value)}
+                          autoComplete="new-password"
+                          style={{
+                            maxWidth: 400, width: '100%', padding: '0.625rem 0.875rem',
+                            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                            border: `1px solid ${inp.value ? 'rgba(34, 197, 94, 0.3)' : 'rgba(255, 255, 255, 0.1)'}`,
+                            borderRadius: 0, color: '#ffffff', fontSize: '0.875rem',
+                          }}
+                        />
+                        <p style={{ fontSize: '0.75rem', color: '#71717a', marginTop: '0.375rem' }}>{inp.hint}</p>
+                      </div>
+                    </>
+                  );
+                })()}
 
                 {/* ── Ollama Local / Private ── */}
                 <div style={{
-                  borderRadius: 14, padding: '1rem',
+                  borderRadius: 0, padding: '1rem',
                   background: 'linear-gradient(135deg, rgba(34,197,94,0.06) 0%, rgba(6,182,212,0.04) 100%)',
                   border: `1px solid ${ollamaStatus === 'online' ? 'rgba(34,197,94,0.3)' : ollamaStatus === 'offline' ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.08)'}`,
                 }}>
@@ -1105,7 +1297,7 @@ export function Settings() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                     <Cpu size={16} style={{ color: '#22c55e' }} />
                     <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#d4d4d8' }}>Ollama</span>
-                    <span style={{ fontSize: 10, fontWeight: 800, padding: '1px 7px', borderRadius: 20, background: 'rgba(34,197,94,0.12)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.25)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, padding: '1px 7px', borderRadius: 0, background: 'rgba(34,197,94,0.12)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.25)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                       {i18n.t.einstellungen.ollamaLocalBadge}
                     </span>
                     {/* Status badge */}
@@ -1137,7 +1329,7 @@ export function Settings() {
                         flex: 1, maxWidth: 340,
                         padding: '0.5rem 0.75rem',
                         backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                        borderRadius: 10, color: '#fff', fontSize: '0.875rem', outline: 'none',
+                        borderRadius: 0, color: '#fff', fontSize: '0.875rem', outline: 'none',
                       }}
                     />
                     <button
@@ -1157,7 +1349,7 @@ export function Settings() {
                         } catch { setOllamaStatus('offline'); }
                       }}
                       style={{
-                        padding: '0.5rem 0.875rem', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                        padding: '0.5rem 0.875rem', borderRadius: 0, fontSize: 12, fontWeight: 700, cursor: 'pointer',
                         background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', color: '#22c55e',
                         display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
                       }}
@@ -1184,7 +1376,7 @@ export function Settings() {
                             key={m.id}
                             onClick={() => setOllamaDefaultModel(m.id)}
                             style={{
-                              padding: '3px 10px', borderRadius: 20, fontSize: 11, cursor: 'pointer',
+                              padding: '3px 10px', borderRadius: 0, fontSize: 11, cursor: 'pointer',
                               background: ollamaDefaultModel === m.id ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.04)',
                               border: `1px solid ${ollamaDefaultModel === m.id ? 'rgba(34,197,94,0.5)' : 'rgba(255,255,255,0.08)'}`,
                               color: ollamaDefaultModel === m.id ? '#22c55e' : '#64748b',
@@ -1215,7 +1407,7 @@ export function Settings() {
                     <button
                       type="button"
                       onClick={() => setCustomConnections(prev => [...prev, { id: crypto.randomUUID(), name: '', apiKey: '', baseUrl: '' }])}
-                      style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0.25rem 0.625rem', borderRadius: 8, border: '1px solid rgba(35,205,202,0.25)', background: 'rgba(35,205,202,0.06)', color: '#23CDCB', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0.25rem 0.625rem', borderRadius: 0, border: '1px solid rgba(197,160,89,0.25)', background: 'rgba(197,160,89,0.06)', color: '#c5a059', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
                     >
                       <Plus size={12} /> {i18n.t.einstellungen.addConnection}
                     </button>
@@ -1228,7 +1420,7 @@ export function Settings() {
                   )}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     {customConnections.map((conn, idx) => (
-                      <div key={conn.id} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '0.5rem', alignItems: 'end', padding: '0.75rem', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                      <div key={conn.id} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '0.5rem', alignItems: 'end', padding: '0.75rem', borderRadius: 0, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
                         <div>
                           <label style={{ display: 'block', fontSize: '0.75rem', color: '#71717a', marginBottom: '0.25rem' }}>{i18n.t.einstellungen.connectionName}</label>
                           <input
@@ -1236,7 +1428,7 @@ export function Settings() {
                             placeholder="Groq"
                             value={conn.name}
                             onChange={e => setCustomConnections(prev => prev.map((c, i) => i === idx ? { ...c, name: e.target.value } : c))}
-                            style={{ width: '100%', padding: '0.5rem 0.625rem', backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#fff', fontSize: '0.8125rem' }}
+                            style={{ width: '100%', padding: '0.5rem 0.625rem', backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 0, color: '#fff', fontSize: '0.8125rem' }}
                           />
                         </div>
                         <div>
@@ -1247,7 +1439,7 @@ export function Settings() {
                             value={conn.apiKey}
                             autoComplete="new-password"
                             onChange={e => setCustomConnections(prev => prev.map((c, i) => i === idx ? { ...c, apiKey: e.target.value } : c))}
-                            style={{ width: '100%', padding: '0.5rem 0.625rem', backgroundColor: 'rgba(255,255,255,0.05)', border: `1px solid ${conn.apiKey ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 8, color: '#fff', fontSize: '0.8125rem' }}
+                            style={{ width: '100%', padding: '0.5rem 0.625rem', backgroundColor: 'rgba(255,255,255,0.05)', border: `1px solid ${conn.apiKey ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 0, color: '#fff', fontSize: '0.8125rem' }}
                           />
                         </div>
                         <div>
@@ -1257,13 +1449,13 @@ export function Settings() {
                             placeholder="https://api.groq.com/openai/v1"
                             value={conn.baseUrl}
                             onChange={e => setCustomConnections(prev => prev.map((c, i) => i === idx ? { ...c, baseUrl: e.target.value } : c))}
-                            style={{ width: '100%', padding: '0.5rem 0.625rem', backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#fff', fontSize: '0.8125rem' }}
+                            style={{ width: '100%', padding: '0.5rem 0.625rem', backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 0, color: '#fff', fontSize: '0.8125rem' }}
                           />
                         </div>
                         <button
                           type="button"
                           onClick={() => setCustomConnections(prev => prev.filter((_, i) => i !== idx))}
-                          style={{ padding: '0.5rem', borderRadius: 8, border: '1px solid rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.06)', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                          style={{ padding: '0.5rem', borderRadius: 0, border: '1px solid rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.06)', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                           title="Remove"
                         >
                           <X size={14} />
@@ -1292,7 +1484,7 @@ export function Settings() {
                         padding: '0.625rem 0.875rem',
                         backgroundColor: 'rgba(255, 255, 255, 0.05)',
                         border: `1px solid ${defaultModel && defaultModel !== 'openrouter/auto' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(255, 255, 255, 0.1)'}`,
-                        borderRadius: '12px',
+                        borderRadius: 0,
                         color: '#ffffff',
                         fontSize: '0.875rem',
                         cursor: loadingOrModels ? 'wait' : 'pointer',
@@ -1319,6 +1511,9 @@ export function Settings() {
                 ['anthropic_api_key', anthropicKey],
                 ['openai_api_key', openaiKey],
                 ['openrouter_api_key', openrouterKey],
+                ['google_api_key', googleKey],
+                ['moonshot_api_key', moonshotKey],
+                ['poe_api_key', poeKey],
                 ['openrouter_default_model', defaultModel],
                 ['ollama_base_url', ollamaUrl],
                 ['ollama_default_model', ollamaDefaultModel],
@@ -1332,7 +1527,7 @@ export function Settings() {
               padding: '1.5rem',
               background: 'rgba(255,255,255,0.04)',
               backdropFilter: 'blur(24px) saturate(160%)',
-              borderRadius: '20px',
+              borderRadius: 0,
               border: '1px solid rgba(255,255,255,0.09)',
               animation: 'fadeInUp 0.5s ease-out 0.2s both',
             }}>
@@ -1353,15 +1548,15 @@ export function Settings() {
                       type="range" min="50" max="100"
                       value={budgetPauseThreshold}
                       onChange={e => setBudgetPauseThreshold(Number(e.target.value))}
-                      style={{ flex: 1, maxWidth: 300, cursor: 'pointer', accentColor: '#23CDCB' }}
+                      style={{ flex: 1, maxWidth: 300, cursor: 'pointer', accentColor: '#c5a059' }}
                     />
                     <span style={{
                       padding: '0.25rem 0.625rem',
-                      backgroundColor: 'rgba(35, 205, 202, 0.1)',
-                      border: '1px solid rgba(35, 205, 202, 0.2)',
+                      backgroundColor: 'rgba(197, 160, 89, 0.1)',
+                      border: '1px solid rgba(197, 160, 89, 0.2)',
                       borderRadius: '9999px',
                       fontSize: '0.75rem',
-                      color: '#23CDCB',
+                      color: '#c5a059',
                       fontWeight: 600,
                       minWidth: '3rem',
                       textAlign: 'center',
@@ -1376,7 +1571,7 @@ export function Settings() {
                     {i18n.t.einstellungen.approvalRequired}
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={approvalRequired} onChange={e => setApprovalRequired(e.target.checked)} style={{ accentColor: '#23CDCB' }} />
+                    <input type="checkbox" checked={approvalRequired} onChange={e => setApprovalRequired(e.target.checked)} style={{ accentColor: '#c5a059' }} />
                     <span style={{ fontSize: '0.875rem', color: '#d4d4d8' }}>{i18n.t.einstellungen.approvalRequiredHint}</span>
                   </label>
                 </div>
@@ -1385,7 +1580,7 @@ export function Settings() {
                     {i18n.t.einstellungen.strategyApproval}
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={strategyApproval} onChange={e => setStrategyApproval(e.target.checked)} style={{ accentColor: '#23CDCB' }} />
+                    <input type="checkbox" checked={strategyApproval} onChange={e => setStrategyApproval(e.target.checked)} style={{ accentColor: '#c5a059' }} />
                     <span style={{ fontSize: '0.875rem', color: '#d4d4d8' }}>{i18n.t.einstellungen.strategyApprovalHint}</span>
                   </label>
                 </div>
@@ -1403,7 +1598,7 @@ export function Settings() {
               padding: '1.5rem',
               background: 'rgba(255,255,255,0.04)',
               backdropFilter: 'blur(24px) saturate(160%)',
-              borderRadius: '20px',
+              borderRadius: 0,
               border: '1px solid rgba(255,255,255,0.09)',
               animation: 'fadeInUp 0.5s ease-out 0.3s both',
             }}>
@@ -1422,7 +1617,7 @@ export function Settings() {
                   { key: 'notifyErrors', value: notifyErrors, setter: setNotifyErrors },
                 ] as const).map(({ key, value, setter }) => (
                   <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={value} onChange={e => setter(e.target.checked)} style={{ accentColor: '#23CDCB' }} />
+                    <input type="checkbox" checked={value} onChange={e => setter(e.target.checked)} style={{ accentColor: '#c5a059' }} />
                     <span style={{ fontSize: '0.875rem', color: '#d4d4d8' }}>{i18n.t.einstellungen[key as keyof typeof i18n.t.einstellungen] as string}</span>
                   </label>
                 ))}
@@ -1442,7 +1637,7 @@ export function Settings() {
                 padding: '1.5rem',
                 background: 'rgba(255,255,255,0.04)',
                 backdropFilter: 'blur(24px) saturate(160%)',
-                borderRadius: '20px',
+                borderRadius: 0,
                 border: workDirStatus?.writable ? '1px solid rgba(34,197,94,0.3)' : workDirStatus?.exists === false ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(255, 255, 255, 0.08)',
                 animation: 'fadeInUp 0.5s ease-out 0.35s both',
               }}>
@@ -1468,7 +1663,7 @@ export function Settings() {
                       padding: '0.625rem 0.875rem',
                       background: 'rgba(255,255,255,0.05)',
                       border: '1px solid rgba(255,255,255,0.1)',
-                      borderRadius: '10px',
+                      borderRadius: 0,
                       fontSize: '0.875rem',
                       color: '#ffffff',
                       fontFamily: 'monospace',
@@ -1483,7 +1678,7 @@ export function Settings() {
                       padding: '0.625rem 1rem',
                       background: 'rgba(245,158,11,0.1)',
                       border: '1px solid rgba(245,158,11,0.3)',
-                      borderRadius: '10px',
+                      borderRadius: 0,
                       color: '#f59e0b',
                       fontWeight: 600,
                       fontSize: '0.8125rem',
@@ -1501,8 +1696,8 @@ export function Settings() {
                       padding: '0.625rem 1rem',
                       background: 'rgba(35, 205, 203, 0.1)',
                       border: '1px solid rgba(35, 205, 203, 0.3)',
-                      borderRadius: '10px',
-                      color: '#23CDCB',
+                      borderRadius: 0,
+                      color: '#c5a059',
                       fontWeight: 600,
                       fontSize: '0.8125rem',
                       cursor: 'pointer',
@@ -1520,7 +1715,7 @@ export function Settings() {
                   <div style={{
                     marginTop: '0.625rem',
                     padding: '0.5rem 0.875rem',
-                    borderRadius: '8px',
+                    borderRadius: 0,
                     fontSize: '0.8125rem',
                     background: workDirStatus.writable ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
                     color: workDirStatus.writable ? '#22c55e' : '#ef4444',
@@ -1547,7 +1742,7 @@ export function Settings() {
               padding: '1.5rem',
               background: 'rgba(255,255,255,0.04)',
               backdropFilter: 'blur(24px) saturate(160%)',
-              borderRadius: '20px',
+              borderRadius: 0,
               border: '1px solid rgba(255,255,255,0.09)',
               animation: 'fadeInUp 0.5s ease-out 0.4s both',
             }}>
@@ -1588,7 +1783,7 @@ export function Settings() {
                     padding: '0.5rem 0.875rem',
                     backgroundColor: 'rgba(239, 68, 68, 0.1)',
                     border: '1px solid rgba(239, 68, 68, 0.2)',
-                    borderRadius: '12px',
+                    borderRadius: 0,
                     color: '#ef4444',
                     fontWeight: 500,
                     fontSize: '0.8125rem',
@@ -1608,13 +1803,13 @@ export function Settings() {
               padding: '1.5rem',
               background: 'rgba(255,255,255,0.04)',
               backdropFilter: 'blur(24px) saturate(160%)',
-              borderRadius: '20px',
+              borderRadius: 0,
               border: '1px solid rgba(255,255,255,0.09)',
               animation: 'fadeInUp 0.5s ease-out 0.45s both',
             }}>
               <div onClick={() => toggleSection('export')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none', marginBottom: collapsed.has('export') ? 0 : '1rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <Download size={18} style={{ color: '#8b5cf6' }} />
+                  <Download size={18} style={{ color: '#9b87c8' }} />
                   <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>
                     {i18n.t.einstellungen.sectionExport}
                   </h2>
@@ -1625,8 +1820,8 @@ export function Settings() {
               {!collapsed.has('export') && <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                 {/* Export */}
                 <div style={{
-                  padding: '1rem 1.25rem', borderRadius: '14px',
-                  background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.2)',
+                  padding: '1rem 1.25rem', borderRadius: 0,
+                  background: 'rgba(155,135,200,0.06)', border: '1px solid rgba(155,135,200,0.2)',
                 }}>
                   <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#c4b5fd', marginBottom: '0.375rem' }}>
                     {i18n.t.einstellungen.exportTitle ?? 'Unternehmen exportieren'}
@@ -1639,9 +1834,9 @@ export function Settings() {
                     disabled={exporting || !aktivesUnternehmen}
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
-                      padding: '0.5rem 1rem', borderRadius: '10px',
-                      background: exporting ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.15)',
-                      border: '1px solid rgba(139,92,246,0.3)',
+                      padding: '0.5rem 1rem', borderRadius: 0,
+                      background: exporting ? 'rgba(155,135,200,0.1)' : 'rgba(155,135,200,0.15)',
+                      border: '1px solid rgba(155,135,200,0.3)',
                       color: '#c4b5fd', cursor: exporting ? 'not-allowed' : 'pointer',
                       fontSize: '0.8125rem', fontWeight: 600, transition: 'all 0.2s',
                     }}
@@ -1655,7 +1850,7 @@ export function Settings() {
 
                 {/* Import */}
                 <div style={{
-                  padding: '1rem 1.25rem', borderRadius: '14px',
+                  padding: '1rem 1.25rem', borderRadius: 0,
                   background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)',
                 }}>
                   <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#93c5fd', marginBottom: '0.375rem' }}>
@@ -1671,7 +1866,7 @@ export function Settings() {
                       value={importName}
                       onChange={e => setImportName(e.target.value)}
                       style={{
-                        maxWidth: 360, padding: '0.5rem 0.75rem', borderRadius: '10px',
+                        maxWidth: 360, padding: '0.5rem 0.75rem', borderRadius: 0,
                         background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
                         color: '#ffffff', fontSize: '0.875rem',
                       }}
@@ -1692,7 +1887,7 @@ export function Settings() {
                         disabled={importing}
                         style={{
                           display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
-                          padding: '0.5rem 1rem', borderRadius: '10px',
+                          padding: '0.5rem 1rem', borderRadius: 0,
                           background: importing ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.15)',
                           border: '1px solid rgba(59,130,246,0.3)',
                           color: '#93c5fd', cursor: importing ? 'not-allowed' : 'pointer',
@@ -1710,7 +1905,7 @@ export function Settings() {
                   {/* Import Ergebnis */}
                   {importResult && (
                     <div style={{
-                      marginTop: '0.875rem', padding: '0.875rem', borderRadius: '12px',
+                      marginTop: '0.875rem', padding: '0.875rem', borderRadius: 0,
                       background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)',
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', color: '#22c55e', fontWeight: 600, fontSize: '0.8125rem' }}>
@@ -1735,7 +1930,7 @@ export function Settings() {
                   {/* Import Fehler */}
                   {importError && (
                     <div style={{
-                      marginTop: '0.875rem', padding: '0.75rem', borderRadius: '10px',
+                      marginTop: '0.875rem', padding: '0.75rem', borderRadius: 0,
                       background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
                       display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
                       color: '#ef4444', fontSize: '0.8125rem',
@@ -1753,7 +1948,7 @@ export function Settings() {
               padding: '1.5rem',
               backgroundColor: 'rgba(239, 68, 68, 0.03)',
               backdropFilter: 'blur(24px) saturate(160%)',
-              borderRadius: '20px',
+              borderRadius: 0,
               border: '1px solid rgba(239, 68, 68, 0.2)',
               animation: 'fadeInUp 0.5s ease-out 0.55s both',
             }}>
@@ -1768,7 +1963,7 @@ export function Settings() {
               {!collapsed.has('danger') && <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {/* Company Reset */}
                 <div style={{
-                  padding: '1rem 1.25rem', borderRadius: '14px',
+                  padding: '1rem 1.25rem', borderRadius: 0,
                   background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.15)',
                   display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap',
                 }}>
@@ -1789,7 +1984,7 @@ export function Settings() {
                         onClick={handleCompanyReset}
                         disabled={resetting}
                         style={{
-                          padding: '0.375rem 0.75rem', borderRadius: '8px', cursor: 'pointer',
+                          padding: '0.375rem 0.75rem', borderRadius: 0, cursor: 'pointer',
                           background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)',
                           color: '#ef4444', fontSize: '0.75rem', fontWeight: 600,
                         }}
@@ -1799,7 +1994,7 @@ export function Settings() {
                       <button
                         onClick={() => setResetConfirm(null)}
                         style={{
-                          padding: '0.375rem 0.75rem', borderRadius: '8px', cursor: 'pointer',
+                          padding: '0.375rem 0.75rem', borderRadius: 0, cursor: 'pointer',
                           background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
                           color: '#71717a', fontSize: '0.75rem',
                         }}
@@ -1811,7 +2006,7 @@ export function Settings() {
                       disabled={!aktivesUnternehmen}
                       style={{
                         display: 'flex', alignItems: 'center', gap: '0.375rem',
-                        padding: '0.5rem 0.875rem', borderRadius: '10px', cursor: 'pointer',
+                        padding: '0.5rem 0.875rem', borderRadius: 0, cursor: 'pointer',
                         background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)',
                         color: '#ef4444', fontSize: '0.8125rem', fontWeight: 600, whiteSpace: 'nowrap',
                       }}
@@ -1823,7 +2018,7 @@ export function Settings() {
 
                 {/* Factory Reset */}
                 <div style={{
-                  padding: '1rem 1.25rem', borderRadius: '14px',
+                  padding: '1rem 1.25rem', borderRadius: 0,
                   background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.25)',
                   display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap',
                 }}>
@@ -1844,7 +2039,7 @@ export function Settings() {
                         onClick={handleFactoryReset}
                         disabled={resetting}
                         style={{
-                          padding: '0.375rem 0.75rem', borderRadius: '8px', cursor: 'pointer',
+                          padding: '0.375rem 0.75rem', borderRadius: 0, cursor: 'pointer',
                           background: 'rgba(239,68,68,0.25)', border: '1px solid rgba(239,68,68,0.5)',
                           color: '#ef4444', fontSize: '0.75rem', fontWeight: 700,
                         }}
@@ -1854,7 +2049,7 @@ export function Settings() {
                       <button
                         onClick={() => setResetConfirm(null)}
                         style={{
-                          padding: '0.375rem 0.75rem', borderRadius: '8px', cursor: 'pointer',
+                          padding: '0.375rem 0.75rem', borderRadius: 0, cursor: 'pointer',
                           background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
                           color: '#71717a', fontSize: '0.75rem',
                         }}
@@ -1865,7 +2060,7 @@ export function Settings() {
                       onClick={() => setResetConfirm('factory')}
                       style={{
                         display: 'flex', alignItems: 'center', gap: '0.375rem',
-                        padding: '0.5rem 0.875rem', borderRadius: '10px', cursor: 'pointer',
+                        padding: '0.5rem 0.875rem', borderRadius: 0, cursor: 'pointer',
                         background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.35)',
                         color: '#ef4444', fontSize: '0.8125rem', fontWeight: 700, whiteSpace: 'nowrap',
                       }}
@@ -1882,7 +2077,7 @@ export function Settings() {
               padding: '1rem 1.5rem',
               background: 'rgba(255,255,255,0.04)',
               backdropFilter: 'blur(24px) saturate(160%)',
-              borderRadius: '16px',
+              borderRadius: 0,
               border: '1px solid rgba(255, 255, 255, 0.06)',
               opacity: 0.6,
               animation: 'fadeInUp 0.5s ease-out 0.5s both',

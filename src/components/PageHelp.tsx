@@ -32,7 +32,7 @@ const CONTENT: Record<PageId, { de: HelpContent; en: HelpContent }> = {
         { icon: '🤖', heading: 'Agenten', text: 'Jeder Agent ist ein eigenständiger KI-Mitarbeiter. Der grüne Punkt bedeutet "aktiv", Blitz bedeutet "läuft gerade".' },
         { icon: '📋', heading: 'Health Score', text: 'Ein Score von 0–100 bewertet den Zustand deines Teams: Fehler, blockierte Tasks und Budget-Verbrauch senken ihn.' },
         { icon: '🔔', heading: 'Genehmigungen', text: 'Agenten im Copilot-Modus fragen vor Aktionen nach Freigabe. Der gelbe Button zeigt ausstehende Anfragen.' },
-        { icon: '🎖', heading: 'War Room', text: 'Live-Ansicht aller Agenten auf einem Screen. Ideal wenn du beobachten willst, was gerade passiert.' },
+        { icon: '🎖', heading: 'Live Room', text: 'Live-Ansicht aller Agenten auf einem Screen. Ideal wenn du beobachten willst, was gerade passiert.' },
       ],
       tip: 'Tipp: Klick auf einen Agenten im Dashboard um direkt mit ihm zu chatten oder seine Aktivitäten zu sehen.',
     },
@@ -42,7 +42,7 @@ const CONTENT: Record<PageId, { de: HelpContent; en: HelpContent }> = {
         { icon: '🤖', heading: 'Agents', text: 'Each agent is an autonomous AI worker. Green dot means "active", lightning bolt means "running now".' },
         { icon: '📋', heading: 'Health Score', text: 'A 0–100 score rates your team\'s health: errors, blocked tasks, and budget usage lower it.' },
         { icon: '🔔', heading: 'Approvals', text: 'Agents in Copilot mode ask for approval before actions. The yellow button shows pending requests.' },
-        { icon: '🎖', heading: 'War Room', text: 'Live view of all agents on one screen. Ideal when you want to watch what\'s happening right now.' },
+        { icon: '🎖', heading: 'Live Room', text: 'Live view of all agents on one screen. Ideal when you want to watch what\'s happening right now.' },
       ],
       tip: 'Tip: Click an agent in the dashboard to chat with it directly or see its activity.',
     },
@@ -324,7 +324,7 @@ const CONTENT: Record<PageId, { de: HelpContent; en: HelpContent }> = {
         { icon: '🤖', heading: 'Pro Agent', text: 'Filtere nach einem bestimmten Agenten um nur seine Aktionen zu sehen. Hilfreich wenn du einen Agent debuggen willst.' },
         { icon: '⚠️', heading: 'Fehler erkennen', text: 'Rote Einträge (error) zeigen Probleme. Häufige Fehler = falscher API-Key, Verbindungsproblem oder fehlende Permissions.' },
       ],
-      tip: 'Tipp: Öffne den War Room für eine visuelle Live-Ansicht — das Activity Log ist gut für detaillierte Text-Traces.',
+      tip: 'Tipp: Öffne den Live Room für eine visuelle Live-Ansicht — das Activity Log ist gut für detaillierte Text-Traces.',
     },
     en: {
       intro: 'The activity log shows everything happening in your AI team — in real-time. Ideal for debugging, tracing, and understanding agent actions.',
@@ -334,7 +334,7 @@ const CONTENT: Record<PageId, { de: HelpContent; en: HelpContent }> = {
         { icon: '🤖', heading: 'Per agent', text: 'Filter by a specific agent to see only its actions. Helpful when debugging an agent.' },
         { icon: '⚠️', heading: 'Spot errors', text: 'Red entries (error) indicate problems. Frequent errors = wrong API key, connection issue, or missing permissions.' },
       ],
-      tip: 'Tip: Open the War Room for a visual live view — the activity log is better for detailed text traces.',
+      tip: 'Tip: Open the Live Room for a visual live view — the activity log is better for detailed text traces.',
     },
   },
 
@@ -464,9 +464,9 @@ export function PageHelp({ id, lang }: { id: PageId; lang: string }) {
     <div style={{ marginBottom: open ? '1.25rem' : '0.5rem' }}>
       {open ? (
         <div style={{
-          background: 'rgba(35,205,202,0.03)',
-          border: '1px solid rgba(35,205,202,0.12)',
-          borderRadius: 16,
+          background: 'rgba(197,160,89,0.03)',
+          border: '1px solid rgba(197,160,89,0.12)',
+          borderRadius: 0,
           overflow: 'hidden',
           animation: 'helpSlideIn 0.2s ease-out',
         }}>
@@ -477,11 +477,11 @@ export function PageHelp({ id, lang }: { id: PageId; lang: string }) {
           }}>
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <div style={{
-                width: 28, height: 28, borderRadius: 8, flexShrink: 0, marginTop: 1,
-                background: 'rgba(35,205,202,0.1)',
+                width: 28, height: 28, borderRadius: 0, flexShrink: 0, marginTop: 1,
+                background: 'rgba(197,160,89,0.1)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
-                <HelpCircle size={14} style={{ color: '#23CDCB' }} />
+                <HelpCircle size={14} style={{ color: '#c5a059' }} />
               </div>
               <p style={{
                 margin: 0, fontSize: 12.5, color: '#a1a1aa', lineHeight: 1.6,
@@ -496,7 +496,7 @@ export function PageHelp({ id, lang }: { id: PageId; lang: string }) {
               style={{
                 flexShrink: 0, background: 'none', border: 'none',
                 cursor: 'pointer', color: '#3f3f46', padding: 4, display: 'flex',
-                borderRadius: 6,
+                borderRadius: 0,
               }}
             >
               <ChevronUp size={14} />
@@ -549,14 +549,14 @@ export function PageHelp({ id, lang }: { id: PageId; lang: string }) {
             display: 'flex', alignItems: 'center', gap: 5,
             background: 'rgba(255,255,255,0.03)',
             border: '1px solid rgba(255,255,255,0.07)',
-            borderRadius: 8, padding: '4px 10px',
+            borderRadius: 0, padding: '4px 10px',
             cursor: 'pointer', color: '#3f3f46',
             fontSize: 11, fontWeight: 600,
             transition: 'all 0.15s',
           }}
           onMouseEnter={e => {
-            (e.currentTarget as HTMLElement).style.borderColor = 'rgba(35,205,202,0.3)';
-            (e.currentTarget as HTMLElement).style.color = '#23CDCB';
+            (e.currentTarget as HTMLElement).style.borderColor = 'rgba(197,160,89,0.3)';
+            (e.currentTarget as HTMLElement).style.color = '#c5a059';
           }}
           onMouseLeave={e => {
             (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.07)';

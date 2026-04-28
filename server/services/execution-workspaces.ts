@@ -5,7 +5,7 @@
 // parallel am selben Repo arbeiten, ohne dass sich ihre Branches überschreiben.
 
 import { db } from '../db/client.js';
-import { executionWorkspaces, aufgaben, unternehmen } from '../db/schema.js';
+import { executionWorkspaces, tasks, companies } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { v4 as uuid } from 'uuid';
 import fs from 'fs';
@@ -48,7 +48,7 @@ export function erstelleWorkspace(
   const now = new Date().toISOString();
   const wsId = uuid();
 
-  const company = db.select().from(unternehmen).where(eq(unternehmen.id, unternehmenId)).get();
+  const company = db.select().from(companies).where(eq(companies.id, unternehmenId)).get();
   const base = basePfad || company?.workDir || path.join(process.cwd(), 'workspaces');
 
   if (!fs.existsSync(base)) fs.mkdirSync(base, { recursive: true });
@@ -98,19 +98,19 @@ export function erstelleWorkspace(
 
   db.insert(executionWorkspaces).values({
     id: wsId,
-    unternehmenId,
-    aufgabeId,
-    expertId,
+    companyId: unternehmenId,
+    taskId: aufgabeId,
+    agentId: expertId,
     pfad: wsDir,
     branchName,
     basePfad: base,
     status: 'offen',
-    metadaten: JSON.stringify({ isolation }),
+    metadata: JSON.stringify({ isolation }),
     geoeffnetAm: now,
-    erstelltAm: now,
+    createdAt: now,
   }).run();
 
-  db.update(aufgaben).set({ workspacePath: wsDir }).where(eq(aufgaben.id, aufgabeId)).run();
+  db.update(tasks).set({ workspacePath: wsDir }).where(eq(tasks.id, aufgabeId)).run();
 
   console.log(`📁 Workspace [${isolation}] erstellt: ${wsDir}${branchName ? ` (Branch: ${branchName})` : ''}`);
   return { id: wsId, pfad: wsDir, branchName, isolation };
@@ -197,7 +197,7 @@ export function raeumeWorkspaceAuf(workspaceId: string, force = false): { ok: bo
  */
 export function listeWorkspaces(unternehmenId: string) {
   return db.select().from(executionWorkspaces)
-    .where(eq(executionWorkspaces.unternehmenId, unternehmenId))
+    .where(eq(executionWorkspaces.companyId, unternehmenId))
     .all();
 }
 
@@ -207,12 +207,12 @@ export function listeWorkspaces(unternehmenId: string) {
 export function getAktiverWorkspace(aufgabeId: string) {
   return db.select().from(executionWorkspaces)
     .where(and(
-      eq(executionWorkspaces.aufgabeId, aufgabeId),
+      eq(executionWorkspaces.taskId, aufgabeId),
       eq(executionWorkspaces.status, 'offen')
     ))
     .get() || db.select().from(executionWorkspaces)
     .where(and(
-      eq(executionWorkspaces.aufgabeId, aufgabeId),
+      eq(executionWorkspaces.taskId, aufgabeId),
       eq(executionWorkspaces.status, 'aktiv')
     ))
     .get();

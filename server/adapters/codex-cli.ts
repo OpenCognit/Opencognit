@@ -8,6 +8,7 @@ import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
 import { resolveAgentWorkdir, SAFE_DEFAULT_WORKDIR } from './workspace-guard.js';
+import { resolveCliPath } from './cli-paths.js';
 
 const execAsync = promisify(exec);
 
@@ -31,7 +32,7 @@ export class CodexCLIAdapter implements Adapter {
 
   constructor(options: CodexCLIAdapterOptions = {}) {
     this.options = {
-      codexPath: options.codexPath || process.env.CODEX_PATH || 'codex',
+      codexPath: options.codexPath || resolveCliPath('codex', 'CODEX_PATH', 'codex'),
       model: options.model || 'o4-mini',
       maxExecutionTimeMs: options.maxExecutionTimeMs || 10 * 60 * 1000,
       workingDir: options.workingDir || SAFE_DEFAULT_WORKDIR,
@@ -45,7 +46,7 @@ export class CodexCLIAdapter implements Adapter {
 
   canHandle(task: AdapterTask): boolean {
     // Codex CLI kann Code-Tasks besonders gut
-    const text = `${task.titel} ${task.beschreibung || ''}`.toLowerCase();
+    const text = `${task.title} ${task.description || ''}`.toLowerCase();
     return text.includes('code') ||
            text.includes('implement') ||
            text.includes('write') ||
@@ -108,8 +109,8 @@ export class CodexCLIAdapter implements Adapter {
           timeout: this.options.maxExecutionTimeMs,
           env: {
             ...process.env,
-            OPENCOGNIT_EXPERT_ID: config.expertId,
-            OPENCOGNIT_UNTERNEHMEN_ID: config.unternehmenId,
+            OPENCOGNIT_EXPERT_ID: config.agentId,
+            OPENCOGNIT_UNTERNEHMEN_ID: config.companyId,
             OPENCOGNIT_RUN_ID: config.runId,
           },
           maxBuffer: 10 * 1024 * 1024,
@@ -171,31 +172,31 @@ export class CodexCLIAdapter implements Adapter {
   private buildPrompt(task: AdapterTask, context: AdapterContext): string {
     const parts: string[] = [];
 
-    parts.push(`Du bist ${context.agentContext.name}, ${context.agentContext.rolle} bei "${context.companyContext.name}".`);
-    if (context.companyContext.ziel) {
-      parts.push(`Unternehmensziel: ${context.companyContext.ziel}`);
+    parts.push(`Du bist ${context.agentContext.name}, ${context.agentContext.role} bei "${context.companyContext.name}".`);
+    if (context.companyContext.goal) {
+      parts.push(`Unternehmensziel: ${context.companyContext.goal}`);
     }
-    if (context.agentContext.faehigkeiten) {
-      parts.push(`Deine Fähigkeiten: ${context.agentContext.faehigkeiten}`);
+    if (context.agentContext.skills) {
+      parts.push(`Deine Fähigkeiten: ${context.agentContext.skills}`);
     }
     if (context.projektContext) {
       parts.push('');
       parts.push(`Projekt: ${context.projektContext.name}`);
-      if (context.projektContext.beschreibung) parts.push(context.projektContext.beschreibung);
+      if (context.projektContext.description) parts.push(context.projektContext.description);
     }
     parts.push('');
 
-    parts.push(`## Aufgabe: ${task.titel}`);
-    if (task.beschreibung) {
-      parts.push(task.beschreibung);
+    parts.push(`## Aufgabe: ${task.title}`);
+    if (task.description) {
+      parts.push(task.description);
     }
-    parts.push(`Priorität: ${task.prioritaet}`);
+    parts.push(`Priorität: ${task.priority}`);
     parts.push('');
 
     if (context.previousComments.length > 0) {
       parts.push('## Bisheriger Verlauf');
       for (const comment of context.previousComments.slice(-10)) {
-        parts.push(`[${comment.autorTyp}]: ${comment.inhalt}`);
+        parts.push(`[${comment.senderType}]: ${comment.content}`);
       }
       parts.push('');
     }
@@ -209,7 +210,7 @@ export class CodexCLIAdapter implements Adapter {
     try {
       const sessionFile = path.join(
         this.sessionDir,
-        `${config.unternehmenId}-${config.expertId}.json`
+        `${config.companyId}-${config.agentId}.json`
       );
 
       let sessions: any[] = [];
@@ -244,6 +245,43 @@ export class CodexCLIAdapter implements Adapter {
         resolve(false);
       }
     });
+  }
+}
+
+/**
+ * Runs a direct chat prompt through the Codex CLI.
+ * Used by the /chat/direct endpoint and Telegram chatWithLLM for codex-cli agents.
+ */
+export async function runCodexDirectChat(prompt: string, _expertId: string): Promise<string> {
+  const sessionDir = path.join(process.cwd(), 'data', 'sessions', 'codex');
+  if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
+
+  const tmpFile = path.join(sessionDir, `chat_${Date.now()}.txt`);
+  fs.writeFileSync(tmpFile, prompt, 'utf-8');
+
+  try {
+    const { stdout, stderr } = await execAsync(
+      `${resolveCliPath('codex', 'CODEX_PATH', 'codex')} --model o4-mini --approval-mode full-auto --prompt "$(cat ${tmpFile})"`,
+      {
+        cwd: SAFE_DEFAULT_WORKDIR,
+        timeout: 5 * 60 * 1000,
+        env: {
+          ...process.env,
+          OPENCOGNIT_EXPERT_ID: _expertId,
+        },
+        maxBuffer: 5 * 1024 * 1024,
+      }
+    );
+    // Cleanup
+    try { fs.unlinkSync(tmpFile); } catch {}
+    return stdout?.trim() || stderr?.trim() || '(keine Antwort)';
+  } catch (error: any) {
+    try { fs.unlinkSync(tmpFile); } catch {}
+    const msg = error.stderr || error.stdout || error.message || 'Unbekannter Fehler';
+    if (msg.includes('not authenticated') || msg.includes('login')) {
+      throw new Error('🔐 Nicht angemeldet. Bitte führe aus: codex login');
+    }
+    throw new Error(msg);
   }
 }
 

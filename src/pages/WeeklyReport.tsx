@@ -58,15 +58,15 @@ function MiniBarChart({ days }: { days: DayCompletion[] }) {
               style={{
                 width: '100%',
                 height: h,
-                borderRadius: '4px 4px 0 0',
+                borderRadius: '0',
                 background: d.count > 0
-                  ? (isToday ? '#23CDCB' : 'rgba(35,205,202,0.5)')
+                  ? (isToday ? '#c5a059' : 'rgba(197,160,89,0.5)')
                   : 'rgba(255,255,255,0.06)',
                 transition: 'height 0.6s ease',
                 cursor: 'default',
               }}
             />
-            <span style={{ fontSize: '0.625rem', color: isToday ? '#23CDCB' : '#52525b', fontWeight: isToday ? 700 : 400 }}>
+            <span style={{ fontSize: '0.625rem', color: isToday ? '#c5a059' : '#52525b', fontWeight: isToday ? 700 : 400 }}>
               {d.day}
             </span>
           </div>
@@ -117,7 +117,7 @@ function TypewriterText({ text }: { text: string }) {
   return (
     <span>
       {displayed}
-      {!done && <span style={{ animation: 'blink 1s step-end infinite', color: '#23CDCB' }}>|</span>}
+      {!done && <span style={{ animation: 'blink 1s step-end infinite', color: '#c5a059' }}>|</span>}
     </span>
   );
 }
@@ -165,10 +165,10 @@ export function WeeklyReport() {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '0.375rem' }}>
             <div style={{
-              width: 36, height: 36, borderRadius: 10,
-              background: 'linear-gradient(135deg, rgba(35,205,202,0.2), rgba(168,85,247,0.2))',
-              border: '1px solid rgba(35,205,202,0.2)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#23CDCB',
+              width: 36, height: 36, borderRadius: 0,
+              background: 'linear-gradient(135deg, rgba(197,160,89,0.2), rgba(155,135,200,0.2))',
+              border: '1px solid rgba(197,160,89,0.2)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#c5a059',
             }}>
               <Calendar size={18} />
             </div>
@@ -192,7 +192,7 @@ export function WeeklyReport() {
             onClick={load}
             disabled={loading}
             style={{
-              padding: '0.5rem 0.875rem', borderRadius: 8,
+              padding: '0.5rem 0.875rem', borderRadius: 0,
               background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)',
               color: '#71717a', cursor: loading ? 'not-allowed' : 'pointer',
               fontSize: '0.8125rem', display: 'flex', alignItems: 'center', gap: '0.375rem',
@@ -204,9 +204,9 @@ export function WeeklyReport() {
           <button
             onClick={handlePrint}
             style={{
-              padding: '0.5rem 0.875rem', borderRadius: 8,
-              background: 'rgba(35,205,202,0.08)', border: '1px solid rgba(35,205,202,0.2)',
-              color: '#23CDCB', cursor: 'pointer',
+              padding: '0.5rem 0.875rem', borderRadius: 0,
+              background: 'rgba(197,160,89,0.08)', border: '1px solid rgba(197,160,89,0.2)',
+              color: '#c5a059', cursor: 'pointer',
               fontSize: '0.8125rem', display: 'flex', alignItems: 'center', gap: '0.375rem',
               fontWeight: 600,
             }}
@@ -219,7 +219,7 @@ export function WeeklyReport() {
 
       {loading ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh', color: '#52525b', gap: '0.75rem' }}>
-          <div style={{ width: 20, height: 20, borderRadius: '50%', border: '2px solid rgba(35,205,202,0.3)', borderTopColor: '#23CDCB', animation: 'spin 0.8s linear infinite' }} />
+          <div style={{ width: 20, height: 20, borderRadius: '50%', border: '2px solid rgba(197,160,89,0.3)', borderTopColor: '#c5a059', animation: 'spin 0.8s linear infinite' }} />
           {isDE ? 'Bericht wird geladen…' : 'Loading report…'}
         </div>
       ) : error ? (
@@ -233,9 +233,9 @@ export function WeeklyReport() {
           {/* AI Narrative */}
           {data.aiNarrative && (
             <div style={{
-              padding: '1.25rem 1.5rem', borderRadius: 16,
-              background: 'linear-gradient(135deg, rgba(35,205,202,0.04), rgba(168,85,247,0.04))',
-              border: '1px solid rgba(35,205,202,0.15)',
+              padding: '1.25rem 1.5rem', borderRadius: 0,
+              background: 'linear-gradient(135deg, rgba(197,160,89,0.04), rgba(155,135,200,0.04))',
+              border: '1px solid rgba(197,160,89,0.15)',
               position: 'relative', overflow: 'hidden',
             }}>
               <div style={{ position: 'absolute', top: -20, right: -20, opacity: 0.04 }}>
@@ -243,14 +243,14 @@ export function WeeklyReport() {
               </div>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
                 <div style={{
-                  width: 32, height: 32, borderRadius: 9, flexShrink: 0,
-                  background: 'rgba(35,205,202,0.12)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#23CDCB',
+                  width: 32, height: 32, borderRadius: 0, flexShrink: 0,
+                  background: 'rgba(197,160,89,0.12)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#c5a059',
                 }}>
                   <Sparkles size={16} />
                 </div>
                 <div>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#23CDCB', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '0.375rem' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#c5a059', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '0.375rem' }}>
                     AI Insights
                   </div>
                   <p style={{ color: '#d4d4d8', fontSize: '0.9375rem', lineHeight: 1.65, margin: 0 }}>
@@ -267,11 +267,11 @@ export function WeeklyReport() {
               { label: isDE ? 'Erstellt' : 'Created', value: data.summary.tasksCreated, color: '#a1a1aa', icon: <Zap size={16} /> },
               { label: isDE ? 'Erledigt' : 'Completed', value: data.summary.tasksCompleted, color: '#22c55e', icon: <CheckCircle2 size={16} /> },
               { label: isDE ? 'Blockiert' : 'Blocked', value: data.summary.tasksBlocked, color: '#ef4444', icon: <AlertTriangle size={16} /> },
-              { label: isDE ? 'Agenten' : 'Agents', value: data.summary.activeAgents, color: '#23CDCB', icon: <Users size={16} /> },
+              { label: isDE ? 'Agenten' : 'Agents', value: data.summary.activeAgents, color: '#c5a059', icon: <Users size={16} /> },
               { label: isDE ? 'Kosten' : 'Cost', value: `${(data.summary.weekCostCent / 100).toFixed(2)} €`, color: '#f59e0b', icon: <Wallet size={16} /> },
             ].map(kpi => (
               <div key={kpi.label} style={{
-                padding: '1rem', borderRadius: 14,
+                padding: '1rem', borderRadius: 0,
                 background: 'rgba(255,255,255,0.02)',
                 border: '1px solid rgba(255,255,255,0.06)',
               }}>
@@ -293,10 +293,10 @@ export function WeeklyReport() {
               padding: '1.25rem',
               background: 'rgba(255,255,255,0.02)',
               border: '1px solid rgba(255,255,255,0.06)',
-              borderRadius: 16,
+              borderRadius: 0,
             }}>
               <div style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#f4f4f5', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                <TrendingUp size={14} style={{ color: '#23CDCB' }} />
+                <TrendingUp size={14} style={{ color: '#c5a059' }} />
                 {isDE ? 'Tägliche Erledigungen' : 'Daily Completions'}
               </div>
               <MiniBarChart days={data.dailyCompletions} />
@@ -307,12 +307,12 @@ export function WeeklyReport() {
               padding: '1.25rem',
               background: 'rgba(255,255,255,0.02)',
               border: '1px solid rgba(255,255,255,0.06)',
-              borderRadius: 16,
+              borderRadius: 0,
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
               gap: '0.5rem', minWidth: 140,
             }}>
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <ProgressRing pct={data.summary.completionRate} color="#23CDCB" size={80} />
+                <ProgressRing pct={data.summary.completionRate} color="#c5a059" size={80} />
                 <div style={{ position: 'absolute', textAlign: 'center' }}>
                   <div style={{ fontSize: '1.125rem', fontWeight: 800, color: '#f4f4f5', lineHeight: 1 }}>
                     {data.summary.completionRate}%
@@ -330,7 +330,7 @@ export function WeeklyReport() {
             <div style={{
               background: 'rgba(255,255,255,0.02)',
               border: '1px solid rgba(255,255,255,0.06)',
-              borderRadius: 16, overflow: 'hidden',
+              borderRadius: 0, overflow: 'hidden',
             }}>
               <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <Trophy size={14} style={{ color: '#f59e0b' }} />
@@ -350,7 +350,7 @@ export function WeeklyReport() {
                     }}>
                       {/* Rank */}
                       <span style={{
-                        width: 22, height: 22, borderRadius: 6, flexShrink: 0,
+                        width: 22, height: 22, borderRadius: 0, flexShrink: 0,
                         background: i === 0 ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.04)',
                         color: i === 0 ? '#f59e0b' : '#52525b',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -361,8 +361,8 @@ export function WeeklyReport() {
 
                       {/* Avatar */}
                       <div style={{
-                        width: 32, height: 32, borderRadius: 9, flexShrink: 0,
-                        background: agent.avatarFarbe || '#23CDCB',
+                        width: 32, height: 32, borderRadius: 0, flexShrink: 0,
+                        background: agent.avatarFarbe || '#c5a059',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: '0.875rem',
                       }}>
@@ -375,11 +375,11 @@ export function WeeklyReport() {
                           <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#f4f4f5' }}>{agent.name}</span>
                           <span style={{ fontSize: '0.6875rem', color: '#52525b' }}>{agent.rolle}</span>
                         </div>
-                        <div style={{ height: 6, background: 'rgba(255,255,255,0.05)', borderRadius: 3, overflow: 'hidden' }}>
+                        <div style={{ height: 6, background: 'rgba(255,255,255,0.05)', borderRadius: 0, overflow: 'hidden' }}>
                           <div style={{
                             height: '100%', width: `${barW}%`,
-                            background: i === 0 ? '#23CDCB' : 'rgba(35,205,202,0.5)',
-                            borderRadius: 3, transition: 'width 0.8s ease',
+                            background: i === 0 ? '#c5a059' : 'rgba(197,160,89,0.5)',
+                            borderRadius: 0, transition: 'width 0.8s ease',
                           }} />
                         </div>
                       </div>
@@ -412,10 +412,10 @@ export function WeeklyReport() {
               <div style={{
                 background: 'rgba(255,255,255,0.02)',
                 border: '1px solid rgba(255,255,255,0.06)',
-                borderRadius: 16, overflow: 'hidden',
+                borderRadius: 0, overflow: 'hidden',
               }}>
                 <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Target size={14} style={{ color: '#a855f7' }} />
+                  <Target size={14} style={{ color: '#9b87c8' }} />
                   <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#f4f4f5' }}>
                     {isDE ? 'Aktive Ziele' : 'Active Goals'}
                   </span>
@@ -425,13 +425,13 @@ export function WeeklyReport() {
                     <div key={goal.id}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
                         <span style={{ fontSize: '0.8125rem', color: '#d4d4d8', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, paddingRight: '0.5rem' }}>{goal.titel}</span>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#23CDCB', flexShrink: 0 }}>{goal.fortschritt}%</span>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#c5a059', flexShrink: 0 }}>{goal.fortschritt}%</span>
                       </div>
-                      <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2 }}>
+                      <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 0 }}>
                         <div style={{
                           height: '100%', width: `${goal.fortschritt}%`,
-                          background: goal.fortschritt >= 100 ? '#23CDCB' : goal.fortschritt >= 70 ? '#22c55e' : '#a855f7',
-                          borderRadius: 2, transition: 'width 0.6s ease',
+                          background: goal.fortschritt >= 100 ? '#c5a059' : goal.fortschritt >= 70 ? '#22c55e' : '#9b87c8',
+                          borderRadius: 0, transition: 'width 0.6s ease',
                         }} />
                       </div>
                     </div>
@@ -445,7 +445,7 @@ export function WeeklyReport() {
               <div style={{
                 background: 'rgba(255,255,255,0.02)',
                 border: '1px solid rgba(255,255,255,0.06)',
-                borderRadius: 16, overflow: 'hidden',
+                borderRadius: 0, overflow: 'hidden',
               }}>
                 <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <CheckCircle2 size={14} style={{ color: '#22c55e' }} />
