@@ -1,7 +1,7 @@
 // Self-Organization — Dynamic Org-Chart Reorganization
 //
-// Paperclip has static org charts. OpenCognit has SELF-ORGANIZING hierarchies.
-// Agents rise, fall, and reorganize based on trust, workload, and skill gaps.
+// OpenCognit has SELF-ORGANIZING hierarchies — agents rise, fall, and
+// reorganize based on trust, workload, and skill gaps.
 //
 // Based on 2026 Research: "The most effective multi-agent systems adapt their
 // structure to the task, not the other way around."

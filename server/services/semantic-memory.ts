@@ -1,6 +1,5 @@
 // Semantic Memory — Embeddings + Vector Search for Agent Knowledge
 //
-// Paperclip has "organizational context" (flat text). We have SEMANTIC MEMORY.
 // Agents store facts as embedding vectors. Other agents find relevant knowledge
 // via cosine similarity — even if they use different words.
 //

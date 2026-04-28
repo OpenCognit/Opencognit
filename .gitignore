@@ -105,3 +105,9 @@ REVIEW_PRE_GITHUB.md
 REFACTOR_DE_TO_EN.md
 AGENTS.md
 fix-tdz.py
+docs/ROADMAP_v1.md
+docs/SOCIAL_POST_Facebook.md
+
+# Playwright E2E test results
+test-results/
+playwright-report/
