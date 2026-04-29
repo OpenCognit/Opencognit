@@ -4,8 +4,8 @@
 
 set -e
 
-CYAN="\033[38;5;80m"
-CYAN2="\033[38;5;73m"
+GOLD="\033[38;5;179m"
+GOLD2="\033[38;5;137m"
 GREEN="\033[32m"
 YELLOW="\033[33m"
 RED="\033[31m"
@@ -13,7 +13,7 @@ BOLD="\033[1m"
 RESET="\033[0m"
 
 banner() {
-  echo -e "${CYAN}${BOLD}"
+  echo -e "${GOLD}${BOLD}"
   echo -e " ██████╗ ██████╗ ███████╗███╗   ██╗ ██████╗ ██████╗  ██████╗ ███╗   ██╗██╗████████╗"
   echo -e "██╔═══██╗██╔══██╗██╔════╝████╗  ██║██╔════╝██╔═══██╗██╔════╝ ████╗  ██║██║╚══██╔══╝"
   echo -e "██║   ██║██████╔╝█████╗  ██╔██╗ ██║██║     ██║   ██║██║  ███╗██╔██╗ ██║██║   ██║   "
@@ -29,7 +29,7 @@ ok()   { echo -e "  ${GREEN}✓${RESET} $1"; }
 warn() { echo -e "  ${YELLOW}⚠${RESET} $1"; }
 fail() { echo -e "  ${RED}✗${RESET} $1"; exit 1; }
 info() { echo -e "  \033[2m$1${RESET}"; }
-step() { echo -e "\n${CYAN}${BOLD}[$1/$2]${RESET} ${BOLD}$3${RESET}"; }
+step() { echo -e "\n${GOLD}${BOLD}[$1/$2]${RESET} ${BOLD}$3${RESET}"; }
 
 # Find a free TCP port starting from $1
 find_free_port() {
@@ -141,11 +141,11 @@ cat > "$BIN_DIR/opencognit" <<SCRIPT
 #!/bin/bash
 INSTALL_DIR="${INSTALL_DIR}"
 PORT="${PORT}"
-CYAN="\033[38;5;80m"; BOLD="\033[1m"; RESET="\033[0m"; GREEN="\033[32m"; YELLOW="\033[33m"; RED="\033[31m"
+GOLD="\033[38;5;179m"; BOLD="\033[1m"; RESET="\033[0m"; GREEN="\033[32m"; YELLOW="\033[33m"; RED="\033[31m"
 
 case "\$1" in
   update)
-    echo -e "\${CYAN}\${BOLD}Updating OpenCognit...\${RESET}"
+    echo -e "\${GOLD}\${BOLD}Updating OpenCognit...\${RESET}"
     cd "\$INSTALL_DIR"
     git pull || { echo -e "  \${RED}✗\${RESET} git pull failed"; exit 1; }
     npm install --silent || { echo -e "  \${RED}✗\${RESET} npm install failed"; exit 1; }
@@ -168,18 +168,18 @@ case "\$1" in
     echo -e "\n  Goodbye 👋"
     ;;
   help|--help|-h)
-    echo -e "\n  \${CYAN}\${BOLD}opencognit\${RESET} — Zero Human Company OS\n"
+    echo -e "\n  \${GOLD}\${BOLD}opencognit\${RESET} — Zero Human Company OS\n"
     echo -e "  \${BOLD}Usage:\${RESET}"
-    echo -e "    \${CYAN}opencognit\${RESET}            Start the server"
-    echo -e "    \${CYAN}opencognit update\${RESET}     Pull latest version & rebuild"
-    echo -e "    \${CYAN}opencognit uninstall\${RESET}  Remove OpenCognit"
-    echo -e "    \${CYAN}opencognit help\${RESET}       Show this help"
+    echo -e "    \${GOLD}opencognit\${RESET}            Start the server"
+    echo -e "    \${GOLD}opencognit update\${RESET}     Pull latest version & rebuild"
+    echo -e "    \${GOLD}opencognit uninstall\${RESET}  Remove OpenCognit"
+    echo -e "    \${GOLD}opencognit help\${RESET}       Show this help"
     echo -e "\n  \${BOLD}Install dir:\${RESET} \$INSTALL_DIR"
     echo -e "  \${BOLD}URL:\${RESET}          http://localhost:\${PORT}"
     echo -e "  \${BOLD}Docs:\${RESET}         https://github.com/OpenCognit/opencognit\n"
     ;;
   *)
-    echo -e "\n  \${CYAN}\${BOLD}Starting OpenCognit...\${RESET}"
+    echo -e "\n  \${GOLD}\${BOLD}Starting OpenCognit...\${RESET}"
     echo -e "  \033[2mOpen http://localhost:\${PORT} in your browser\${RESET}\n"
     cd "\$INSTALL_DIR" && npm start
     ;;
@@ -205,9 +205,9 @@ echo -e "${GREEN}${BOLD}✓ OpenCognit installed successfully.${RESET}"
 echo ""
 echo -e "  ${BOLD}Start with:${RESET}"
 echo ""
-echo -e "    ${CYAN}${BOLD}opencognit${RESET}"
+echo -e "    ${GOLD}${BOLD}opencognit${RESET}"
 echo ""
-echo -e "  Then open ${CYAN}${BOLD}http://localhost:${PORT}${RESET} and create your account."
+echo -e "  Then open ${GOLD}${BOLD}http://localhost:${PORT}${RESET} and create your account."
 echo ""
 echo -e "  \033[2mGitHub: https://github.com/OpenCognit/opencognit${RESET}"
 echo ""
