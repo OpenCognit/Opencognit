@@ -86,7 +86,7 @@ cd "$PROJECT_NAME"
 
 # ── Install dependencies ──────────────────────────────────────────────────────
 step 3 5 "Installing dependencies…"
-npm install --prefer-offline --no-fund --no-audit --legacy-peer-deps --loglevel=error || fail "npm install failed. See output above for the error."
+npm install --prefer-offline --no-fund --no-audit --loglevel=error || fail "npm install failed. See output above for the error."
 ok "Dependencies installed"
 
 # ── Secrets + Port + DB ───────────────────────────────────────────────────────
