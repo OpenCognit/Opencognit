@@ -452,8 +452,8 @@ appEvents.on('broadcast', ({ type, data }: { type: string; data: any }) => {
 });
 
 // Forward trace events from heartbeat/services → SSE clients (avoids circular import)
-appEvents.on('trace', ({ expertId, unternehmenId, typ, titel, details, runId }: any) => {
-  emitTrace(expertId, unternehmenId, typ, titel, details, runId);
+appEvents.on('trace', ({ agentId, companyId, type, title, details, runId }: any) => {
+  emitTrace(agentId, companyId, type, title, details, runId);
 });
 
 // Wire up scheduler broadcast + trace functions (these were imported but never registered)
@@ -2286,7 +2286,7 @@ app.get('/api/companies/:id/performance/leaderboard', requireCompanyAccess(), as
 // ===== Inbox Endpoint - Agent fetches assigned tasks =====
 app.get('/api/agents/:id/inbox', requireResourceAccess("agent"), (req, res) => {
   const expertId = req.params.id as string;
-  const unternehmenId = req.query.unternehmenId as string;
+  const unternehmenId = ((req as any).resolvedCompanyId || req.query.unternehmenId) as string;
 
   if (!unternehmenId) {
     return res.status(400).json({ error: 'unternehmenId query parameter is required' });
@@ -2340,7 +2340,7 @@ app.get('/api/agents/:id/inbox', requireResourceAccess("agent"), (req, res) => {
 // ===== Team Status Endpoint - Orchestrator fetches team overview =====
 app.get('/api/agents/:id/team-status', authMiddleware, requireResourceAccess("agent"), (req, res) => {
   const expertId = req.params.id as string;
-  const unternehmenId = (req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
+  const unternehmenId = ((req as any).resolvedCompanyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
 
   if (!unternehmenId) return res.status(400).json({ error: 'unternehmenId header required' });
 
@@ -3784,7 +3784,7 @@ app.delete('/api/system/factory-reset', authMiddleware, (req, res) => {
 // =============================================
 function handleChatGet(req: express.Request, res: express.Response) {
   const id = req.params.id as string;
-  const unternehmenId = (req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
+  const unternehmenId = ((req as any).resolvedCompanyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
   if (!unternehmenId) return res.status(400).json({ error: 'Missing x-company-id header' });
 
   const history = db.select()
@@ -3827,7 +3827,7 @@ function handleChatGet(req: express.Request, res: express.Response) {
 
 function handleChatPost(req: express.Request, res: express.Response) {
   const id = req.params.id as string;
-  const unternehmenId = (req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id'] || req.body.unternehmenId || req.body.companyId) as string;
+  const unternehmenId = ((req as any).resolvedCompanyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id'] || req.body.unternehmenId || req.body.companyId) as string;
   const nachricht = req.body.nachricht || req.body.message;
   const absenderTyp = req.body.absenderTyp || req.body.senderType || 'board';
   if (!unternehmenId || !nachricht) return res.status(400).json({ error: 'Missing parameters' });
@@ -3852,6 +3852,25 @@ function handleChatPost(req: express.Request, res: express.Response) {
 // Both /api/agents/:id/chat and /api/mitarbeiter/:id/chat point to the same handlers
 app.get('/api/agents/:id/chat', requireResourceAccess('agent'), handleChatGet);
 app.post('/api/agents/:id/chat', requireResourceAccess('agent'), handleChatPost);
+
+// DELETE entire chat history for an agent
+app.delete('/api/agents/:id/chat', requireResourceAccess('agent'), (req: express.Request, res: express.Response) => {
+  const expertId = req.params.id as string;
+  const unternehmenId = ((req as any).resolvedCompanyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
+  if (!unternehmenId) return res.status(400).json({ error: 'Missing x-company-id header' });
+  db.delete(chatMessages).where(and(eq(chatMessages.companyId, unternehmenId), eq(chatMessages.agentId, expertId))).run();
+  res.json({ status: 'ok', deleted: true });
+});
+
+// DELETE a single chat message
+app.delete('/api/agents/:id/chat/messages/:msgId', requireResourceAccess('agent'), (req: express.Request, res: express.Response) => {
+  const expertId = req.params.id as string;
+  const msgId = req.params.msgId as string;
+  const unternehmenId = ((req as any).resolvedCompanyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
+  if (!unternehmenId) return res.status(400).json({ error: 'Missing x-company-id header' });
+  db.delete(chatMessages).where(and(eq(chatMessages.companyId, unternehmenId), eq(chatMessages.agentId, expertId), eq(chatMessages.id, msgId))).run();
+  res.json({ status: 'ok', deleted: true });
+});
 
 // ─── Direct LLM Chat (fast, context-aware, bypasses heartbeat) ─────────────
 // ── URL-Fetch helper for chat context ───────────────────────────────────────
@@ -3886,7 +3905,7 @@ const URL_PATTERN = /https?:\/\/[^\s)>"']+/g;
 
 app.post('/api/agents/:id/chat/direct', requireResourceAccess("agent"), async (req: express.Request, res: express.Response) => {
   const expertId = req.params.id as string;
-  const unternehmenId = (req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
+  const unternehmenId = ((req as any).resolvedCompanyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
   const { nachricht } = req.body;
   if (!unternehmenId || !nachricht) return res.status(400).json({ error: 'Missing parameters' });
 
@@ -4213,7 +4232,7 @@ ${langLine(uiLang)} ${isEn ? `You respond directly to board messages. Be precise
 // =============================================
 app.post(['/api/agents/:id/chat/stream', '/api/experten/:id/chat/stream'], authMiddleware, requireResourceAccess('agent'), async (req: express.Request, res: express.Response) => {
   const expertId = req.params.id as string;
-  const unternehmenId = (req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
+  const unternehmenId = ((req as any).resolvedCompanyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
   const { nachricht, image } = req.body; // image: { data: string (base64), mimeType: string }
   if (!unternehmenId || !nachricht) return res.status(400).json({ error: 'Missing parameters' });
 
@@ -4276,7 +4295,7 @@ app.post(['/api/agents/:id/chat/stream', '/api/experten/:id/chat/stream'], authM
       const agentMsg2 = { id: uuid(), companyId: unternehmenId, agentId: expertId, senderType: 'agent' as const, message: cliReply, read: false, createdAt: new Date().toISOString() };
       db.insert(chatMessages).values(agentMsg2).run();
       broadcastUpdate('chat_message', agentMsg2);
-      emit('done', { reply: cliReply });
+      emit('done', { reply: cliReply, model: modelId });
     } catch (err: any) {
       emit('error', { message: err.message });
     } finally {
@@ -4495,7 +4514,8 @@ ${langLine(uiLang)} ${isEn ? 'You respond directly to board messages. Be precise
     }
   }
 
-  emit('done', { reply: finalReply });
+  const kostenCentFinal = Math.ceil((inputTokens * 0.0008 + outputTokens * 0.004) / 100);
+  emit('done', { reply: finalReply, inputTokens, outputTokens, costCents: kostenCentFinal, model: modelId });
   res.end();
 });
 
@@ -4523,7 +4543,7 @@ function emitTrace(expertId: string, unternehmenId: string, typ: string, titel: 
   broadcastUpdate('trace', { expertId, typ, titel, details, erstelltAm });
 
   // Forward important traces to Telegram (only errors/warnings, not routine info)
-  if (['error', 'warning'].includes(typ) || titel.includes('Genehmigung')) {
+  if (['error', 'warning'].includes(typ) || titel?.includes('Genehmigung')) {
     messagingService.notify(unternehmenId, titel, details, typ).catch(console.error);
   }
 }
@@ -7017,8 +7037,8 @@ app.post('/api/bootstrap/execute', authMiddleware, async (req, res) => {
   if (dir.startsWith(opencognitRoot)) return res.status(400).json({ error: 'workDir darf nicht im OpenCognit-Verzeichnis liegen' });
 
   const nowStr = now();
-  const created: any = { projects: [], agenten: [], tasks: [], routines: [], soulFiles: [] };
-  const skipped: any = { projects: [], agenten: [], tasks: [], routines: [] };
+  const created: any = { projekte: [], agenten: [], tasks: [], routinen: [], soulFiles: [] };
+  const skipped: any = { projekte: [], agenten: [], tasks: [], routinen: [] };
   const projektMap: Record<string, string> = {}; // name → id
   const agentMap: Record<string, string> = {};   // name → id
 
@@ -7060,7 +7080,7 @@ app.post('/api/bootstrap/execute', authMiddleware, async (req, res) => {
     try { fs.mkdirSync(subDir, { recursive: true }); } catch { /* ignore */ }
 
     if (projektMap[p.name]) {
-      skipped.projects.push({ name: p.name, reason: 'bereits vorhanden' });
+      skipped.projekte.push({ name: p.name, reason: 'bereits vorhanden' });
       continue;
     }
 
@@ -7076,7 +7096,7 @@ app.post('/api/bootstrap/execute', authMiddleware, async (req, res) => {
       createdAt: nowStr, updatedAt: nowStr,
     }).run();
     projektMap[p.name] = projektId;
-    created.projects.push({ id: projektId, name: p.name, workDir: subDir });
+    created.projekte.push({ id: projektId, name: p.name, workDir: subDir });
   }
 
   // Build workDir lookup across all projects (existing + new)
@@ -7188,7 +7208,7 @@ app.post('/api/bootstrap/execute', authMiddleware, async (req, res) => {
     if (!agentId) continue;
     const dedupKey = `${agentId}::${r.name}`;
     if (existingRoutineKeys.has(dedupKey)) {
-      skipped.routines.push({ name: r.name, reason: 'bereits vorhanden' });
+      skipped.routinen.push({ name: r.name, reason: 'bereits vorhanden' });
       continue;
     }
     const routineId = uuid();
@@ -7209,7 +7229,7 @@ app.post('/api/bootstrap/execute', authMiddleware, async (req, res) => {
       }).run();
     }
     existingRoutineKeys.add(dedupKey);
-    created.routines.push({ id: routineId, name: r.name, agentName: r.agentName });
+    created.routinen.push({ id: routineId, name: r.name, agentName: r.agentName });
   }
 
   // 6. Set start project to critical priority
@@ -7217,9 +7237,9 @@ app.post('/api/bootstrap/execute', authMiddleware, async (req, res) => {
     db.update(projects).set({ priority: 'critical', updatedAt: nowStr }).where(eq(projects.id, projektMap[startProjektName])).run();
   }
 
-  const totalSkipped = skipped.projects.length + skipped.agenten.length + skipped.tasks.length + skipped.routines.length;
+  const totalSkipped = skipped.projekte.length + skipped.agenten.length + skipped.tasks.length + skipped.routinen.length;
   logAktivitaet(unternehmenId, 'system', 'system', 'CEO Bootstrap',
-    `hat ${created.agenten.length} Agenten, ${created.projects.length} Projekte und ${created.tasks.length} Tasks erstellt (${totalSkipped} übersprungen)`,
+    `hat ${created.agenten.length} Agenten, ${created.projekte.length} Projekte und ${created.tasks.length} Tasks erstellt (${totalSkipped} übersprungen)`,
     'companies', unternehmenId);
   res.json({ success: true, created, skipped });
 });
