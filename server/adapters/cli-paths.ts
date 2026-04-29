@@ -26,3 +26,15 @@ export function getAllCliPaths(): Record<string, string> {
 export function resolveCliPath(tool: string, envVar?: string, defaultCmd = tool): string {
   return getCliPath(tool) || (envVar ? process.env[envVar] : undefined) || defaultCmd;
 }
+
+/** Returns a copy of process.env with ~/.local/bin prepended to PATH.
+ *  Ensures CLI tools installed via pip/pipx/npm -g are found regardless
+ *  of how the server process was started (systemd, Docker, IDE, etc.).
+ */
+export function getEnrichedEnv(baseEnv: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const home = baseEnv.HOME || baseEnv.USERPROFILE || '';
+  const localBin = `${home}/.local/bin`;
+  const currentPath = baseEnv.PATH || '';
+  const enrichedPath = currentPath.includes(localBin) ? currentPath : `${localBin}:${currentPath}`;
+  return { ...baseEnv, PATH: enrichedPath };
+}

@@ -9,7 +9,7 @@ import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
 import { resolveAgentWorkdir, SAFE_DEFAULT_WORKDIR } from './workspace-guard.js';
-import { resolveCliPath } from './cli-paths.js';
+import { resolveCliPath, getEnrichedEnv } from './cli-paths.js';
 
 const execAsync = promisify(exec);
 
@@ -91,7 +91,7 @@ export class KimiCLIAdapter implements Adapter {
 
   constructor(options: KimiCLIAdapterOptions = {}) {
     this.options = {
-      kimiPath: options.kimiPath || resolveCliPath('kimi', 'KIMI_PATH', 'kimi'),
+      kimiPath: options.kimiPath,
       model: options.model || undefined,
       maxExecutionTimeMs: options.maxExecutionTimeMs || 10 * 60 * 1000,
       workingDir: options.workingDir || SAFE_DEFAULT_WORKDIR,
@@ -100,6 +100,10 @@ export class KimiCLIAdapter implements Adapter {
     if (!fs.existsSync(this.sessionDir)) {
       fs.mkdirSync(this.sessionDir, { recursive: true });
     }
+  }
+
+  private resolveKimiPath(): string {
+    return this.options.kimiPath || resolveCliPath('kimi', 'KIMI_PATH', 'kimi');
   }
 
   canHandle(task: AdapterTask): boolean {
@@ -155,14 +159,14 @@ export class KimiCLIAdapter implements Adapter {
       }
 
       const { stdout, stderr } = await execKimiWithStdin(
-        this.options.kimiPath!,
+        this.resolveKimiPath(),
         args,
         escapedPrompt,
         {
           cwd: workDir,
           timeout: this.options.maxExecutionTimeMs ?? 120000,
           env: {
-            ...process.env,
+            ...getEnrichedEnv(),
             OPENCOGNIT_EXPERT_ID: config.agentId,
             OPENCOGNIT_RUN_ID: config.runId,
           },
@@ -275,7 +279,7 @@ export class KimiCLIAdapter implements Adapter {
   async isAvailable(): Promise<boolean> {
     return new Promise(resolve => {
       try {
-        const child = spawn(this.options.kimiPath!, ['--version'], { stdio: 'ignore', shell: false });
+        const child = spawn(this.resolveKimiPath(), ['--version'], { stdio: 'ignore', shell: false, env: getEnrichedEnv() });
         child.on('error', () => resolve(false));
         child.on('close', code => resolve(code === 0));
         setTimeout(() => { try { child.kill(); } catch {} resolve(false); }, 5000);

@@ -8,7 +8,7 @@ import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
 import { resolveAgentWorkdir, SAFE_DEFAULT_WORKDIR } from './workspace-guard.js';
-import { resolveCliPath } from './cli-paths.js';
+import { resolveCliPath, getEnrichedEnv } from './cli-paths.js';
 
 const execAsync = promisify(exec);
 
@@ -32,7 +32,7 @@ export class CodexCLIAdapter implements Adapter {
 
   constructor(options: CodexCLIAdapterOptions = {}) {
     this.options = {
-      codexPath: options.codexPath || resolveCliPath('codex', 'CODEX_PATH', 'codex'),
+      codexPath: options.codexPath,
       model: options.model || 'o4-mini',
       maxExecutionTimeMs: options.maxExecutionTimeMs || 10 * 60 * 1000,
       workingDir: options.workingDir || SAFE_DEFAULT_WORKDIR,
@@ -42,6 +42,10 @@ export class CodexCLIAdapter implements Adapter {
     if (!fs.existsSync(this.sessionDir)) {
       fs.mkdirSync(this.sessionDir, { recursive: true });
     }
+  }
+
+  private resolveCodexPath(): string {
+    return this.options.codexPath || resolveCliPath('codex', 'CODEX_PATH', 'codex');
   }
 
   canHandle(task: AdapterTask): boolean {
@@ -100,7 +104,7 @@ export class CodexCLIAdapter implements Adapter {
       // Codex CLI: codex --model MODEL --approval-mode MODE "PROMPT"
       // Prompt is passed as last positional argument (double-quoted, shell-escaped)
       const escapedPrompt = prompt.replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/`/g, '\\`');
-      const cmd = `${this.options.codexPath} --model "${this.options.model}" --approval-mode "${this.options.approvalMode}" "${escapedPrompt}"`;
+      const cmd = `${this.resolveCodexPath()} --model "${this.options.model}" --approval-mode "${this.options.approvalMode}" "${escapedPrompt}"`;
 
       const { stdout, stderr } = await execAsync(
         cmd,
@@ -108,7 +112,7 @@ export class CodexCLIAdapter implements Adapter {
           cwd: workDir,
           timeout: this.options.maxExecutionTimeMs,
           env: {
-            ...process.env,
+            ...getEnrichedEnv(),
             OPENCOGNIT_EXPERT_ID: config.agentId,
             OPENCOGNIT_UNTERNEHMEN_ID: config.companyId,
             OPENCOGNIT_RUN_ID: config.runId,
@@ -237,7 +241,7 @@ export class CodexCLIAdapter implements Adapter {
   async isAvailable(): Promise<boolean> {
     return new Promise(resolve => {
       try {
-        const child = spawn(this.options.codexPath!, ['--version'], { stdio: 'ignore', shell: false });
+        const child = spawn(this.resolveCodexPath(), ['--version'], { stdio: 'ignore', shell: false, env: getEnrichedEnv() });
         child.on('error', () => resolve(false));
         child.on('close', code => resolve(code === 0));
         setTimeout(() => { try { child.kill(); } catch {} resolve(false); }, 5000);

@@ -263,7 +263,7 @@ export function Chat() {
   }, [aktivesUnternehmen?.id]);
 
   useEffect(() => {
-    if (!selectedAgent) return;
+    if (!selectedAgent || !aktivesUnternehmen) return;
     abortRef.current?.abort();
     setStreaming(false);
     if (currentSession.messages.some(m => m.role !== 'system')) {
@@ -273,8 +273,30 @@ export function Chat() {
     setSessions(agentSessions);
     const fresh = newSession();
     setCurrentSession(fresh);
-    setMessages([{ id: 'welcome', role: 'system', text: de ? `Du chattest mit ${selectedAgent.name}` : `Chatting with ${selectedAgent.name}`, time: new Date().toISOString() }]);
-  }, [selectedAgent?.id]);
+
+    const welcomeMsg: Message = { id: 'welcome', role: 'system', text: de ? `Du chattest mit ${selectedAgent.name}` : `Chatting with ${selectedAgent.name}`, time: new Date().toISOString() };
+    setMessages([welcomeMsg]);
+
+    // Load server-side chat history so messages survive refresh
+    fetch(`/api/experten/${selectedAgent.id}/chat`, {
+      credentials: 'include',
+      headers: authHeaders({ 'x-unternehmen-id': aktivesUnternehmen.id }),
+    })
+      .then(r => r.json())
+      .then((data: any[]) => {
+        if (!Array.isArray(data) || data.length === 0) return;
+        const serverMsgs: Message[] = data.map(m => ({
+          id: m.id,
+          role: m.senderType === 'board' ? 'user' : m.senderType === 'agent' ? 'agent' : 'system',
+          text: m.message || '',
+          time: m.createdAt || new Date().toISOString(),
+        }));
+        const next = [welcomeMsg, ...serverMsgs];
+        setMessages(next);
+        setCurrentSession(prev => ({ ...prev, messages: next }));
+      })
+      .catch(() => {});
+  }, [selectedAgent?.id, aktivesUnternehmen?.id]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, streaming]);
   useEffect(() => { setCurrentSession(prev => ({ ...prev, messages })); }, [messages]);
@@ -369,11 +391,11 @@ export function Chat() {
           try {
             const ev = JSON.parse(line.slice(6));
             if (ev.type === 'thinking_start' || ev.type === 'thinking_delta') {
-              setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, thinking: (m.thinking ?? '') + (ev.text ?? '') } : m));
+              setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, thinking: (m.thinking ?? '') + (ev.chunk ?? '') } : m));
             } else if (ev.type === 'text_delta') {
-              setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, text: m.text + (ev.text ?? '') } : m));
+              setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, text: m.text + (ev.chunk ?? '') } : m));
             } else if (ev.type === 'done') {
-              const final = ev.fullReply ?? '';
+              const final = ev.reply ?? '';
               setMessages(prev => {
                 const next = prev.map(m => m.id === agentMsgId ? { ...m, text: final || m.text, streaming: false } : m);
                 persistSession(next, currentSession, selectedAgent.id);
@@ -483,7 +505,31 @@ export function Chat() {
                   <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: C.gold, letterSpacing: '0.15em', textTransform: 'uppercase' }}>History</div>
                   <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{selectedAgent.name}</div>
                 </div>
-                <button onClick={() => setSidebarOpen(false)} style={{ background: 'transparent', border: 'none', color: C.textDim, cursor: 'pointer', padding: 4 }}><X size={14} /></button>
+                <div style={{ ...flex('row'), gap: 6, alignItems: 'center' }}>
+                  {sessions.length > 0 && (
+                    <button
+                      onClick={async () => {
+                        if (!selectedAgent || !aktivesUnternehmen) return;
+                        if (!confirm(de ? 'Gesamten Chat-Verlauf löschen?' : 'Delete entire chat history?')) return;
+                        try {
+                          await fetch(`/api/experten/${selectedAgent.id}/chat`, {
+                            method: 'DELETE',
+                            credentials: 'include',
+                            headers: authHeaders({ 'x-unternehmen-id': aktivesUnternehmen.id }),
+                          });
+                          saveSessions(selectedAgent.id, []);
+                          setSessions([]);
+                          startNewChat();
+                        } catch {}
+                      }}
+                      title={de ? 'Alles löschen' : 'Clear all'}
+                      style={{ background: 'transparent', border: 'none', color: C.textDim, cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center' }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                  <button onClick={() => setSidebarOpen(false)} style={{ background: 'transparent', border: 'none', color: C.textDim, cursor: 'pointer', padding: 4 }}><X size={14} /></button>
+                </div>
               </div>
               <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'thin', scrollbarColor: 'rgba(197,180,150,0.1) transparent' }}>
                 {sessions.length === 0 ? (
@@ -504,7 +550,7 @@ export function Chat() {
                             <div style={{ fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: s.id === currentSession.id ? C.gold : C.textMuted, fontWeight: s.id === currentSession.id ? 600 : 400 }}>{s.title}</div>
                             <div style={{ fontSize: 9, color: C.textDim, fontFamily: 'var(--font-mono)', marginTop: 2 }}>{fmtTime(s.createdAt)} · {s.messages.filter(m => m.role !== 'system').length} msgs</div>
                           </button>
-                          <button onClick={e => { e.stopPropagation(); deleteSession(s.id); }} style={{ background: 'transparent', border: 'none', color: C.textDim, cursor: 'pointer', padding: 6, opacity: 0, transition: 'opacity 0.15s' }} onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.opacity = '1'} onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.opacity = '0'}>
+                          <button onClick={e => { e.stopPropagation(); deleteSession(s.id); }} style={{ background: 'transparent', border: 'none', color: C.textDim, cursor: 'pointer', padding: 6, opacity: 0.5, transition: 'opacity 0.15s' }} onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.opacity = '1'} onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.opacity = '0.5'}>
                             <Trash2 size={11} />
                           </button>
                         </div>
@@ -590,6 +636,32 @@ export function Chat() {
                     )}
                     <div style={{ ...flex('row'), alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: 10, color: C.textDim, fontFamily: 'var(--font-mono)' }}>{fmtTime(msg.time)}</span>
+                      {msg.id !== 'welcome' && (
+                        <button
+                          onClick={async () => {
+                            if (!selectedAgent || !aktivesUnternehmen) return;
+                            const isServerMsg = !msg.id.startsWith('u-') && !msg.id.startsWith('a-');
+                            if (isServerMsg && !confirm(de ? 'Nachricht löschen?' : 'Delete message?')) return;
+                            if (isServerMsg) {
+                              try {
+                                await fetch(`/api/experten/${selectedAgent.id}/chat/messages/${msg.id}`, {
+                                  method: 'DELETE',
+                                  credentials: 'include',
+                                  headers: authHeaders({ 'x-unternehmen-id': aktivesUnternehmen.id }),
+                                });
+                              } catch {}
+                            }
+                            setMessages(prev => prev.filter(m => m.id !== msg.id));
+                            setCurrentSession(prev => ({ ...prev, messages: prev.messages.filter(m => m.id !== msg.id) }));
+                          }}
+                          title={de ? 'Löschen' : 'Delete'}
+                          style={{ background: 'transparent', border: 'none', color: C.textDim, cursor: 'pointer', padding: 2, fontSize: 10, lineHeight: 1, opacity: 0.35, transition: 'opacity 0.15s' }}
+                          onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.opacity = '1'}
+                          onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.opacity = '0.35'}
+                        >
+                          ×
+                        </button>
+                      )}
                     </div>
                   </div>
                 </motion.div>

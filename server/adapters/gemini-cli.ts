@@ -8,7 +8,7 @@ import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
 import { resolveAgentWorkdir, SAFE_DEFAULT_WORKDIR } from './workspace-guard.js';
-import { resolveCliPath } from './cli-paths.js';
+import { resolveCliPath, getEnrichedEnv } from './cli-paths.js';
 
 const execAsync = promisify(exec);
 
@@ -30,7 +30,7 @@ export class GeminiCLIAdapter implements Adapter {
 
   constructor(options: GeminiCLIAdapterOptions = {}) {
     this.options = {
-      geminiPath: options.geminiPath || resolveCliPath('gemini', 'GEMINI_PATH', 'gemini'),
+      geminiPath: options.geminiPath,
       model: options.model || 'gemini-2.5-pro',
       maxExecutionTimeMs: options.maxExecutionTimeMs || 10 * 60 * 1000,
       workingDir: options.workingDir || SAFE_DEFAULT_WORKDIR,
@@ -39,6 +39,10 @@ export class GeminiCLIAdapter implements Adapter {
     if (!fs.existsSync(this.sessionDir)) {
       fs.mkdirSync(this.sessionDir, { recursive: true });
     }
+  }
+
+  private resolveGeminiPath(): string {
+    return this.options.geminiPath || resolveCliPath('gemini', 'GEMINI_PATH', 'gemini');
   }
 
   canHandle(task: AdapterTask): boolean {
@@ -97,12 +101,12 @@ export class GeminiCLIAdapter implements Adapter {
       const escapedPrompt = prompt.replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/`/g, '\\`');
 
       const { stdout, stderr } = await execAsync(
-        `${this.options.geminiPath} -m "${this.options.model}" -p "${escapedPrompt}"`,
+        `${this.resolveGeminiPath()} -m "${this.options.model}" -p "${escapedPrompt}"`,
         {
           cwd: workDir,
           timeout: this.options.maxExecutionTimeMs,
           env: {
-            ...process.env,
+            ...getEnrichedEnv(),
             OPENCOGNIT_EXPERT_ID: config.agentId,
             OPENCOGNIT_RUN_ID: config.runId,
           },
@@ -215,7 +219,7 @@ export class GeminiCLIAdapter implements Adapter {
   async isAvailable(): Promise<boolean> {
     return new Promise(resolve => {
       try {
-        const child = spawn(this.options.geminiPath!, ['--version'], { stdio: 'ignore', shell: false });
+        const child = spawn(this.resolveGeminiPath(), ['--version'], { stdio: 'ignore', shell: false, env: getEnrichedEnv() });
         child.on('error', () => resolve(false));
         child.on('close', code => resolve(code === 0));
         setTimeout(() => { try { child.kill(); } catch {} resolve(false); }, 5000);

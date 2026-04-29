@@ -103,7 +103,7 @@ export class AdapterRegistry {
     let adapter = this.selectAdapter(task);
     
     // Wenn verbindungsTyp gesetzt ist, versuche zuerst registrierte Adapter, dann LLM-Wrapper
-    if (config.connectionType && config.connectionType !== 'bash' && config.connectionType !== 'http' && config.connectionType !== 'claude-code' && config.connectionType !== 'codex-cli' && config.connectionType !== 'gemini-cli' && config.connectionType !== 'kimi-cli') {
+    if (config.connectionType && config.connectionType !== 'bash' && config.connectionType !== 'http') {
       // CLI-Subscription-Adapter haben Vorrang (direkt registriert)
       const directAdapter = this.adapters.get(config.connectionType);
       if (directAdapter) {
