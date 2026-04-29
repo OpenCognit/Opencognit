@@ -17,6 +17,12 @@ The open-source AI agent OS — CEO orchestrator, persistent memory, real execut
 
 ---
 
+<img width="1646" height="1225" alt="Bildschirmfoto_20260429_142853" src="https://github.com/user-attachments/assets/2b3f749e-0e16-470c-adb8-145fc0410bfa" />
+<img width="1646" height="1225" alt="Bildschirmfoto_20260429_142921" src="https://github.com/user-attachments/assets/2e31e0ec-7494-4191-97cf-7f261a2afb36" />
+<img width="1646" height="1225" alt="Bildschirmfoto_20260429_142940" src="https://github.com/user-attachments/assets/2d71fd83-8bf3-4927-9c41-e95c578f3e06" />
+<img width="1646" height="1225" alt="Bildschirmfoto_20260429_143004" src="https://github.com/user-attachments/assets/75ee9d98-864c-4181-a6ce-41a4ace5ee74" />
+
+
 **If OpenCognit saves you time, a ⭐ star helps others find it.**
 
 </div>
