@@ -397,6 +397,38 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
   const [stats, setStats] = useState<any>(null);
   const [loadingStats, setLoadingStats] = useState(true);
 
+  // Workspace file viewer state: taskId → { files, loading, fileContent }
+  const [wsState, setWsState] = useState<Record<string, { files: any[]; loading: boolean; fileContent?: string; openFile?: string }>>({});
+
+  const toggleWorkspace = async (taskId: string) => {
+    if (wsState[taskId]) {
+      setWsState(prev => { const n = { ...prev }; delete n[taskId]; return n; });
+      return;
+    }
+    setWsState(prev => ({ ...prev, [taskId]: { files: [], loading: true } }));
+    try {
+      const info = await authFetch(`/api/tasks/${taskId}/workspace`).then(r => r.json());
+      setWsState(prev => ({ ...prev, [taskId]: { files: info.files ?? [], loading: false } }));
+    } catch {
+      setWsState(prev => ({ ...prev, [taskId]: { files: [], loading: false } }));
+    }
+  };
+
+  const openWorkspaceFile = async (taskId: string, filePath: string, fileName: string) => {
+    const cur = wsState[taskId];
+    if (cur?.openFile === fileName) {
+      setWsState(prev => ({ ...prev, [taskId]: { ...prev[taskId], openFile: undefined, fileContent: undefined } }));
+      return;
+    }
+    setWsState(prev => ({ ...prev, [taskId]: { ...prev[taskId], openFile: fileName, fileContent: '…' } }));
+    try {
+      const content = await authFetch(`/api/tasks/${taskId}/workspace/file?path=${encodeURIComponent(fileName)}`).then(r => r.text());
+      setWsState(prev => ({ ...prev, [taskId]: { ...prev[taskId], fileContent: content } }));
+    } catch {
+      setWsState(prev => ({ ...prev, [taskId]: { ...prev[taskId], fileContent: '❌ Konnte Datei nicht laden' } }));
+    }
+  };
+
   // Team status state (for orchestrators)
   const [teamStatus, setTeamStatus] = useState<{ team: any[]; unassigned: any[] } | null>(null);
 
@@ -908,7 +940,10 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                 setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, nachricht: m.nachricht + (ev.chunk ?? '') } : m));
               } else if (ev.type === 'done') {
                 const final = ev.reply ?? '';
-                setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, _streaming: false, nachricht: final || m.nachricht } : m));
+                setMessages(prev => prev.map(m => m.id === agentMsgId ? {
+                  ...m, _streaming: false, nachricht: final || m.nachricht,
+                  _model: ev.model, _inputTokens: ev.inputTokens, _outputTokens: ev.outputTokens, _costCents: ev.costCents,
+                } : m));
                 if (ttsEnabled && final) speak(final, agentMsgId);
               } else if (ev.type === 'error') {
                 setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, _streaming: false, nachricht: m.nachricht || `❌ ${ev.message || 'Error'}` } : m));
@@ -1771,16 +1806,56 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                     ) : activeTasks.slice(0, 8).map(t => {
                       const prioColor: Record<string, string> = { critical: '#ef4444', high: '#f97316', medium: '#c5a059', low: '#6b7280' };
                       const statusIcon: Record<string, string> = { offen: '○', todo: '○', in_progress: '◑', in_review: '◐', blocked: '✕' };
+                      const ws = wsState[t.id];
+                      const textMimeTypes = ['text/', 'application/json', 'application/xml'];
+                      const isTextFile = (mime: string) => textMimeTypes.some(p => mime.startsWith(p));
                       return (
-                        <div key={t.id} style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <span style={{ fontSize: 14, color: prioColor[t.prioritaet] || '#6b7280', flexShrink: 0 }}>{statusIcon[t.status] || '○'}</span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.titel}</div>
-                            <div style={{ fontSize: 10, color: 'var(--color-text-muted)', opacity: 0.55, marginTop: 2 }}>{t.status.replace(/_/g, ' ')}</div>
+                        <div key={t.id} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 0 }}>
+                          <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <span style={{ fontSize: 14, color: prioColor[t.prioritaet] || '#6b7280', flexShrink: 0 }}>{statusIcon[t.status] || '○'}</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.titel}</div>
+                              <div style={{ fontSize: 10, color: 'var(--color-text-muted)', opacity: 0.55, marginTop: 2 }}>{t.status.replace(/_/g, ' ')}</div>
+                            </div>
+                            <div style={{ fontSize: 9, padding: '2px 7px', borderRadius: 0, background: `${prioColor[t.prioritaet] || '#6b7280'}18`, color: prioColor[t.prioritaet] || '#6b7280', fontWeight: 700, flexShrink: 0 }}>
+                              {t.prioritaet}
+                            </div>
+                            <button
+                              onClick={() => toggleWorkspace(t.id)}
+                              title={de ? 'Workspace-Dateien anzeigen' : 'Show workspace files'}
+                              style={{ background: ws ? 'rgba(197,160,89,0.12)' : 'none', border: '1px solid rgba(255,255,255,0.08)', padding: '3px 7px', cursor: 'pointer', color: ws ? 'var(--color-accent)' : 'var(--color-text-muted)', fontSize: 11, borderRadius: 0, flexShrink: 0 }}
+                            >
+                              📁
+                            </button>
                           </div>
-                          <div style={{ fontSize: 9, padding: '2px 7px', borderRadius: 0, background: `${prioColor[t.prioritaet] || '#6b7280'}18`, color: prioColor[t.prioritaet] || '#6b7280', fontWeight: 700, flexShrink: 0 }}>
-                            {t.prioritaet}
-                          </div>
+                          {ws && (
+                            <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', padding: '8px 14px', background: 'rgba(0,0,0,0.2)' }}>
+                              {ws.loading ? (
+                                <div style={{ fontSize: 11, opacity: 0.4 }}>{de ? 'Lade…' : 'Loading…'}</div>
+                              ) : ws.files.length === 0 ? (
+                                <div style={{ fontSize: 11, opacity: 0.35, fontStyle: 'italic' }}>{de ? 'Keine Dateien im Workspace' : 'No files in workspace'}</div>
+                              ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  {ws.files.filter(f => !f.isDirectory).map((f: any) => (
+                                    <div key={f.name}>
+                                      <button
+                                        onClick={() => isTextFile(f.mimeTyp) && openWorkspaceFile(t.id, f.path, f.name)}
+                                        style={{ width: '100%', textAlign: 'left', background: ws.openFile === f.name ? 'rgba(197,160,89,0.08)' : 'none', border: 'none', padding: '3px 0', cursor: isTextFile(f.mimeTyp) ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 8, color: 'inherit' }}
+                                      >
+                                        <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-accent)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                                        <span style={{ fontSize: 10, opacity: 0.35, flexShrink: 0 }}>{f.sizeBytes > 1024 ? `${(f.sizeBytes/1024).toFixed(1)}KB` : `${f.sizeBytes}B`}</span>
+                                      </button>
+                                      {ws.openFile === f.name && ws.fileContent !== undefined && (
+                                        <pre style={{ margin: '4px 0 8px', padding: '8px 10px', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.06)', fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)', overflowX: 'auto', maxHeight: 200, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                                          {ws.fileContent}
+                                        </pre>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -2632,9 +2707,10 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
           <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
              <div>
                 <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{t.direktkanal}</h3>
-                <div style={{ fontSize: 11, opacity: 0.5, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ fontSize: 11, opacity: 0.5, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                   Board → {expert.name}
                   {directChatMode && <span style={{ color: 'var(--color-accent)', fontWeight: 700 }}>⚡ Direct</span>}
+                  {(() => { try { const m = JSON.parse(expert.verbindungsConfig || '{}').model; return m ? <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-accent)', opacity: 1, background: 'rgba(197,160,89,0.08)', padding: '1px 6px' }}>{m}</span> : null; } catch { return null; } })()}
                 </div>
              </div>
              <button onClick={onClose} className="btn btn-ghost" style={{ padding: 8 }}><X size={20} /></button>
@@ -2685,8 +2761,19 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                     }
                     {isStreaming && <span style={{ display: 'inline-block', width: 6, height: 6, background: 'var(--color-accent)', marginLeft: 4, verticalAlign: 'middle', animation: 'pulse 1s infinite' }} />}
                   </div>
-                  <div style={{ fontSize: 10, opacity: 0.3, marginTop: 4, textAlign: isAgent ? 'left' : 'right', display: 'flex', alignItems: 'center', gap: 8, justifyContent: isAgent ? 'flex-start' : 'flex-end' }}>
+                  <div style={{ fontSize: 10, opacity: 0.3, marginTop: 4, textAlign: isAgent ? 'left' : 'right', display: 'flex', alignItems: 'center', gap: 8, justifyContent: isAgent ? 'flex-start' : 'flex-end', flexWrap: 'wrap' }}>
                     <span>{new Date(m.erstelltAm).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    {isAgent && m._model && (
+                      <span style={{ fontFamily: 'var(--font-mono)', background: 'rgba(197,160,89,0.1)', color: 'var(--color-accent)', padding: '1px 5px', opacity: 1 }}>
+                        {m._model}
+                      </span>
+                    )}
+                    {isAgent && (m._inputTokens || m._outputTokens) && (
+                      <span title={`${de ? 'Eingabe' : 'Input'}: ${m._inputTokens ?? 0} / ${de ? 'Ausgabe' : 'Output'}: ${m._outputTokens ?? 0} tokens`}>
+                        {(m._inputTokens ?? 0) + (m._outputTokens ?? 0)} tok
+                        {m._costCents ? ` · $${(m._costCents / 100).toFixed(4)}` : ''}
+                      </span>
+                    )}
                     {isAgent && msgText && (
                       <button onClick={() => speak(msgText, m.id)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', opacity: speakingId === m.id ? 1 : 0.5, color: speakingId === m.id ? 'var(--color-accent)' : 'inherit' }} title={de ? 'Vorlesen' : 'Read aloud'}>
                         {speakingId === m.id ? <VolumeX size={12} /> : <Volume2 size={12} />}
