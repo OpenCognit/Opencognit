@@ -1,18 +1,24 @@
 // Heartbeat Notifications — CEO feedback loop, meeting wakeup handler
 
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { db } from '../../db/client.js';
-import { agents, tasks, goals, chatMessages, settings, agentMeetings } from '../../db/schema.js';
+import { agents, tasks, goals, chatMessages, settings, agentMeetings, comments } from '../../db/schema.js';
 import { eq, and, sql } from 'drizzle-orm';
 import { wakeupService } from '../wakeup.js';
 import { isFocusModeActive, trace } from './utils.js';
+import { isSafeWorkdir } from '../../adapters/workspace-guard.js';
 
 // ─── CEO FEEDBACK LOOP ──────────────────────────────────────────────────────
 
 /**
  * After a worker finishes a task:
- * 1. Post a CEO-style chat report instantly (no LLM needed)
- * 2. Trigger orchestrator wakeup for re-evaluation (new tasks, goal check)
+ * 1. Analyze workspace deliverables
+ * 2. Check unblockable dependents
+ * 3. Build rich context for CEO re-evaluation
+ * 4. Post a CEO-style chat report
+ * 5. Trigger orchestrator wakeup with FULL context
  */
 export async function notifyOrchestratorTaskDone(
   companyId: string,
@@ -23,7 +29,6 @@ export async function notifyOrchestratorTaskDone(
   output: string,
 ): Promise<void> {
   try {
-    // Find orchestrator for this company
     const orchestrator = await db.select()
       .from(agents)
       .where(and(
@@ -36,7 +41,7 @@ export async function notifyOrchestratorTaskDone(
 
     if (!orchestrator) return;
 
-    // Build a short summary from output (first meaningful line, max 300 chars)
+    // ── 1. Build output summary ──────────────────────────────────────────
     const summary = output
       .split('\n')
       .map((l: string) => l.trim())
@@ -45,8 +50,34 @@ export async function notifyOrchestratorTaskDone(
       .join(' ')
       .slice(0, 300);
 
-    // Check goal progress for this task
-    const taskRow = await db.select({ targetId: tasks.goalId }).from(tasks).where(eq(tasks.id, taskId)).get() as any;
+    // ── 2. Check workspace deliverables ──────────────────────────────────
+    const taskRow = await db.select({ workspacePath: tasks.workspacePath, goalId: tasks.goalId })
+      .from(tasks).where(eq(tasks.id, taskId)).get() as any;
+
+    let deliverablesLine = '';
+    if (taskRow?.workspacePath && isSafeWorkdir(taskRow.workspacePath) && fs.existsSync(taskRow.workspacePath)) {
+      try {
+        const files = fs.readdirSync(taskRow.workspacePath, { recursive: true } as any) as string[];
+        const nonEmpty = files
+          .filter(f => !f.startsWith('.') && !f.includes('.meta.json'))
+          .filter(f => {
+            const fp = path.join(taskRow.workspacePath, f);
+            try { return !fs.statSync(fp).isDirectory() && fs.statSync(fp).size > 0; } catch { return false; }
+          })
+          .map(f => {
+            const fp = path.join(taskRow.workspacePath, f);
+            const sz = fs.statSync(fp).size;
+            return `${f} (${sz < 1024 ? `${sz}B` : `${(sz / 1024).toFixed(1)}KB`})`;
+          });
+        if (nonEmpty.length > 0) {
+          deliverablesLine = `\n📁 Deliverables: ${nonEmpty.join(', ')}`;
+        } else {
+          deliverablesLine = `\n⚠️ Workspace leer — keine Dateien gefunden`;
+        }
+      } catch { /* ignore */ }
+    }
+
+    // ── 3. Check goal progress ───────────────────────────────────────────
     let goalLine = '';
     if (taskRow?.goalId) {
       const goalTasks = await db.select({
@@ -66,11 +97,58 @@ export async function notifyOrchestratorTaskDone(
       }
     }
 
-    const msg = `✅ **${workerName}** hat Task abgeschlossen: **${taskTitel}**\n` +
-      (summary ? `\n_${summary}_` : '') +
-      goalLine;
+    // ── 4. Find tasks that are now unblocked ─────────────────────────────
+    let unblockLine = '';
+    const { issueRelations } = await import('../../db/schema.js');
+    const dependents = await db.select({ targetId: issueRelations.targetId })
+      .from(issueRelations)
+      .where(eq(issueRelations.sourceId, taskId));
 
-    // Save chat message from orchestrator (suppress during focus mode)
+    if (dependents.length > 0) {
+      const dependentTasks = await db.select()
+        .from(tasks)
+        .where(and(
+          eq(tasks.companyId, companyId),
+          sql`${tasks.id} IN (${dependents.map(d => `'${d.targetId}'`).join(',')})`,
+        ));
+
+      const newlyUnblocked = dependentTasks.filter((t: any) => t.status === 'blocked');
+      if (newlyUnblocked.length > 0) {
+        unblockLine = `\n🔓 Jetzt entsperrt: ${newlyUnblocked.map((t: any) => `"${t.title}"`).join(', ')}`;
+      }
+    }
+
+    // ── 5. Check if CEO should create follow-up tasks ────────────────────
+    const openTasksCount = await db.select({ count: sql<number>`count(*)` })
+      .from(tasks)
+      .where(and(
+        eq(tasks.companyId, companyId),
+        sql`${tasks.status} IN ('backlog', 'todo', 'in_progress', 'blocked')`,
+      ))
+      .then((r: any[]) => r[0].count);
+
+    const followUpHint = openTasksCount === 0
+      ? '\n💡 Hinweis: Keine offenen Tasks mehr — das Team braucht neue Aufgaben!'
+      : '';
+
+    // ── 6. Build rich wake reason for CEO ────────────────────────────────
+    const wakeReason = [
+      `Task "${taskTitel}" von ${workerName} abgeschlossen.`,
+      summary ? `Ergebnis: ${summary}` : '',
+      deliverablesLine,
+      goalLine,
+      unblockLine,
+      followUpHint,
+      `\nDeine Aufgabe als CEO:`,
+      `- Prüfe, ob dieser Task das Unternehmensziel vorangebracht hat`,
+      `- Wenn abhängige Tasks jetzt frei sind: weise sie zu oder erstelle Folge-Tasks`,
+      `- Wenn keine Tasks mehr offen sind: erstelle neue strategische Tasks`,
+      `- Wenn der Workspace leer ist: markiere den Task NICHT als erledigt`,
+    ].filter(Boolean).join('\n');
+
+    // ── 7. Post chat message ─────────────────────────────────────────────
+    const msg = `✅ **${workerName}** hat Task abgeschlossen: **${taskTitel}**${deliverablesLine}${goalLine}${unblockLine}`;
+
     if (!isFocusModeActive(companyId)) {
       await db.insert(chatMessages).values({
         id: crypto.randomUUID(),
@@ -81,21 +159,26 @@ export async function notifyOrchestratorTaskDone(
         read: false,
         createdAt: new Date().toISOString(),
       });
-      console.log(`  📣 CEO Report gesendet: Task "${taskTitel}" abgeschlossen von ${workerName}`);
-    } else {
-      console.log(`  🔇 CEO Report unterdrückt (Focus Mode aktiv): Task "${taskTitel}" abgeschlossen von ${workerName}`);
+      console.log(`  📣 CEO Report: "${taskTitel}" abgeschlossen von ${workerName}`);
     }
-    trace(orchestrator.id, companyId, 'info', `${workerName} hat Task abgeschlossen: ${taskTitel}`, msg);
+    trace(orchestrator.id, companyId, 'info', `${workerName} hat Task erledigt: ${taskTitel}`, msg);
 
-    // Trigger orchestrator wakeup for re-evaluation (create new tasks, check goals)
+    // ── 8. Wake CEO with FULL context ────────────────────────────────────
     await wakeupService.wakeup(orchestrator.id, companyId, {
       source: 'automation',
       triggerDetail: 'callback',
-      reason: `Task "${taskTitel}" von ${workerName} abgeschlossen — bitte Fortschritt prüfen und neue Tasks erstellen falls nötig`,
-      payload: { taskId, completedBy: workerExpertId },
+      reason: wakeReason,
+      payload: {
+        taskId,
+        completedBy: workerExpertId,
+        deliverables: deliverablesLine,
+        goalProgress: goalLine,
+        unblockedTasks: unblockLine,
+        openTasksCount,
+      },
     });
 
-    console.log(`  🔔 Orchestrator ${orchestrator.name} für Re-Evaluation geweckt`);
+    console.log(`  🔔 Orchestrator ${orchestrator.name} geweckt mit vollständigem Kontext`);
   } catch (err: any) {
     console.warn(`  ⚠️ CEO Feedback Loop Fehler: ${err.message}`);
   }

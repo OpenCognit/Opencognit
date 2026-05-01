@@ -5,6 +5,7 @@ import { v4 as uuid } from 'uuid';
 import path from 'path';
 import fs from 'fs';
 import { decryptSetting } from '../utils/crypto.js';
+import { isSafeWorkdir } from './workspace-guard.js';
 import type { ExpertAdapter, AdapterRunOptions, AdapterRunResult } from './types.js';
 import { scheduler } from '../scheduler.js';
 
@@ -158,6 +159,46 @@ Wann ein Meeting sinnvoll ist:
         return `- "${t.title}" → ${assignee} (${t.status})`;
       }).join('\n');
 
+      // ── Workspace verification context for in_progress / recently done tasks ──
+      let workspaceVerificationDesc = '';
+      const tasksToVerify = allOpenTasks.filter(t =>
+        t.status === 'in_progress' || t.status === 'blocked'
+      );
+      if (tasksToVerify.length > 0) {
+        const wsInfos: string[] = [];
+        for (const t of tasksToVerify.slice(0, 8)) {
+          if (t.workspacePath && isSafeWorkdir(t.workspacePath) && fs.existsSync(t.workspacePath)) {
+            try {
+              const files = fs.readdirSync(t.workspacePath, { recursive: true } as any) as string[];
+              const nonEmpty = files
+                .filter(f => !f.startsWith('.') && !f.includes('.meta.json'))
+                .filter(f => {
+                  const fp = path.join(t.workspacePath!, f);
+                  try { return !fs.statSync(fp).isDirectory() && fs.statSync(fp).size > 0; } catch { return false; }
+                })
+                .map(f => {
+                  const fp = path.join(t.workspacePath!, f);
+                  const sz = fs.statSync(fp).size;
+                  return `${f} (${sz < 1024 ? `${sz}B` : `${(sz / 1024).toFixed(1)}KB`})`;
+                });
+              if (nonEmpty.length > 0) {
+                wsInfos.push(`📁 "${t.title}" (${t.status}):\n  ${nonEmpty.join('\n  ')}`);
+              } else {
+                wsInfos.push(`⚠️ "${t.title}" (${t.status}): Workspace LEER — Agent hat noch nichts produziert`);
+              }
+            } catch { /* ignore */ }
+          }
+        }
+        if (wsInfos.length > 0) {
+          workspaceVerificationDesc = `
+## Workspace-Status (In-Progress / Blocked Tasks)
+${wsInfos.join('\n\n')}
+
+WICHTIG: Bevor du einen Task als erledigt markierst (mark_done), MUSST du prüfen ob der Workspace Dateien enthält. Tasks mit leerem Workspace sind NICHT erledigt.
+`;
+        }
+      }
+
       // Detect if we're in conversational/manual mode (triggered by a board message)
       const hasNewBoardMessage = recentChat.some(m => m.senderType === 'board');
       const isConversational = hasNewBoardMessage || (options.prompt?.includes('direkte Nachricht') ?? false);
@@ -165,7 +206,7 @@ Wann ein Meeting sinnvoll ist:
       // Determine mode: chat reply, assign tasks, OR idle/proactive
       const mode = isConversational ? 'chat' : unassignedTasks.length > 0 ? 'assign' : 'proactive';
 
-      const systemPrompt = `Du bist der CEO von "${company.name}" — direkt, menschlich, auf Augenhöhe.
+      const systemPrompt = `Du bist der CEO von "${company.name}" — direkt, menschlich, auf Augenhöhe. Du bist KEIN Berater, du HANDELST.
 Unternehmensziel: ${company.goal || company.description || 'Nicht definiert'}
 
 Dein Team:
@@ -173,12 +214,24 @@ ${agentsDesc || 'Noch kein Team außer dir selbst.'}
 
 Offene Tasks:
 ${allTasksDesc || 'Keine offenen Tasks gerade.'}
+${workspaceVerificationDesc}
 ${meetingSignals}
-Kommunikationsstil:
-- Immer "du", nie "Sie"
-- Kurz und klar, kein Bullshit
-- Menschlich und direkt, kein Unternehmens-Speak
-- Bei Statusfragen: ehrlich sagen was gerade läuft (oder eben nicht)`;
+
+## DEIN ARBEITSABLAUF (befolge diese Schritte strikt):
+
+1. **Status-Check**: Welche Tasks laufen, welche sind blockiert, welche sind erledigt?
+2. **Lücken-Analyse**: Fehlt etwas für das Unternehmensziel? Gibt es offensichtliche nächste Schritte?
+3. **Verifikation**: Bevor du einen Task als erledigt markierst, prüfe den Workspace.
+4. **Aktion**: Erstelle/Weise Tasks zu, rufe Meetings ein, oder stelle ein neues Team-Mitglied ein.
+5. **Kommunikation**: Sag dem Board ehrlich was läuft — auch wenn nichts läuft.
+
+## REGELN:
+- Du bist PROAKTIV. Wenn ein Task erledigt ist, überlege SOFORT was als Nächstes kommt.
+- Ein Task ohne Dateien im Workspace ist NICHT erledigt.
+- Wenn ein Agent seit >3 Tagen nichts produziert hat (stale), prüfe ob der Task noch Sinn macht.
+- Wenn das Team überlastet ist (alle Agents haben 2+ offene Tasks), stelle ein neues Mitglied ein.
+- Wenn 2+ Tasks blockiert sind, rufe ein Meeting ein.
+- Kommunikationsstil: "du", kurz, direkt, kein Unternehmens-Speak.`;
 
       let userPrompt: string;
 
@@ -192,13 +245,30 @@ Auf Grüße oder Smalltalk: kurz und menschlich antworten (1-2 Sätze reichen).
 Auf Statusfragen: sag was gerade läuft — keine Tasks? Dann sag das ehrlich.
 
 Wenn das Board einen konkreten Auftrag gibt (z.B. "baue X ein", "erstell Y", "kümmere dich um Z"):
-- Erstelle sofort einen Task und delegiere ihn an den passenden Agenten.
-- Antworte MIT einem JSON-Block UND einem "reply"-Feld.
+
+1. **PRÜFE**: Handelt es sich um etwas mit MEHREREN Teilen? (z.B. "Website" = Design + HTML + Content)
+   → JA: Erstelle ZUERST ein Projekt mit create_project, DANN Tasks darin.
+   → NEIN: Erstelle direkt einen Task.
+
+2. **Erstelle Tasks** und delegiere sie an passende Agenten.
+3. **Antworte MIT einem JSON-Block UND einem "reply"-Feld.**
 
 Verfügbare Agenten für agentId:
 ${allAgents.filter(a => a.status !== 'terminated').map(a => `- ${a.id}: ${a.name} (${a.role || 'kein Titel'})`).join('\n')}
 
-Beispiel für Task-Erstellung + Delegation:
+Beispiel mit Projekt (für Aufträge mit mehreren Teilen):
+\`\`\`json
+{
+  "actions": [
+    { "type": "create_project", "name": "Website Relaunch", "beschreibung": "Neue Unternehmenswebsite", "prioritaet": "high" },
+    { "type": "create_task", "titel": "Design Mockups erstellen", "beschreibung": "Figma-Designs für alle Seiten", "prioritaet": "high", "agentId": "AGENT_ID", "projectId": "auto" },
+    { "type": "create_task", "titel": "HTML/CSS implementieren", "beschreibung": "Responsive Website basierend auf Design", "prioritaet": "high", "agentId": "AGENT_ID", "projectId": "auto" }
+  ],
+  "reply": "Projekt angelegt und Tasks verteilt. Das Team kümmert sich drum."
+}
+\`\`\`
+
+Beispiel einzelner Task (für einfache Aufträge):
 \`\`\`json
 {
   "actions": [
@@ -242,26 +312,36 @@ ${canCallMeeting ? `Wenn blockierte oder unklare Tasks vorliegen, kannst du ZUS�
           ? `\n⚠️ Es gibt ${blockedTasks.length} blockierte und ${staleTasks.length} stale Tasks — erwäge ein Meeting einzuberufen!`
           : '';
 
-        userPrompt = `Alle Tasks sind zugewiesen. Analysiere den Status des Unternehmens und entscheide proaktiv:
-- Welche neuen strategischen Tasks soll das Team angehen?
-- Braucht das Team neue Mitglieder?
-- Braucht das Team ein Meeting (siehe Meeting-Signale im System-Prompt)?${meetingHint}
+        userPrompt = `Du bist im PROAKTIVEN Modus. Ein Task wurde gerade abgeschlossen oder es gibt keinen offenen Task mehr.
+
+Deine Aufgabe als CEO:
+1. **Lücken-Analyse**: Was fehlt noch für das Unternehmensziel? Gibt es offensichtliche nächste Schritte?
+2. **Folge-Tasks**: Wenn ein Task erledigt ist, WAS kommt danach? Erstelle SOFORT Folge-Tasks.
+3. **Freigewordene Tasks**: Prüfe ob blockierte Tasks jetzt frei sind und weise sie zu.
+4. **Ziel-Check**: Sind Ziele erreicht? Wenn ja → feiere und plane nächstes Ziel. Wenn nein → erstelle Tasks dafür.
+5. **Team-Kapazität**: Hat jeder Agent Arbeit? Wenn nicht → erstelle Tasks. Wenn überlastet → stelle ein neues Mitglied ein.
+
+${meetingHint}
 
 Antworte mit diesem JSON:
 {
   "actions": [
-    { "type": "create_task", "titel": "Task Titel", "beschreibung": "Was zu tun ist", "prioritaet": "high|medium|low", "agentId": "AGENT_ID_oder_null" },
+    { "type": "create_task", "titel": "Konkreter Titel", "beschreibung": "Was GENAU zu tun ist — mit Akzeptanzkriterien", "prioritaet": "high|medium|low", "agentId": "AGENT_ID_oder_null" },
+    { "type": "assign_task", "taskId": "TASK_ID", "assignTo": "Agent Name", "reason": "warum dieser Agent" },
+    { "type": "mark_done", "taskId": "TASK_ID" },
     { "type": "hire_agent", "rolle": "Rollenname", "faehigkeiten": "Skills", "reason": "warum" },
     { "type": "call_meeting", "frage": "Eure Einschätzung zu X?", "teilnehmer": ["AGENT_ID_1", "AGENT_ID_2"] }
   ],
   "summary": "Was du entschieden hast in 1-2 Sätzen"
 }
 
-Regeln:
-- Maximal 3 neue Tasks
-- call_meeting nur wenn canCallMeeting=JA (sieh Meeting-Signale) und es echten Mehrwert bringt
-- Kein hire_agent wenn das Team bereits gut aufgestellt ist
-- Wenn alles gut läuft: nur kurze Summary, keine unnötigen Actions`;
+STRENGE REGELN:
+- Du MUSST Folge-Tasks erstellen, wenn ein Task erledigt ist. Niemals leer laufen lassen.
+- Jeder Task braucht eine konkrete Beschreibung mit Akzeptanzkriterien.
+- Weise Tasks SOFORT zu — nicht im Backlog liegen lassen.
+- Wenn ein Agent seit >3 Tagen nichts produziert hat → prüfe ob der Task noch Sinn macht.
+- call_meeting nur wenn canCallMeeting=JA und es echten Mehrwert bringt.
+- hire_agent nur wenn das Team überlastet ist (alle haben 2+ offene Tasks).`;
       }
 
       // Call LLM
@@ -361,6 +441,43 @@ Regeln:
           message: { type: 'string', description: 'The message to send' },
         },
         required: ['message'],
+      },
+    },
+    {
+      name: 'inspect_file',
+      description: 'Read the contents of a file from a task workspace to verify deliverables. Use BEFORE mark_done to confirm quality.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          taskId: { type: 'string', description: 'Full task ID whose workspace to inspect' },
+          filename: { type: 'string', description: 'Relative path of the file within the workspace (e.g. "index.html" or "src/main.ts")' },
+        },
+        required: ['taskId', 'filename'],
+      },
+    },
+    {
+      name: 'list_workspace',
+      description: 'List all files in a task workspace with sizes. Use to verify an agent actually produced files.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          taskId: { type: 'string', description: 'Full task ID whose workspace to list' },
+        },
+        required: ['taskId'],
+      },
+    },
+    {
+      name: 'create_project',
+      description: 'Create a new project to group related tasks. ALWAYS create a project when the user asks for something with multiple parts (e.g. "build a website", "create a marketing campaign").',
+      input_schema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Short, clear project name' },
+          beschreibung: { type: 'string', description: 'What the project is about' },
+          prioritaet: { type: 'string', enum: ['critical', 'high', 'medium', 'low'] },
+          goalId: { type: 'string', description: 'Goal ID to link this project to (optional)' },
+        },
+        required: ['name', 'beschreibung', 'prioritaet'],
       },
     },
   ];

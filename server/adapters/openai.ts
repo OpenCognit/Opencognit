@@ -164,6 +164,16 @@ export class OpenAIAdapter implements ExpertAdapter {
     // gpt-4o-mini: ~$0.15/1M input, $0.60/1M output
     const costCent = Math.ceil((totalInputTokens * 0.00015 + totalOutputTokens * 0.0006) / 100);
 
+    if (!finalOutput.trim()) {
+      return {
+        success: false,
+        output: '',
+        error: 'OpenAI returned empty output (no content from model).',
+        duration: Date.now() - startTime,
+        tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, costCent },
+      };
+    }
+
     return {
       success: true,
       output: finalOutput,

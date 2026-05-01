@@ -3,10 +3,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Send, ChevronDown, User, Loader2, AlertCircle,
   Brain, ChevronRight, Paperclip, X, ImageIcon,
-  Plus, History, Trash2, Sparkles, FileText, Copy
+  Plus, History, Trash2, Sparkles, FileText, Copy,
+  Activity
 } from 'lucide-react';
 import { useCompany } from '../hooks/useCompany';
 import { useI18n } from '../i18n';
+import { useWebSocketEvent } from '../hooks/useWebSocket';
+import AgentPlan from '../components/chat/AgentPlan';
+import type { PlanTask } from '../components/chat/AgentPlan';
 
 /* ─── Pure inline styles ─ no tailwind dependency for visuals ─────────── */
 
@@ -90,6 +94,10 @@ interface Agent {
   id: string; name: string; rolle: string;
   avatar: string; avatarFarbe: string;
   isOrchestrator?: boolean; status: string;
+  connectionType?: string;
+  model?: string;
+  monthlySpendCent?: number;
+  monthlyBudgetCent?: number;
 }
 
 interface PendingImage {
@@ -100,6 +108,7 @@ interface Message {
   id: string; role: 'user' | 'agent' | 'system';
   text: string; thinking?: string;
   images?: string[]; streaming?: boolean; time: string;
+  plan?: PlanTask[];
 }
 
 interface ChatSession {
@@ -108,6 +117,14 @@ interface ChatSession {
 
 interface Cmd {
   icon: React.ReactNode; label: string; desc: string; prefix: string;
+}
+
+interface CEOStep {
+  id: string;
+  type: string;
+  title: string;
+  details?: string;
+  time: string;
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -212,6 +229,27 @@ function renderTextWithFiles(text: string, unternehmenId: string) {
   return parts.length ? parts : text;
 }
 
+/** Extract [PLAN]{...}[/PLAN] blocks from text and return cleaned text + parsed plan */
+function extractPlan(text: string): { cleanedText: string; plan?: PlanTask[] } {
+  const planRegex = /\[PLAN\]([\s\S]*?)\[\/PLAN\]/g;
+  let match: RegExpExecArray | null;
+  let cleanedText = text;
+  let plan: PlanTask[] | undefined;
+
+  while ((match = planRegex.exec(text)) !== null) {
+    try {
+      const parsed = JSON.parse(match[1].trim());
+      if (Array.isArray(parsed.tasks)) {
+        plan = parsed.tasks;
+      } else if (Array.isArray(parsed)) {
+        plan = parsed;
+      }
+      cleanedText = cleanedText.replace(match[0], '').trim();
+    } catch { /* ignore invalid JSON */ }
+  }
+  return { cleanedText, plan };
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 function newSession(): ChatSession {
@@ -237,6 +275,8 @@ export function Chat() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [ceoSteps, setCeoSteps] = useState<CEOStep[]>([]);
+  const [stepsOpen, setStepsOpen] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -248,6 +288,38 @@ export function Chat() {
     window.addEventListener('mousemove', h);
     return () => window.removeEventListener('mousemove', h);
   }, []);
+
+  // CEO Arbeitsschritte über WebSocket empfangen — als Inline-Chat-Nachrichten anzeigen
+  useWebSocketEvent('trace', (msg) => {
+    const d = msg.data ?? msg;
+    if (d.expertId === selectedAgent?.id) {
+      setCeoSteps(prev => {
+        const next = [...prev, {
+          id: d.id || `s-${Date.now()}`,
+          type: d.typ || d.type || 'info',
+          title: d.titel || d.title || '',
+          details: d.details || '',
+          time: d.erstelltAm || new Date().toISOString(),
+        }];
+        return next.slice(-50);
+      });
+      // Füge als System-Nachricht im Chat-Verlauf hinzu
+      const stepText = d.details ? `${d.titel || d.title}\n${d.details}` : (d.titel || d.title || '');
+      if (stepText) {
+        setMessages(prev => {
+          const last = prev[prev.length - 1];
+          // Wenn die letzte Nachricht eine System-Nachricht mit derselben ID ist, ersetze sie
+          if (last && last.role === 'system' && last.id === `step-${d.id}`) {
+            return [...prev.slice(0, -1), { ...last, text: stepText, time: new Date().toISOString() }];
+          }
+          return [...prev, { id: `step-${d.id || Date.now()}`, role: 'system', text: stepText, time: new Date().toISOString() }];
+        });
+      }
+    }
+  }, [selectedAgent?.id]);
+
+  // Steps zurücksetzen wenn Agent wechselt
+  useEffect(() => { setCeoSteps([]); }, [selectedAgent?.id]);
 
   useEffect(() => {
     if (!aktivesUnternehmen) return;
@@ -285,12 +357,16 @@ export function Chat() {
       .then(r => r.json())
       .then((data: any[]) => {
         if (!Array.isArray(data) || data.length === 0) return;
-        const serverMsgs: Message[] = data.map(m => ({
-          id: m.id,
-          role: m.senderType === 'board' ? 'user' : m.senderType === 'agent' ? 'agent' : 'system',
-          text: m.message || '',
-          time: m.createdAt || new Date().toISOString(),
-        }));
+        const serverMsgs: Message[] = data.map(m => {
+          const { cleanedText, plan } = extractPlan(m.message || '');
+          return {
+            id: m.id,
+            role: m.senderType === 'board' ? 'user' : m.senderType === 'agent' ? 'agent' : 'system',
+            text: cleanedText,
+            plan,
+            time: m.createdAt || new Date().toISOString(),
+          };
+        });
         const next = [welcomeMsg, ...serverMsgs];
         setMessages(next);
         setCurrentSession(prev => ({ ...prev, messages: next }));
@@ -361,9 +437,11 @@ export function Chat() {
     startTransition(() => setStreaming(true));
 
     const userMsg: Message = { id: `u-${Date.now()}`, role: 'user', text: txt, images: img ? [img.previewUrl] : undefined, time: new Date().toISOString() };
+    const thinkingMsgId = `thinking-${Date.now()}`;
+    const thinkingMsg: Message = { id: thinkingMsgId, role: 'system', text: de ? 'CEO analysiert Anfrage…' : 'CEO analyzing request…', time: new Date().toISOString() };
     const agentMsgId = `a-${Date.now()}`;
     const agentPlaceholder: Message = { id: agentMsgId, role: 'agent', text: '', thinking: '', streaming: true, time: new Date().toISOString() };
-    setMessages(prev => [...prev, userMsg, agentPlaceholder]);
+    setMessages(prev => [...prev, userMsg, thinkingMsg, agentPlaceholder]);
 
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -391,13 +469,42 @@ export function Chat() {
           try {
             const ev = JSON.parse(line.slice(6));
             if (ev.type === 'thinking_start' || ev.type === 'thinking_delta') {
-              setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, thinking: (m.thinking ?? '') + (ev.chunk ?? '') } : m));
+              setMessages(prev => prev.map(m => {
+                if (m.id === agentMsgId) return { ...m, thinking: (m.thinking ?? '') + (ev.chunk ?? '') };
+                if (m.id === thinkingMsgId) return { ...m, text: de ? 'CEO verarbeitet Anfrage…' : 'CEO processing request…' };
+                return m;
+              }));
+            } else if (ev.type === 'tool_start') {
+              setMessages(prev => prev.map(m => m.id === thinkingMsgId ? { ...m, text: de ? 'CEO nutzt Tools…' : 'CEO using tools…' } : m));
+            } else if (ev.type === 'tool_call') {
+              const toolName = ev.tool || 'tool';
+              const toolMsg: Message = {
+                id: `tool-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                role: 'system',
+                text: `🔧 ${toolName}${ev.params ? `(${JSON.stringify(ev.params).slice(0, 120)})` : ''}`,
+                time: new Date().toISOString(),
+              };
+              setMessages(prev => [...prev, toolMsg]);
+            } else if (ev.type === 'tool_result') {
+              const resultMsg: Message = {
+                id: `toolres-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                role: 'system',
+                text: ev.success
+                  ? `✅ ${ev.tool}: ${(ev.output || '').slice(0, 300)}${(ev.output || '').length > 300 ? '…' : ''}`
+                  : `❌ ${ev.tool}: ${ev.error || 'failed'}`,
+                time: new Date().toISOString(),
+              };
+              setMessages(prev => [...prev, resultMsg]);
             } else if (ev.type === 'text_delta') {
-              setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, text: m.text + (ev.chunk ?? '') } : m));
+              const chunk = (ev.chunk ?? '') as string;
+              // Hide incomplete [PLAN] blocks during streaming for cleaner UI
+              const cleanedChunk = chunk.replace(/\[PLAN\][\s\S]*/g, '').replace(/\[\/PLAN\]/g, '');
+              setMessages(prev => prev.filter(m => m.id !== thinkingMsgId).map(m => m.id === agentMsgId ? { ...m, text: m.text + cleanedChunk } : m));
             } else if (ev.type === 'done') {
               const final = ev.reply ?? '';
+              const { cleanedText, plan } = extractPlan(final || '');
               setMessages(prev => {
-                const next = prev.map(m => m.id === agentMsgId ? { ...m, text: final || m.text, streaming: false } : m);
+                const next = prev.filter(m => m.id !== thinkingMsgId).map(m => m.id === agentMsgId ? { ...m, text: cleanedText || m.text, plan, streaming: false } : m);
                 persistSession(next, currentSession, selectedAgent.id);
                 return next;
               });
@@ -405,14 +512,14 @@ export function Chat() {
               const errMsg = ev.error === 'no_api_key'
                 ? '⚠️ No API key configured.'
                 : `❌ ${(ev.message || ev.error || 'Error generating reply').toString().slice(0, 300)}`;
-              setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, text: errMsg, streaming: false } : m));
+              setMessages(prev => prev.filter(m => m.id !== thinkingMsgId).map(m => m.id === agentMsgId ? { ...m, text: errMsg, streaming: false } : m));
             }
           } catch { /* bad SSE */ }
         }
       }
     } catch (err: unknown) {
       if ((err as Error)?.name === 'AbortError') return;
-      setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, text: '❌ Connection error.', streaming: false } : m));
+      setMessages(prev => prev.filter(m => m.id !== thinkingMsgId).map(m => m.id === agentMsgId ? { ...m, text: '❌ Connection error.', streaming: false } : m));
     } finally {
       setStreaming(false);
       setTimeout(() => inputRef.current?.focus(), 50);
@@ -443,7 +550,7 @@ export function Chat() {
   const hasMessages = visibleMessages.length > 0;
 
   return (
-    <div style={{ ...flex('column'), height: '100%', background: C.bg, position: 'relative', overflow: 'hidden' }} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleImageFile(f); }}>
+    <div style={{ ...flex('column'), height: 'calc(100dvh - 120px)', background: C.bg, position: 'relative', overflow: 'hidden' }} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleImageFile(f); }}>
       {/* Hidden file input */}
       <input ref={fileRef} id="chat-file" name="chat-file" type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleImageFile(f); e.target.value = ''; }} />
 
@@ -453,53 +560,55 @@ export function Chat() {
         <div style={{ position: 'absolute', bottom: '10%', right: '15%', width: 400, height: 400, borderRadius: 9999, background: 'rgba(160,120,56,0.03)', filter: 'blur(100px)' }} />
       </div>
 
-      {/* Top bar */}
-      <div style={{ flexShrink: 0, ...flex('row', { between: true }), padding: '14px 24px', borderBottom: `1px solid ${C.border}`, background: 'rgba(10,10,10,0.85)', backdropFilter: 'blur(24px)', position: 'relative', zIndex: 10 }}>
-        <div style={{ ...flex('row'), gap: 12, alignItems: 'center' }}>
-          {/* CEO badge — Chat.tsx is CEO-only; per-agent chats live in the ExpertChatDrawer */}
-          <div style={{ ...flex('row'), gap: 10, padding: '8px 14px', background: C.goldDim, border: `1px solid ${C.goldGlow}`, ...round(10) }}>
-            {selectedAgent ? (
-              <>
-                <div style={{ width: 28, height: 28, ...flex('row', { center: true }), fontSize: 12, fontWeight: 700, flexShrink: 0, ...round(8), background: `${selectedAgent.avatarFarbe}22`, border: `1px solid ${selectedAgent.avatarFarbe}44`, color: selectedAgent.avatarFarbe }}>
-                  {selectedAgent.avatar || selectedAgent.name.slice(0, 2).toUpperCase()}
-                </div>
-                <div style={{ textAlign: 'left' }}>
-                  <div style={{ ...flex('row'), gap: 6, alignItems: 'center' }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{selectedAgent.name}</div>
-                    <span style={{ fontSize: 7, fontWeight: 800, padding: '2px 6px', color: C.gold, background: C.goldDim, border: `1px solid ${C.goldGlow}`, letterSpacing: '0.08em', ...round(4) }}>CEO</span>
-                  </div>
-                  <div style={{ fontSize: 10, color: C.textMuted }}>{de ? 'Command Center' : 'Command Center'}</div>
-                </div>
-              </>
-            ) : (
-              <div style={{ fontSize: 12, color: C.textMuted, fontFamily: 'var(--font-mono)' }}>
-                {loadingAgents ? '…' : (de ? 'Kein CEO konfiguriert' : 'No CEO configured')}
+      {/* Chat header — slim info bar under the Layout TopBar */}
+      <div style={{ flexShrink: 0, padding: '10px 24px', borderBottom: `1px solid ${C.border}`, ...flex('row', { between: true }), alignItems: 'center' }}>
+        <div style={{ ...flex('row'), gap: 10, alignItems: 'center' }}>
+          <img src="/opencognit.png" alt="OpenCognit" style={{ width: 28, height: 28, objectFit: 'contain', flexShrink: 0 }} />
+          {selectedAgent ? (
+            <>
+              <div style={{ ...flex('row'), gap: 6, alignItems: 'center' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{selectedAgent.name}</span>
+                <span style={{ fontSize: 7, fontWeight: 800, padding: '2px 6px', color: C.gold, background: C.goldDim, border: `1px solid ${C.goldGlow}`, letterSpacing: '0.08em', ...round(4) }}>CEO</span>
               </div>
-            )}
-          </div>
+              {selectedAgent.model && (
+                <span style={{ fontSize: 10, color: C.textMuted, fontFamily: 'var(--font-mono)' }}>{selectedAgent.model}</span>
+              )}
+            </>
+          ) : (
+            <span style={{ fontSize: 12, color: C.textMuted, fontFamily: 'var(--font-mono)' }}>
+              {loadingAgents ? '…' : (de ? 'Kein CEO konfiguriert' : 'No CEO configured')}
+            </span>
+          )}
         </div>
-
-        <div style={{ ...flex('row'), gap: 8, alignItems: 'center' }}>
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} style={{ ...flex('row', { center: true }), gap: 6, padding: '6px 12px', background: sidebarOpen ? C.goldDim : C.surface, border: `1px solid ${sidebarOpen ? C.goldGlow : C.border}`, color: sidebarOpen ? C.gold : C.textMuted, cursor: 'pointer', fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', transition: 'all 0.15s', ...round(8) }}>
-            <History size={12} /><span>{sessions.length || ''}</span>
+        <div style={{ ...flex('row'), gap: 12, alignItems: 'center' }}>
+          {selectedAgent && (
+            <span style={{ fontSize: 10, color: C.textMuted, fontFamily: 'var(--font-mono)' }}>
+              {(selectedAgent.monthlySpendCent ?? 0) / 100}€ / {(selectedAgent.monthlyBudgetCent ?? 0) / 100}€
+            </span>
+          )}
+          <button onClick={() => setStepsOpen(!stepsOpen)} style={{ ...flex('row', { center: true }), gap: 4, padding: '4px 10px', background: stepsOpen ? 'rgba(124,185,122,0.1)' : 'transparent', border: `1px solid ${stepsOpen ? 'rgba(124,185,122,0.3)' : C.border}`, color: stepsOpen ? C.success : C.textMuted, cursor: 'pointer', fontSize: 10, fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', transition: 'all 0.15s', ...round(6) }}>
+            <Activity size={11} /><span>{ceoSteps.length || ''}</span>
           </button>
-          <button onClick={startNewChat} style={{ ...flex('row', { center: true }), gap: 6, padding: '6px 12px', background: C.surface, border: `1px solid ${C.border}`, color: C.textMuted, cursor: 'pointer', fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', transition: 'all 0.15s', ...round(8) }}>
-            <Plus size={12} /><span>{de ? 'Neu' : 'New'}</span>
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} style={{ ...flex('row', { center: true }), gap: 4, padding: '4px 10px', background: sidebarOpen ? C.goldDim : 'transparent', border: `1px solid ${sidebarOpen ? C.goldGlow : C.border}`, color: sidebarOpen ? C.gold : C.textMuted, cursor: 'pointer', fontSize: 10, fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', transition: 'all 0.15s', ...round(6) }}>
+            <History size={11} /><span>{sessions.length || ''}</span>
           </button>
-          <div style={{ ...flex('row'), gap: 6, alignItems: 'center', marginLeft: 4 }}>
-            <div style={{ width: 6, height: 6, borderRadius: 9999, background: selectedAgent?.status === 'running' ? C.gold : selectedAgent?.status === 'active' ? C.success : '#3a342c', boxShadow: selectedAgent?.status === 'running' ? `0 0 6px ${C.gold}` : 'none' }} />
-            <span style={{ fontSize: 10, color: C.textMuted, fontFamily: 'var(--font-mono)', letterSpacing: '0.06em' }}>{selectedAgent?.status?.toUpperCase()}</span>
+          <button onClick={startNewChat} style={{ ...flex('row', { center: true }), gap: 4, padding: '4px 10px', background: 'transparent', border: `1px solid ${C.border}`, color: C.textMuted, cursor: 'pointer', fontSize: 10, fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', transition: 'all 0.15s', ...round(6) }}>
+            <Plus size={11} /><span>{de ? 'Neu' : 'New'}</span>
+          </button>
+          <div style={{ ...flex('row'), gap: 4, alignItems: 'center' }}>
+            <div style={{ width: 5, height: 5, borderRadius: 9999, background: selectedAgent?.status === 'running' ? C.gold : selectedAgent?.status === 'active' ? C.success : '#3a342c', boxShadow: selectedAgent?.status === 'running' ? `0 0 4px ${C.gold}` : 'none' }} />
+            <span style={{ fontSize: 9, color: C.textMuted, fontFamily: 'var(--font-mono)', letterSpacing: '0.06em' }}>{selectedAgent?.status?.toUpperCase()}</span>
           </div>
         </div>
       </div>
 
       {/* Body */}
-      <div style={{ ...flex('row'), flex: 1, overflow: 'hidden', position: 'relative', zIndex: 10 }}>
+      <div style={{ ...flex('row'), flex: 1, overflow: 'hidden', minHeight: 0, position: 'relative', zIndex: 10 }}>
         {/* History sidebar */}
         <AnimatePresence>
           {sidebarOpen && selectedAgent && (
             <motion.div initial={{ width: 0, opacity: 0 }} animate={{ width: 260, opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={{ duration: 0.2 }}
-              style={{ flexShrink: 0, borderRight: `1px solid ${C.border}`, background: 'rgba(5,5,5,0.95)', ...flex('column'), overflow: 'hidden', minWidth: 0 }}>
+              style={{ flexShrink: 0, borderRight: `1px solid ${C.border}`, background: 'rgba(5,5,5,0.95)', ...flex('column'), overflow: 'hidden', minWidth: 0, minHeight: 0 }}>
               <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.border}`, ...flex('row', { between: true }), flexShrink: 0 }}>
                 <div>
                   <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: C.gold, letterSpacing: '0.15em', textTransform: 'uppercase' }}>History</div>
@@ -563,10 +672,55 @@ export function Chat() {
           )}
         </AnimatePresence>
 
+        {/* Steps sidebar */}
+        <AnimatePresence>
+          {stepsOpen && (
+            <motion.div initial={{ width: 0, opacity: 0 }} animate={{ width: 280, opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={{ duration: 0.2 }}
+              style={{ flexShrink: 0, borderLeft: `1px solid ${C.border}`, background: 'rgba(5,5,5,0.95)', ...flex('column'), overflow: 'hidden', minWidth: 0, minHeight: 0 }}>
+              <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.border}`, ...flex('row', { between: true }), flexShrink: 0 }}>
+                <div>
+                  <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: C.success, letterSpacing: '0.15em', textTransform: 'uppercase' }}>{de ? 'Arbeitsschritte' : 'Work Steps'}</div>
+                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{selectedAgent?.name}</div>
+                </div>
+                <button onClick={() => setStepsOpen(false)} style={{ background: 'transparent', border: 'none', color: C.textDim, cursor: 'pointer', padding: 4 }}><X size={14} /></button>
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', scrollbarWidth: 'thin', scrollbarColor: 'rgba(197,180,150,0.1) transparent' }}>
+                {ceoSteps.length === 0 ? (
+                  <div style={{ padding: 24, textAlign: 'center', color: C.textDim, fontSize: 11, fontFamily: 'var(--font-mono)' }}>{de ? 'Noch keine Schritte' : 'No steps yet'}</div>
+                ) : (
+                  <div style={{ ...flex('column'), gap: 8 }}>
+                    {ceoSteps.map((step, i) => {
+                      const isLast = i === ceoSteps.length - 1;
+                      const stepColor = step.type === 'error' || step.type === 'warning' ? '#e0856b' :
+                        step.type === 'result' || step.type === 'success' ? C.success :
+                        step.type === 'action' ? C.gold : C.textMuted;
+                      const stepIcon = step.type === 'error' ? '✗' :
+                        step.type === 'result' || step.type === 'success' ? '✓' :
+                        step.type === 'action' ? '▶' : '·';
+                      return (
+                        <div key={step.id} style={{ ...flex('row'), gap: 10, alignItems: 'flex-start', opacity: isLast ? 1 : 0.6 }}>
+                          <div style={{ width: 20, height: 20, ...flex('row', { center: true }), fontSize: 10, fontFamily: 'var(--font-mono)', flexShrink: 0, color: stepColor, border: `1px solid ${stepColor}44`, ...round(6), background: `${stepColor}11` }}>
+                            {stepIcon}
+                          </div>
+                          <div style={{ ...flex('column'), gap: 2, minWidth: 0 }}>
+                            <div style={{ fontSize: 11, color: isLast ? C.text : C.textMuted, lineHeight: 1.4, wordBreak: 'break-word' }}>{step.title}</div>
+                            {step.details && <div style={{ fontSize: 9, color: C.textDim, lineHeight: 1.4, wordBreak: 'break-word' }}>{step.details}</div>}
+                            <div style={{ fontSize: 9, color: C.textDim, fontFamily: 'var(--font-mono)' }}>{fmtTime(step.time)}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Main chat */}
-        <div style={{ ...flex('column'), flex: 1, overflow: 'hidden' }} onClick={() => setPickerOpen(false)}>
-          {/* Messages */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '28px 24px', display: 'flex', flexDirection: 'column', gap: 4, scrollbarWidth: 'thin', scrollbarColor: 'rgba(197,180,150,0.1) transparent' }}>
+        <div style={{ ...flex('column'), flex: 1, overflow: 'hidden', minHeight: 0 }} onClick={() => setPickerOpen(false)}>
+          {/* Messages — only this area scrolls */}
+          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '28px 24px', display: 'flex', flexDirection: 'column', gap: 4, scrollbarWidth: 'thin', scrollbarColor: 'rgba(197,180,150,0.1) transparent' }}>
             {!hasMessages && (
               <motion.div style={{ flex: 1, ...flex('column', { center: true }), gap: 40, paddingBottom: 40 }} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
                 <div style={{ ...flex('column', { center: true }), gap: 14 }}>
@@ -609,7 +763,20 @@ export function Chat() {
             )}
 
             {messages.map(msg => {
-              if (msg.role === 'system') return null;
+              if (msg.role === 'system') {
+                // Verarbeitungsschritte als graue Inline-Nachrichten anzeigen
+                return (
+                  <motion.div key={msg.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }} style={{ ...flex('row'), alignItems: 'center', gap: 8, marginBottom: 8, paddingLeft: 40 }}>
+                    <div style={{ width: 20, height: 20, ...flex('row', { center: true }), flexShrink: 0 }}>
+                      <Loader2 size={12} style={{ animation: 'spin 1.5s linear infinite', color: C.textMuted }} />
+                    </div>
+                    <div style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${C.border}`, color: C.textMuted, fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', ...round(10), maxWidth: '70%', fontFamily: 'var(--font-mono)' }}>
+                      {msg.text}
+                    </div>
+                    <span style={{ fontSize: 9, color: C.textDim, fontFamily: 'var(--font-mono)' }}>{fmtTime(msg.time)}</span>
+                  </motion.div>
+                );
+              }
               const isUser = msg.role === 'user';
               return (
                 <motion.div key={msg.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} style={{ ...flex('row'), alignItems: 'flex-end', gap: 10, marginBottom: 10, flexDirection: isUser ? 'row-reverse' : 'row' }}>
@@ -632,6 +799,12 @@ export function Chat() {
                         {msg.streaming && msg.text && (
                           <motion.span style={{ display: 'inline-block', width: 2, height: '1.1em', background: C.gold, marginLeft: 4, verticalAlign: 'text-bottom' }} animate={{ opacity: [1, 0] }} transition={{ duration: 0.7, repeat: Infinity, repeatType: 'reverse' }} />
                         )}
+                      </div>
+                    )}
+                    {/* Render interactive plan if present */}
+                    {msg.plan && msg.plan.length > 0 && (
+                      <div style={{ width: '100%', maxWidth: 560, marginTop: 6 }}>
+                        <AgentPlan tasks={msg.plan} language={de ? 'de' : 'en'} />
                       </div>
                     )}
                     <div style={{ ...flex('row'), alignItems: 'center', gap: 8 }}>
@@ -670,8 +843,8 @@ export function Chat() {
             <div ref={bottomRef} />
           </div>
 
-          {/* Input */}
-          <div style={{ flexShrink: 0, padding: '10px 24px 24px' }}>
+          {/* Input — stays fixed at bottom, never scrolls */}
+          <div style={{ flexShrink: 0, padding: '10px 24px 24px', background: 'rgba(10,10,10,0.85)', backdropFilter: 'blur(24px)', borderTop: `1px solid ${C.border}` }}>
             <motion.div style={{ position: 'relative', background: 'rgba(255,255,255,0.02)', border: `1px solid ${C.border}`, boxShadow: '0 8px 32px rgba(0,0,0,0.4)', backdropFilter: 'blur(40px)', ...round(18) }} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
               <div style={{ padding: '18px 20px 10px' }}>
                 <textarea
@@ -703,6 +876,22 @@ export function Chat() {
                   <motion.button type="button" onClick={pickImage} whileTap={{ scale: 0.92 }} style={{ padding: 8, ...round(10), background: 'transparent', border: 'none', cursor: 'pointer', color: pendingImage ? C.gold : 'rgba(255,255,255,0.3)', transition: 'color 0.15s', display: 'flex', alignItems: 'center' }}>
                     {pendingImage ? <ImageIcon size={16} /> : <Paperclip size={16} />}
                   </motion.button>
+                  <motion.button type="button" onClick={() => setStepsOpen(!stepsOpen)} whileTap={{ scale: 0.92 }} title={de ? 'Arbeitsschritte' : 'Steps'} style={{ padding: 8, ...round(10), background: 'transparent', border: 'none', cursor: 'pointer', color: stepsOpen ? C.success : 'rgba(255,255,255,0.3)', transition: 'color 0.15s', display: 'flex', alignItems: 'center' }}>
+                    <Activity size={16} />
+                    {ceoSteps.length > 0 && <span style={{ fontSize: 10, marginLeft: 4, color: C.success, fontFamily: 'var(--font-mono)' }}>{ceoSteps.length}</span>}
+                  </motion.button>
+                  <motion.button type="button" onClick={() => setSidebarOpen(!sidebarOpen)} whileTap={{ scale: 0.92 }} title={de ? 'Verlauf' : 'History'} style={{ padding: 8, ...round(10), background: 'transparent', border: 'none', cursor: 'pointer', color: sidebarOpen ? C.gold : 'rgba(255,255,255,0.3)', transition: 'color 0.15s', display: 'flex', alignItems: 'center' }}>
+                    <History size={16} />
+                    {sessions.length > 0 && <span style={{ fontSize: 10, marginLeft: 4, color: C.gold, fontFamily: 'var(--font-mono)' }}>{sessions.length}</span>}
+                  </motion.button>
+                  <motion.button type="button" onClick={startNewChat} whileTap={{ scale: 0.92 }} title={de ? 'Neuer Chat' : 'New chat'} style={{ padding: 8, ...round(10), background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.3)', transition: 'color 0.15s', display: 'flex', alignItems: 'center' }}>
+                    <Plus size={16} />
+                  </motion.button>
+                  <div style={{ width: 1, height: 16, background: C.border, margin: '0 4px' }} />
+                  <div style={{ ...flex('row'), gap: 6, alignItems: 'center' }}>
+                    <div style={{ width: 6, height: 6, borderRadius: 9999, background: selectedAgent?.status === 'running' ? C.gold : selectedAgent?.status === 'active' ? C.success : '#3a342c', boxShadow: selectedAgent?.status === 'running' ? `0 0 6px ${C.gold}` : 'none' }} />
+                    <span style={{ fontSize: 10, color: C.textMuted, fontFamily: 'var(--font-mono)', letterSpacing: '0.06em' }}>{selectedAgent?.status?.toUpperCase()}</span>
+                  </div>
                 </div>
                 <div style={{ ...flex('row'), alignItems: 'center', gap: 12 }}>
                   <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', fontFamily: 'var(--font-mono)' }}>Enter to send · Shift↵ new line</span>

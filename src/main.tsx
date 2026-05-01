@@ -5,6 +5,7 @@ import App from './App';
 import { ToastProvider } from './components/ToastProvider';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { I18nProvider } from './i18n';
+import { WebSocketProvider } from './hooks/useWebSocket';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -21,9 +22,11 @@ createRoot(document.getElementById('root')!).render(
     <ErrorBoundary>
       <I18nProvider>
         <QueryClientProvider client={queryClient}>
-          <ToastProvider>
-            <App />
-          </ToastProvider>
+          <WebSocketProvider>
+            <ToastProvider>
+              <App />
+            </ToastProvider>
+          </WebSocketProvider>
         </QueryClientProvider>
       </I18nProvider>
     </ErrorBoundary>

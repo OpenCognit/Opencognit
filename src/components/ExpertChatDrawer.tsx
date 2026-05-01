@@ -8,6 +8,7 @@ import {
   FileText, Hash, Upload, Volume2, VolumeX, Paperclip, ImageIcon, StopCircle
 } from 'lucide-react';
 import { useCompany } from '../hooks/useCompany';
+import { useWebSocket } from '../hooks/useWebSocket';
 import { useI18n } from '../i18n';
 import { apiAufgaben, apiExperten, type Aufgabe, type Experte, type Aktivitaet } from '../api/client';
 import { translateActivity } from '../utils/activityTranslator';
@@ -327,6 +328,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
   initialTab?: Tab;
 }) {
   const { aktivesUnternehmen } = useCompany();
+  const { subscribe } = useWebSocket();
   const i18n = useI18n();
   const t = i18n.t.expertChat;
   const de = i18n.language === 'de';
@@ -361,7 +363,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [pendingImage, setPendingImage] = useState<{ data: string; mimeType: string; name: string; previewUrl: string } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const wsRef = useRef<WebSocket | null>(null);
+
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -693,20 +695,12 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
       .then(all => { setTasks(all.filter(t => t.zugewiesenAn === expert.id)); setLoadingTasks(false); })
       .catch(() => setLoadingTasks(false));
 
-    // WebSocket with safe cleanup and auto-reconnect
-    const _wsToken = localStorage.getItem('opencognit_token') || '';
-    const wsUrl = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws' + (_wsToken ? `?token=${_wsToken}` : '');
-    let intentionallyClosed = false;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let ws: WebSocket;
-
-    const handleMessage = (event: MessageEvent) => {
+    // WebSocket live updates via shared connection
+    const handleMessage = (msg: any) => {
       try {
-        const msg = JSON.parse(event.data);
-
         if (msg.type === 'chat_message') {
           const cm = msg.data;
-          if (cm.unternehmenId === aktivesUnternehmen.id && cm.expertId === expert.id) {
+          if (cm.unternehmenId === aktivesUnternehmen?.id && cm.expertId === expert.id) {
             setMessages(prev => {
               // Dedup by real id
               if (prev.find(m => m.id === cm.id)) return prev;
@@ -743,33 +737,14 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
       } catch {}
     };
 
-    const connect = () => {
-      ws = new WebSocket(wsUrl);
-      ws.onmessage = handleMessage;
-      ws.onerror = () => {}; // suppress noise — onclose handles reconnect
-      ws.onclose = () => {
-        wsRef.current = null;
-        if (!intentionallyClosed) {
-          reconnectTimer = setTimeout(connect, 3000);
-        }
-      };
-      wsRef.current = ws;
-    };
-
-    connect();
+    const unsubChat = subscribe('chat_message', handleMessage);
+    const unsubUpdate = subscribe('experte_updated', handleMessage);
 
     return () => {
-      intentionallyClosed = true;
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.close();
-      } else if (ws.readyState === WebSocket.CONNECTING) {
-        // Wait for open, then close — avoids "closed before established" warning
-        ws.onopen = () => ws.close();
-      }
-      wsRef.current = null;
+      unsubChat();
+      unsubUpdate();
     };
-  }, [expert.id, aktivesUnternehmen]);
+  }, [expert.id, aktivesUnternehmen?.id, subscribe]);
 
   // Load Aktivität initial and when component mounts
   useEffect(() => {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useWebSocketEvent } from '../hooks/useWebSocket';
 import { Search, Bell, Cpu, CheckCircle2, AlertCircle, MessageSquare, Play, X, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useI18n } from '../i18n';
@@ -63,7 +64,7 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
   const [notifications, setNotifications] = useState<Notification[]>(loadNotifs);
   const [bellOpen, setBellOpen] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
-  const wsRef = useRef<WebSocket | null>(null);
+
 
   const displayCrumbs = breadcrumb || contextCrumbs;
   const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
@@ -117,68 +118,54 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
   }, [aktivesUnternehmen?.id]);
 
   // WebSocket for live events
-  useEffect(() => {
-    if (!aktivesUnternehmen?.id) return;
-    const token = localStorage.getItem('opencognit_token');
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${window.location.host}/ws${token ? `?token=${token}` : ''}`);
-    wsRef.current = ws;
+  useWebSocketEvent(
+    '*',
+    (msg) => {
+      if (msg.unternehmenId && msg.unternehmenId !== aktivesUnternehmen?.id) return;
 
-    ws.onmessage = ev => {
-      try {
-        const msg = JSON.parse(ev.data);
-        if (msg.unternehmenId && msg.unternehmenId !== aktivesUnternehmen.id) return;
-
-        if (msg.type === 'task_started') {
-          setRunningAgents(c => c + 1);
-          const d = msg.data ?? msg;
+      if (msg.type === 'task_started') {
+        setRunningAgents(c => c + 1);
+        const d = msg.data ?? msg;
+        addNotification({
+          type: 'task_started',
+          title: d.titel ?? 'Task started',
+          body: d.agentName ? `Assigned to ${d.agentName}` : undefined,
+          link: '/tasks',
+        });
+      }
+      if (msg.type === 'task_completed') {
+        setRunningAgents(c => Math.max(0, c - 1));
+        const d = msg.data ?? msg;
+        addNotification({
+          type: 'task_completed',
+          title: d.titel ?? 'Task completed',
+          body: d.agentName ? `By ${d.agentName}` : undefined,
+          link: '/tasks',
+        });
+      }
+      if (msg.type === 'agent_error') {
+        const d = msg.data ?? msg;
+        addNotification({
+          type: 'agent_error',
+          title: d.agentName ? `Error: ${d.agentName}` : 'Agent error',
+          body: d.error ?? undefined,
+          link: '/experts',
+        });
+      }
+      if (msg.type === 'chat_message') {
+        const d = msg.data ?? msg;
+        if (d.absenderTyp === 'agent') {
           addNotification({
-            type: 'task_started',
-            title: d.titel ?? 'Task started',
-            body: d.agentName ? `Assigned to ${d.agentName}` : undefined,
-            link: '/tasks',
-          });
-        }
-        if (msg.type === 'task_completed') {
-          setRunningAgents(c => Math.max(0, c - 1));
-          const d = msg.data ?? msg;
-          addNotification({
-            type: 'task_completed',
-            title: d.titel ?? 'Task completed',
-            body: d.agentName ? `By ${d.agentName}` : undefined,
-            link: '/tasks',
-          });
-        }
-        if (msg.type === 'agent_error') {
-          const d = msg.data ?? msg;
-          addNotification({
-            type: 'agent_error',
-            title: d.agentName ? `Error: ${d.agentName}` : 'Agent error',
-            body: d.error ?? undefined,
+            type: 'chat_message',
+            title: d.agentName ?? 'Agent message',
+            body: d.inhalt ? (d.inhalt.length > 60 ? d.inhalt.slice(0, 60) + '…' : d.inhalt) : undefined,
             link: '/experts',
           });
         }
-        if (msg.type === 'chat_message') {
-          const d = msg.data ?? msg;
-          if (d.absenderTyp === 'agent') {
-            addNotification({
-              type: 'chat_message',
-              title: d.agentName ?? 'Agent message',
-              body: d.inhalt ? (d.inhalt.length > 60 ? d.inhalt.slice(0, 60) + '…' : d.inhalt) : undefined,
-              link: '/experts',
-            });
-          }
-        }
-      } catch {}
-    };
-
-    return () => {
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
-        ws.close();
       }
-      wsRef.current = null;
-    };
-  }, [aktivesUnternehmen?.id, addNotification]);
+    },
+    [aktivesUnternehmen?.id, addNotification],
+  );
 
   // Close dropdown on outside click
   useEffect(() => {

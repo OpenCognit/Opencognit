@@ -8,7 +8,7 @@
     "start": "NODE_ENV=production node --env-file=.env node_modules/.bin/tsx server/index.ts",
     "dev": "concurrently -n server,ui -c blue,green \"npm run dev:server\" \"npm run dev:ui\"",
     "dev:server": "node --env-file=.env node_modules/.bin/tsx watch server/index.ts",
-    "dev:ui": "vite",
+    "dev:ui": "node --env-file=.env ./node_modules/.bin/vite",
     "build": "vite build",
     "preview": "vite preview",
     "db:seed": "tsx server/db/seed.ts",

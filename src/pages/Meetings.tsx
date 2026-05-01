@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { authFetch } from '../utils/api';
 import { useCompany } from '../hooks/useCompany';
+import { useWebSocketEvent } from '../hooks/useWebSocket';
 import { useTranslation } from '../i18n/index';
 import { PageHelp } from '../components/PageHelp';
 
@@ -978,26 +979,15 @@ export function Meetings() {
 
   useEffect(() => { fetchMeetings(); }, [fetchMeetings]);
 
-  useEffect(() => {
-    if (!aktivesUnternehmen) return;
-    const _mTok = localStorage.getItem('opencognit_token') || '';
-    const wsUrl = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws' + (_mTok ? `?token=${_mTok}` : '');
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-    ws.onmessage = ev => {
-      try {
-        const msg = JSON.parse(ev.data);
-        if (msg.data?.unternehmenId !== aktivesUnternehmen.id) return;
-        if (msg.type === 'meeting_created' || msg.type === 'meeting_updated') fetchMeetings();
-      } catch {}
-    };
-    return () => {
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
-        ws.close();
-      }
-      wsRef.current = null;
-    };
-  }, [aktivesUnternehmen?.id, fetchMeetings]);
+  useWebSocketEvent(
+    '*',
+    (msg) => {
+      if (!aktivesUnternehmen) return;
+      if (msg.data?.unternehmenId !== aktivesUnternehmen.id) return;
+      if (msg.type === 'meeting_created' || msg.type === 'meeting_updated') fetchMeetings();
+    },
+    [aktivesUnternehmen?.id, fetchMeetings],
+  );
 
   const filtered = displayMeetings.filter(x => {
     if (filter !== 'all' && x.status !== filter) return false;

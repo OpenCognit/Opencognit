@@ -140,6 +140,16 @@ export class MoonshotAdapter implements ExpertAdapter {
     // Moonshot Pricing (ca. $0.50/1M input, $2.00/1M output für v1-128k)
     const costCent = Math.round((totalInputTokens / 1000000) * 50 + (totalOutputTokens / 1000000) * 200);
 
+    if (!finalOutput.trim()) {
+      return {
+        success: false,
+        output: '',
+        error: 'Moonshot returned empty output (no content from model).',
+        duration: Date.now() - startTime,
+        tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, costCent },
+      };
+    }
+
     return {
       success: true,
       output: finalOutput,

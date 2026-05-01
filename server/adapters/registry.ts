@@ -16,7 +16,7 @@ import { loadAdapterPlugins, type LoadedAdapterPlugin } from './plugin-loader.js
 export class AdapterRegistry {
   private adapters: Map<string, Adapter> = new Map();
   private plugins: LoadedAdapterPlugin[] = [];
-  private initialized = false;
+  private initializedAdapters = new Set<string>();
 
   /**
    * Lädt externe Adapter-Plugins aus plugins/adapters/*.
@@ -133,9 +133,9 @@ export class AdapterRegistry {
     }
 
     // Initialize adapter if needed
-    if (adapter.initialize && !this.initialized) {
+    if (adapter.initialize && !this.initializedAdapters.has(adapter.name)) {
       await adapter.initialize(config);
-      this.initialized = true;
+      this.initializedAdapters.add(adapter.name);
     }
 
     try {

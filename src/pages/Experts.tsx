@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useWebSocketEvent } from '../hooks/useWebSocket';
 import {
   Plus, ArrowRight, Loader2, MessageSquare, Sparkles, Zap, ZapOff,
   Settings2, Crown, Play, Pause, ShieldAlert, Activity, Terminal, X,
@@ -239,7 +240,7 @@ function AgentLogPanel({
       <div style={{ flex: 1, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }} onClick={onClose} />
       <div style={{
         width: 520, display: 'flex', flexDirection: 'column',
-        background: 'rgba(8,10,20,0.98)',
+        background: 'var(--color-bg-primary)',
         borderLeft: '1px solid rgba(197,160,89,0.2)',
         boxShadow: '-20px 0 60px rgba(197,160,89,0.05)',
       }}>
@@ -376,7 +377,7 @@ export function Experts() {
     currentTask?: { id: string; titel: string } | null;
   }>>({});
   const pulseRef = useRef<HTMLDivElement>(null);
-  const wsRef = useRef<WebSocket | null>(null);
+
 
   // ── dashboard data ────────────────────────────────────────────────────────
   const loadDash = useCallback(async () => {
@@ -412,69 +413,46 @@ export function Experts() {
   useEffect(() => { loadTraces(); }, [loadTraces]);
 
   // ── WebSocket live updates ────────────────────────────────────────────────
-  useEffect(() => {
-    if (!aktivesUnternehmen) return;
-    let destroyed = false; // StrictMode guard: prevents errors when React unmounts during WS handshake
-    const token = localStorage.getItem('opencognit_token');
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${window.location.host}/ws${token ? `?token=${token}` : ''}`);
-    wsRef.current = ws;
+  useWebSocketEvent(
+    '*',
+    (msg) => {
+      if (msg.unternehmenId && msg.unternehmenId !== aktivesUnternehmen?.id) return;
 
-    ws.onmessage = (event) => {
-      if (destroyed) return;
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.unternehmenId && msg.unternehmenId !== aktivesUnternehmen.id) return;
-
-        if (msg.type === 'trace' && msg.data) {
-          const { expertId, typ, titel, details, erstelltAm, expertName } = msg.data;
-          const ev: TraceEvent = {
-            id: crypto.randomUUID(), expertId, typ, titel, details,
-            expertName, erstelltAm: erstelltAm || new Date().toISOString(),
-          };
-          setAgentTraces(prev => ({ ...prev, [expertId]: [ev, ...(prev[expertId] || [])].slice(0, 30) }));
-          setFeed(prev => [...prev, ev].slice(-80));
-          setLiveOverlay(prev => ({ ...prev, [expertId]: { ...prev[expertId], status: 'running' } }));
-        }
-
-        if (msg.type === 'task_started' && msg.agentId) {
-          setLiveOverlay(prev => ({
-            ...prev,
-            [msg.agentId]: { status: 'running', currentTask: { id: msg.taskId || '', titel: msg.taskTitel || '' } },
-          }));
-          const agentName = alleExperten?.find(a => a.id === msg.agentId)?.name;
-          setFeed(prev => [...prev, {
-            id: crypto.randomUUID(), expertId: msg.agentId, expertName: agentName,
-            typ: 'task_started', titel: msg.taskTitel || 'Task started', erstelltAm: new Date().toISOString(),
-          }].slice(-80));
-        }
-
-        if (msg.type === 'task_completed' && msg.agentId) {
-          setLiveOverlay(prev => ({ ...prev, [msg.agentId]: { status: 'active', currentTask: null } }));
-          const agentName = alleExperten?.find(a => a.id === msg.agentId)?.name;
-          setFeed(prev => [...prev, {
-            id: crypto.randomUUID(), expertId: msg.agentId, expertName: agentName,
-            typ: 'task_completed', titel: msg.taskTitel || 'Task completed', erstelltAm: new Date().toISOString(),
-          }].slice(-80));
-          setTimeout(loadDash, 2000);
-        }
-      } catch {}
-    };
-
-    // Suppress console noise from StrictMode double-invoke closing the socket mid-handshake
-    ws.onerror = () => { if (!destroyed) console.warn('[Experts] WebSocket error'); };
-    ws.onclose = () => { if (!destroyed) console.debug('[Experts] WebSocket closed'); };
-
-    return () => {
-      destroyed = true;
-      ws.onerror = null;
-      ws.onclose = null;
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
-        ws.close();
+      if (msg.type === 'trace' && msg.data) {
+        const { expertId, typ, titel, details, erstelltAm, expertName } = msg.data;
+        const ev: TraceEvent = {
+          id: crypto.randomUUID(), expertId, typ, titel, details,
+          expertName, erstelltAm: erstelltAm || new Date().toISOString(),
+        };
+        setAgentTraces(prev => ({ ...prev, [expertId]: [ev, ...(prev[expertId] || [])].slice(0, 30) }));
+        setFeed(prev => [...prev, ev].slice(-80));
+        setLiveOverlay(prev => ({ ...prev, [expertId]: { ...prev[expertId], status: 'running' } }));
       }
-      wsRef.current = null;
-    };
-  }, [aktivesUnternehmen?.id]);
+
+      if (msg.type === 'task_started' && msg.agentId) {
+        setLiveOverlay(prev => ({
+          ...prev,
+          [msg.agentId]: { status: 'running', currentTask: { id: msg.taskId || '', titel: msg.taskTitel || '' } },
+        }));
+        const agentName = alleExperten?.find(a => a.id === msg.agentId)?.name;
+        setFeed(prev => [...prev, {
+          id: crypto.randomUUID(), expertId: msg.agentId, expertName: agentName,
+          typ: 'task_started', titel: msg.taskTitel || 'Task started', erstelltAm: new Date().toISOString(),
+        }].slice(-80));
+      }
+
+      if (msg.type === 'task_completed' && msg.agentId) {
+        setLiveOverlay(prev => ({ ...prev, [msg.agentId]: { status: 'active', currentTask: null } }));
+        const agentName = alleExperten?.find(a => a.id === msg.agentId)?.name;
+        setFeed(prev => [...prev, {
+          id: crypto.randomUUID(), expertId: msg.agentId, expertName: agentName,
+          typ: 'task_completed', titel: msg.taskTitel || 'Task completed', erstelltAm: new Date().toISOString(),
+        }].slice(-80));
+        setTimeout(loadDash, 2000);
+      }
+    },
+    [aktivesUnternehmen?.id, alleExperten, loadDash],
+  );
 
   // ── pulse auto-scroll ─────────────────────────────────────────────────────
   useEffect(() => {

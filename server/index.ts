@@ -36,6 +36,9 @@ import { setCliPath, getCliPath, getAllCliPaths } from './adapters/cli-paths.js'
 import { ensureWorkspace, listeWorkspaces, raeumeWorkspaceAuf, schliesseWorkspace } from './services/execution-workspaces.js';
 
 import { messagingService, buildConfigContext, executeConfigAction, getUiLanguage, langLine } from './services/messaging.js';
+import { processChatActions } from './services/chat-actions.js';
+import { TOOL_DEFINITIONS, executeTool, extractToolCalls, stripToolBlocks } from './services/chat-tools.js';
+import { loadSoul } from './services/heartbeat/utils.js';
 import { appEvents } from './events.js';
 import { autoSaveInsights, loadRelevantMemory } from './services/memory-auto.js';
 import { nodeManager } from './services/nodeManager.js';
@@ -1341,6 +1344,12 @@ app.patch('/api/tasks/:id', requireResourceAccess("task"), (req, res) => {
   if (updates.assignedTo && updates.assignedTo !== existing.assignedTo) {
     wakeupService.wakeupForAssignment(updates.assignedTo, existing.companyId, req.params.id as string)
       .catch(err => console.error('Wakeup bei Zuweisung fehlgeschlagen:', err));
+  }
+
+  // Wenn Task auf 'in_progress' gesetzt wird → zugewiesenen Agenten sofort wecken
+  if (updates.status === 'in_progress' && existing.assignedTo && existing.status !== 'in_progress') {
+    wakeupService.wakeupForAssignment(existing.assignedTo, existing.companyId, req.params.id as string)
+      .catch(err => console.error('Wakeup bei in_progress fehlgeschlagen:', err));
   }
 
   // Wenn Task auf 'done' → blockierte Tasks automatisch entblocken + notify
@@ -4355,12 +4364,56 @@ app.post(['/api/agents/:id/chat/stream', '/api/experten/:id/chat/stream'], authM
   const memoryContext = loadRelevantMemory(expertId, nachricht.toLowerCase().split(/\W+/).filter((w: string) => w.length > 4));
   const configCtx = expert.isOrchestrator ? buildConfigContext(unternehmenId) : '';
 
-  const systemPrompt = `${expert.systemPrompt ? expert.systemPrompt + '\n\n' : ''}${isEn ? `You are ${expert.name}, ${expert.role} at ${unternehmenData.name}.` : `Du bist ${expert.name}, ${expert.role} bei ${unternehmenData.name}.`}
+  // ── Load SOUL.md ──
+  const soulContent = loadSoul(expert, { company: unternehmenData.name, agent: expert.name });
+
+  // ── Load company goals ──
+  const companyGoals = db.select().from(goals).where(eq(goals.companyId, unternehmenId)).orderBy(desc(goals.createdAt)).limit(10).all();
+
+  // ── Load ALL company tasks (not just CEO's) ──
+  const allCompanyTasks = db.select().from(tasks)
+    .where(eq(tasks.companyId, unternehmenId))
+    .orderBy(desc(tasks.createdAt)).limit(15).all();
+
+  // ── Live agent status snapshot ──
+  const allAgents = db.select().from(agents).where(eq(agents.companyId, unternehmenId)).all();
+  const agentStatus = allAgents.map(a => {
+    let conn = a.connectionType || 'custom';
+    try { const c = JSON.parse(a.connectionConfig || '{}'); if (c.model) conn += `/${c.model}`; } catch {}
+    return {
+      name: a.name,
+      role: a.role,
+      status: a.status || 'idle',
+      connection: conn,
+      workspace: a.workspacePath || '',
+      lastCycle: a.lastCycle ? new Date(a.lastCycle).toLocaleString(isEn ? 'en-US' : 'de-DE') : '-',
+    };
+  });
+  const agentStatusText = agentStatus.length > 0
+    ? (isEn
+      ? `\n\n--- Agent Status ---\n${agentStatus.map(a => `• ${a.name} (${a.role}): status=${a.status}, connection=${a.connection}, workspace=${a.workspace || 'none'}, lastCycle=${a.lastCycle}`).join('\n')}`
+      : `\n\n--- Agent-Status ---\n${agentStatus.map(a => `• ${a.name} (${a.role}): Status=${a.status}, Verbindung=${a.connection}, Workspace=${a.workspace || 'keiner'}, Letzter Zyklus=${a.lastCycle}`).join('\n')}`)
+    : '';
+
+  const goalsText = companyGoals.length > 0
+    ? (isEn
+      ? `\n\n--- Company Goals ---\n${(companyGoals as any[]).map(g => `• ${g.title}${g.status ? ` [${g.status}]` : ''}${typeof g.progress === 'number' ? ` (${g.progress}%)` : ''}`).join('\n')}`
+      : `\n\n--- Unternehmensziele ---\n${(companyGoals as any[]).map(g => `• ${g.title}${g.status ? ` [${g.status}]` : ''}${typeof g.progress === 'number' ? ` (${g.progress}%)` : ''}`).join('\n')}`)
+    : (isEn ? '\n\nNo goals defined yet.' : '\n\nNoch keine Ziele definiert.');
+
+  const allTasksText = allCompanyTasks.length > 0
+    ? (isEn
+      ? `\n\n--- All Company Tasks ---\n${(allCompanyTasks as any[]).map(t => `• ${t.title} [${t.status}]${t.assignedTo ? ` → ${allAgents.find(a => a.id === t.assignedTo)?.name || 'unknown'}` : ''}`).join('\n')}`
+      : `\n\n--- Alle Company-Tasks ---\n${(allCompanyTasks as any[]).map(t => `• ${t.title} [${t.status}]${t.assignedTo ? ` → ${allAgents.find(a => a.id === t.assignedTo)?.name || 'unbekannt'}` : ''}`).join('\n')}`)
+    : '';
+
+  const systemPrompt = `${expert.systemPrompt ? expert.systemPrompt + '\n\n' : ''}${soulContent ? soulContent + '\n\n' : ''}${isEn ? `You are ${expert.name}, ${expert.role} at ${unternehmenData.name}.` : `Du bist ${expert.name}, ${expert.role} bei ${unternehmenData.name}.`}
 ${unternehmenData.goal ? (isEn ? `Company goal: ${unternehmenData.goal}` : `Unternehmensziel: ${unternehmenData.goal}`) : ''}
 ${teamMembers.length > 0 ? (isEn ? `Direct reports: ${teamMembers.map(m => m.name).join(', ')}` : `Direkte Berichte: ${teamMembers.map(m => m.name).join(', ')}`) : ''}
 ${supervisor ? (isEn ? `Supervisor: ${supervisor.name}` : `Vorgesetzter: ${supervisor.name}`) : ''}
-${openTasks.length > 0 ? (isEn ? `Active tasks: ${openTasks.map(t => t.title).join(', ')}` : `Aktive Tasks: ${openTasks.map(t => t.title).join(', ')}`) : ''}
-${memoryContext}${configCtx}
+${openTasks.length > 0 ? (isEn ? `Your active tasks: ${openTasks.map(t => t.title).join(', ')}` : `Deine aktiven Tasks: ${openTasks.map(t => t.title).join(', ')}`) : ''}${allTasksText}${goalsText}
+${memoryContext}${configCtx}${agentStatusText}
+${expert.isOrchestrator ? (isEn ? `\n\nYou are the CEO. When the board asks you to do something, you MUST execute it immediately via [ACTION]{"type":"create_task","title":"...","assignTo":"AgentName","description":"..."}[/ACTION] or [ACTION]{"actions":[{"type":"create_task",...}]}[/ACTION]. Available actions: create_task, assign_task, mark_done, update_goal, hire_agent, call_meeting, create_project, create_routine. Do NOT just promise to do it — actually DO it.\n\nWhen presenting a project plan or roadmap, wrap it as [PLAN]{"tasks":[{"id":"1","title":"...","status":"pending","priority":"high","level":0,"dependencies":[],"subtasks":[]}]}[/PLAN] for an interactive display.` : `\n\nDu bist der CEO. Wenn das Board dich um etwas bittet, führe es SOFORT aus via [ACTION]{"type":"create_task","title":"...","assignTo":"AgentName","description":"..."}[/ACTION] oder [ACTION]{"actions":[{"type":"create_task",...}]}[/ACTION]. Verfügbare Aktionen: create_task, assign_task, mark_done, update_goal, hire_agent, call_meeting, create_project, create_routine. Verspreche nicht einfach nur — TU es wirklich.\n\nWenn du einen Projektplan oder eine Roadmap darstellst, packe ihn als [PLAN]{"tasks":[{"id":"1","title":"...","status":"pending","priority":"high","level":0,"dependencies":[],"subtasks":[]}]}[/PLAN] für eine interaktive Anzeige.`) : ''}
 ${langLine(uiLang)} ${isEn ? 'You respond directly to board messages. Be precise and helpful. Actions only when asked, as [ACTION]{...}[/ACTION].' : 'Du antwortest direkt auf Nachrichten des Boards. Sei präzise und hilfreich. Aktionen nur wenn gewünscht als [ACTION]{...}[/ACTION].'}`;
 
   const history = chatHistory.filter(m => m.senderType !== 'system').map(m => ({
@@ -4376,6 +4429,66 @@ ${langLine(uiLang)} ${isEn ? 'You respond directly to board messages. Be precise
   let inputTokens = 0;
   let outputTokens = 0;
 
+  // ── Tool-Use Loop for CEO (max 3 rounds) ────────────────────────────────
+  const toolContext: { role: 'user' | 'assistant'; content: string }[] = [];
+  const enableToolUse = expert.isOrchestrator;
+
+  if (enableToolUse) {
+    emit('thinking_start', {});
+    const toolPrompt = systemPrompt + '\n\n' + TOOL_DEFINITIONS;
+    const toolHistory = [...history, { role: 'user' as const, content: nachricht }];
+
+    for (let round = 0; round < 3; round++) {
+      const toolMsgs = [...toolHistory, ...toolContext];
+      let assistantText = '';
+
+      try {
+        if (provider === 'anthropic') {
+          const toolBody = {
+            model: modelId, max_tokens: 4096,
+            system: toolPrompt, messages: toolMsgs, stream: false,
+          };
+          const toolRes = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+            body: JSON.stringify(toolBody),
+          });
+          if (toolRes.ok) {
+            const toolData = await toolRes.json();
+            assistantText = toolData.content?.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('') || '';
+          }
+        } else {
+          // OpenAI-compatible non-streaming
+          const toolRes = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+            body: JSON.stringify({ model: modelId, messages: [{ role: 'system', content: toolPrompt }, ...toolMsgs], stream: false, max_tokens: 4096 }),
+          });
+          if (toolRes.ok) {
+            const toolData = await toolRes.json();
+            assistantText = toolData.choices?.[0]?.message?.content || '';
+          }
+        }
+      } catch { break; }
+
+      const toolCalls = extractToolCalls(assistantText);
+      if (toolCalls.length === 0) break;
+
+      // Strip tool blocks for clean assistant message
+      const cleanAssistant = stripToolBlocks(assistantText);
+      if (cleanAssistant) {
+        toolContext.push({ role: 'assistant', content: cleanAssistant });
+      }
+
+      for (const call of toolCalls) {
+        emit('tool_call', { tool: call.name, params: call.parameters });
+        const result = await executeTool(call);
+        emit('tool_result', { tool: call.name, success: result.success, output: result.output.slice(0, 2000), error: result.error });
+        toolContext.push({ role: 'user', content: `[TOOL_RESULT:${call.name}]\n${result.success ? result.output : `ERROR: ${result.error}`}`.slice(0, 4000) });
+      }
+    }
+  }
+
   try {
     if (provider === 'anthropic') {
       // Build user content (text + optional image)
@@ -4385,7 +4498,7 @@ ${langLine(uiLang)} ${isEn ? 'You respond directly to board messages. Be precise
       }
       userContent.push({ type: 'text', text: nachricht });
 
-      const msgs = [...history, { role: 'user' as const, content: userContent }];
+      const msgs = [...history, ...toolContext, { role: 'user' as const, content: userContent }];
       const useThinking = modelId.includes('claude-3-7') || modelId.includes('claude-opus-4') || modelId.includes('claude-sonnet-4');
       const body: any = {
         model: modelId, max_tokens: useThinking ? 16000 : 2048,
@@ -4452,7 +4565,8 @@ ${langLine(uiLang)} ${isEn ? 'You respond directly to board messages. Be precise
       }
       userContent.push({ type: 'text', text: nachricht });
 
-      const msgs = [...history, { role: 'user', content: image ? userContent : nachricht }];
+      const toolCtxFormatted = toolContext.map(m => ({ role: m.role, content: m.content }));
+      const msgs = [...history, ...toolCtxFormatted, { role: 'user', content: image ? userContent : nachricht }];
       const llmRes = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
@@ -4490,18 +4604,146 @@ ${langLine(uiLang)} ${isEn ? 'You respond directly to board messages. Be precise
     return res.end();
   }
 
-  // Execute [ACTION] blocks and replace them inline with their results
+  // ── Build auto-plan from created DB entries ─────────────────────────────
+  async function buildPlanFromActions(
+    companyId: string,
+    taskIds: string[],
+    projectIds: string[],
+  ): Promise<any[]> {
+    const planTasks: any[] = [];
+    const now = new Date().toISOString();
+
+    // Load created tasks with their subtask info
+    if (taskIds.length > 0) {
+      const taskRows = db.select()
+        .from(tasks)
+        .where(and(eq(tasks.companyId, companyId), inArray(tasks.id, taskIds)))
+        .all();
+
+      for (const t of taskRows as any[]) {
+        planTasks.push({
+          id: t.id,
+          title: t.title,
+          description: t.description || '',
+          status: mapDbStatus(t.status),
+          priority: t.priority || 'medium',
+          level: 0,
+          dependencies: [],
+          subtasks: [],
+        });
+      }
+    }
+
+    // Load created projects and their child tasks as subtasks
+    if (projectIds.length > 0) {
+      for (const pid of projectIds) {
+        const proj = db.select().from(projects).where(and(eq(projects.id, pid), eq(projects.companyId, companyId))).get();
+        if (!proj) continue;
+
+        const childTasks = db.select()
+          .from(tasks)
+          .where(and(eq(tasks.projectId, pid), eq(tasks.companyId, companyId)))
+          .all();
+
+        planTasks.push({
+          id: proj.id,
+          title: proj.name,
+          description: proj.description || '',
+          status: 'pending',
+          priority: proj.priority || 'medium',
+          level: 0,
+          dependencies: [],
+          subtasks: (childTasks as any[]).map((ct: any) => ({
+            id: ct.id,
+            title: ct.title,
+            description: ct.description || '',
+            status: mapDbStatus(ct.status),
+            priority: ct.priority || 'medium',
+          })),
+        });
+      }
+    }
+
+    return planTasks;
+  }
+
+  function mapDbStatus(dbStatus: string): any {
+    switch (dbStatus) {
+      case 'done': return 'completed';
+      case 'in_progress': return 'in-progress';
+      case 'blocked': return 'need-help';
+      case 'todo': return 'pending';
+      case 'backlog': return 'pending';
+      default: return 'pending';
+    }
+  }
+
+  // ── Execute [ACTION] blocks ─────────────────────────────────────────────
   let finalReply = fullReply;
   if (fullReply) {
-    finalReply = fullReply.replace(/\[ACTION\]([\s\S]*?)\[\/ACTION\]/g, (_m, json) => {
+    // Detect if any ACTION block contains a CEO action (create_task, assign_task, etc.)
+    const ceoActionTypes = new Set(['create_task', 'assign_task', 'mark_done', 'update_goal', 'hire_agent', 'call_meeting', 'create_project', 'create_routine']);
+    let hasCeoActions = false;
+    const actionRegex = /\[ACTION\]([\s\S]*?)\[\/ACTION\]/g;
+    let m;
+    while ((m = actionRegex.exec(fullReply)) !== null) {
       try {
-        const a = JSON.parse(json);
-        const r = executeConfigAction(a, unternehmenId);
-        return r || '';
-      } catch (e: any) {
-        return `❌ Action-Parse-Fehler: ${e.message?.slice(0, 80) || 'invalid JSON'}`;
+        const parsed = JSON.parse(m[1].trim());
+        const actions = Array.isArray(parsed.actions) ? parsed.actions : [parsed];
+        if (actions.some((a: any) => ceoActionTypes.has(a.type))) {
+          hasCeoActions = true;
+          break;
+        }
+      } catch { /* ignore parse errors */ }
+    }
+
+    if (hasCeoActions) {
+      // CEO actions go through processChatActions (with dedup, wakeup, trace events)
+      const result = await processChatActions(expertId, unternehmenId, fullReply);
+      finalReply = result.replyText;
+
+      // Build auto-plan from created tasks/projects and send as interactive plan message
+      if (result.createdTaskIds.length > 0 || result.createdProjectIds.length > 0) {
+        const planTasks = await buildPlanFromActions(unternehmenId, result.createdTaskIds, result.createdProjectIds);
+        if (planTasks.length > 0) {
+          const planPayload = JSON.stringify({ tasks: planTasks });
+          const planMsg = {
+            id: uuid(), companyId: unternehmenId, agentId: expertId,
+            senderType: 'agent' as const,
+            message: `[PLAN]${planPayload}[/PLAN]`,
+            read: false, createdAt: new Date().toISOString(),
+          };
+          db.insert(chatMessages).values(planMsg).run();
+          broadcastUpdate('chat_message', planMsg);
+        }
       }
-    }).trim();
+
+      // If actions were executed, also save a system message with the summary
+      if (result.executed && result.actionSummary.length > 0) {
+        const isEn2 = getUiLanguage(unternehmenId) === 'en';
+        const sysMsg = {
+          id: uuid(), companyId: unternehmenId, agentId: expertId,
+          senderType: 'system' as const,
+          message: isEn2
+            ? `📋 Actions executed:\n${result.actionSummary.map(s => `• ${s}`).join('\n')}`
+            : `📋 Aktionen ausgeführt:\n${result.actionSummary.map(s => `• ${s}`).join('\n')}`,
+          read: false, createdAt: new Date().toISOString(),
+        };
+        db.insert(chatMessages).values(sysMsg).run();
+        broadcastUpdate('chat_message', sysMsg);
+      }
+    } else {
+      // Config actions (configure_agent, update_agent, etc.) use executeConfigAction
+      finalReply = fullReply.replace(/\[ACTION\]([\s\S]*?)\[\/ACTION\]/g, (_m, json) => {
+        try {
+          const a = JSON.parse(json);
+          const r = executeConfigAction(a, unternehmenId);
+          return r || '';
+        } catch (e: any) {
+          return `❌ Action-Parse-Fehler: ${e.message?.slice(0, 80) || 'invalid JSON'}`;
+        }
+      }).trim();
+    }
 
     const agentMsg = { id: uuid(), companyId: unternehmenId, agentId: expertId, senderType: 'agent' as const, message: finalReply || fullReply, read: false, createdAt: new Date().toISOString() };
     db.insert(chatMessages).values(agentMsg).run();
@@ -8037,6 +8279,32 @@ async function start() {
   // Start periodic zyklus checker — erstellt Wakeups basierend auf zyklusIntervallSek alle 30s
   zyklusCheckerInterval = setInterval(checkPeriodicWakeups, 30000);
   console.log('⏱️ Periodic Zyklus-Checker gestartet (prüft alle 30s)\n');
+
+  // Start stuck-agent watchdog — resets agents stuck in 'running' for >5 minutes
+  setInterval(() => {
+    try {
+      const stuckCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const stuckAgents = db.select({ id: agents.id, name: agents.name })
+        .from(agents)
+        .where(and(
+          eq(agents.status, 'running' as any),
+          sql`${agents.lastCycle} < ${stuckCutoff}`
+        )).all() as any[];
+      if (stuckAgents.length > 0) {
+        db.update(agents).set({ status: 'idle', updatedAt: new Date().toISOString() })
+          .where(and(
+            eq(agents.status, 'running' as any),
+            sql`${agents.lastCycle} < ${stuckCutoff}`
+          )).run();
+        db.update(tasks).set({ executionLockedAt: null as any, executionRunId: null as any })
+          .where(isNotNull(tasks.executionLockedAt as any)).run();
+        console.log(`🛡️ Watchdog: ${stuckAgents.length} Agent(en) von 'running' → 'idle' zurückgesetzt: ${stuckAgents.map((a: any) => a.name).join(', ')}`);
+      }
+    } catch (e: any) {
+      console.warn('🛡️ Stuck-agent watchdog error:', e.message);
+    }
+  }, 60_000);
+  console.log('🛡️ Stuck-Agent Watchdog gestartet (prüft alle 60s)\n');
 
   // Initialize plugin system (Phase 4)
   try {

@@ -140,6 +140,16 @@ export class GoogleAdapter implements ExpertAdapter {
     // Google pricing varies by model — exact cost not available via API
     const costCent = 0;
 
+    if (!finalOutput.trim()) {
+      return {
+        success: false,
+        output: '',
+        error: 'Google returned empty output (no content from model).',
+        duration: Date.now() - startTime,
+        tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, costCent },
+      };
+    }
+
     return {
       success: true,
       output: finalOutput,

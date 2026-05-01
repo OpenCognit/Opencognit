@@ -156,6 +156,16 @@ export class AnthropicAdapter implements ExpertAdapter {
     const outputRate = model.includes('haiku') ? 0.004 : model.includes('opus') ? 0.075 : 0.015;
     const costCent = Math.ceil((totalInputTokens * inputRate + totalOutputTokens * outputRate) / 100);
 
+    if (!finalOutput.trim()) {
+      return {
+        success: false,
+        output: '',
+        error: 'Anthropic returned empty output (no content from model).',
+        duration: Date.now() - startTime,
+        tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, costCent },
+      };
+    }
+
     return {
       success: true,
       output: finalOutput,

@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../components/ToastProvider';
 import { useCompany } from './useCompany';
+import { useWebSocketEvent } from './useWebSocket';
 
 import { authFetch } from '../utils/api';
 
@@ -16,8 +17,6 @@ function setGlobalCount(n: number) {
 export function useApprovalNotifier() {
   const { aktivesUnternehmen } = useCompany();
   const toast = useToast();
-  const wsRef = useRef<WebSocket | null>(null);
-
   const fetchCount = useCallback(async () => {
     if (!aktivesUnternehmen) return;
     try {
@@ -30,101 +29,74 @@ export function useApprovalNotifier() {
 
   useEffect(() => {
     if (!aktivesUnternehmen) return;
-    let destroyed = false;
     fetchCount();
 
     // Fallback polling — re-fetch every 30s even if WS fails
     const pollId = setInterval(fetchCount, 30_000);
+    return () => { clearInterval(pollId); };
+  }, [aktivesUnternehmen?.id, fetchCount]);
 
-    const _tok = localStorage.getItem('opencognit_token') || '';
-    const wsUrl = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws' + (_tok ? `?token=${_tok}` : '');
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+  useWebSocketEvent('approval_updated', (msg) => {
+    if (msg.data?.unternehmenId && msg.data.unternehmenId !== aktivesUnternehmen?.id) return;
+    fetchCount();
+    window.dispatchEvent(new CustomEvent('opencognit:approval-changed', {
+      detail: { unternehmenId: msg.data?.unternehmenId || msg.unternehmenId, status: msg.data?.status || msg.status },
+    }));
+  }, [aktivesUnternehmen?.id, fetchCount]);
 
-    ws.onmessage = (event) => {
-      if (destroyed) return;
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.data?.unternehmenId && msg.data.unternehmenId !== aktivesUnternehmen.id) return;
+  useWebSocketEvent('approval_created', (msg) => {
+    if (msg.data?.unternehmenId && msg.data.unternehmenId !== aktivesUnternehmen?.id) return;
+    setGlobalCount(globalCount + 1);
+    const agentName = msg.data?.agentName || 'Ein Agent';
+    const actionName = msg.data?.action || msg.data?.titel || 'eine Aktion';
+    toast.warning('Genehmigung erforderlich', `${agentName} möchte "${actionName}" ausführen`);
+    window.dispatchEvent(new CustomEvent('opencognit:approval-changed', {
+      detail: { unternehmenId: msg.data?.unternehmenId || msg.unternehmenId, status: 'pending' },
+    }));
+  }, [aktivesUnternehmen?.id]);
 
-        if (msg.type === 'approval_updated') {
-          fetchCount();
-          window.dispatchEvent(new CustomEvent('opencognit:approval-changed', {
-            detail: { unternehmenId: msg.data?.unternehmenId || msg.unternehmenId, status: msg.data?.status || msg.status },
-          }));
-        }
+  useWebSocketEvent('approval_requested', (msg) => {
+    if (msg.data?.unternehmenId && msg.data.unternehmenId !== aktivesUnternehmen?.id) return;
+    setGlobalCount(globalCount + 1);
+    const agentName = msg.data?.agentName || 'Ein Agent';
+    const actionName = msg.data?.action || msg.data?.titel || 'eine Aktion';
+    toast.warning('Genehmigung erforderlich', `${agentName} möchte "${actionName}" ausführen`);
+    window.dispatchEvent(new CustomEvent('opencognit:approval-changed', {
+      detail: { unternehmenId: msg.data?.unternehmenId || msg.unternehmenId, status: 'pending' },
+    }));
+  }, [aktivesUnternehmen?.id]);
 
-        else if (msg.type === 'approval_created' || msg.type === 'approval_requested') {
-          setGlobalCount(globalCount + 1);
-          const agentName = msg.data?.agentName || 'Ein Agent';
-          const actionName = msg.data?.action || msg.data?.titel || 'eine Aktion';
-          toast.warning(
-            'Genehmigung erforderlich',
-            `${agentName} möchte "${actionName}" ausführen`
-          );
-          window.dispatchEvent(new CustomEvent('opencognit:approval-changed', {
-            detail: { unternehmenId: msg.data?.unternehmenId || msg.unternehmenId, status: 'pending' },
-          }));
-        }
+  useWebSocketEvent('task_completed', (msg) => {
+    if (msg.data?.unternehmenId && msg.data.unternehmenId !== aktivesUnternehmen?.id) return;
+    const agentName = msg.data?.agentName || 'Agent';
+    const taskTitle = msg.data?.titel || 'Task';
+    toast.success('Task abgeschlossen', `${agentName}: ${taskTitle}`);
+  }, [aktivesUnternehmen?.id]);
 
-        else if (msg.type === 'task_completed') {
-          const agentName = msg.data?.agentName || 'Agent';
-          const taskTitle = msg.data?.titel || 'Task';
-          toast.success(
-            'Task abgeschlossen',
-            `${agentName}: ${taskTitle}`
-          );
-        }
+  useWebSocketEvent('meeting_created', (msg) => {
+    if (msg.data?.unternehmenId && msg.data.unternehmenId !== aktivesUnternehmen?.id) return;
+    const { veranstalterName, titel, teilnehmerIds } = msg.data || {};
+    toast.agent(`Meeting: ${veranstalterName || 'CEO'}`, `"${titel}" · ${(teilnehmerIds?.length || 0)} Teilnehmer eingeladen`);
+  }, [aktivesUnternehmen?.id]);
 
-        else if (msg.type === 'meeting_created') {
-          const { veranstalterName, titel, teilnehmerIds } = msg.data || {};
-          toast.agent(
-            `Meeting: ${veranstalterName || 'CEO'}`,
-            `"${titel}" · ${(teilnehmerIds?.length || 0)} Teilnehmer eingeladen`,
-          );
-        }
+  useWebSocketEvent('task_started', (msg) => {
+    if (msg.data?.unternehmenId && msg.data.unternehmenId !== aktivesUnternehmen?.id) return;
+    const agentName = msg.data?.agentName || 'Agent';
+    const taskTitle = msg.data?.titel || 'Task';
+    toast.info('Agent arbeitet...', `${agentName} hat begonnen: ${taskTitle}`);
+  }, [aktivesUnternehmen?.id]);
 
-        else if (msg.type === 'task_started') {
-          const agentName = msg.data?.agentName || 'Agent';
-          const taskTitle = msg.data?.titel || 'Task';
-          toast.info(
-            'Agent arbeitet...',
-            `${agentName} hat begonnen: ${taskTitle}`
-          );
-        }
-
-        else if (msg.type === 'chat_message') {
-          const { absenderTyp, absenderName, nachricht } = msg.data || {};
-          if (absenderTyp === 'agent') {
-            const preview = typeof nachricht === 'string'
-              ? nachricht.slice(0, 80) + (nachricht.length > 80 ? '…' : '')
-              : '';
-            toast.agent(
-              absenderName || 'Agent',
-              preview,
-              msg.data?.onClick
-            );
-          } else if (absenderTyp === 'system' && typeof nachricht === 'string' && nachricht.toLowerCase().includes('fehler')) {
-            toast.error('System-Fehler', nachricht.slice(0, 100));
-          }
-        }
-
-      } catch {}
-    };
-
-    ws.onerror = () => { if (!destroyed) console.warn('[ApprovalNotifier] WS error'); };
-    ws.onclose = () => { if (!destroyed) console.debug('[ApprovalNotifier] WS closed'); };
-
-    return () => {
-      destroyed = true;
-      clearInterval(pollId);
-      ws.onerror = null;
-      ws.onclose = null;
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
-        ws.close();
-      }
-      wsRef.current = null;
-    };
+  useWebSocketEvent('chat_message', (msg) => {
+    if (msg.data?.unternehmenId && msg.data.unternehmenId !== aktivesUnternehmen?.id) return;
+    const { absenderTyp, absenderName, nachricht } = msg.data || {};
+    if (absenderTyp === 'agent') {
+      const preview = typeof nachricht === 'string'
+        ? nachricht.slice(0, 80) + (nachricht.length > 80 ? '…' : '')
+        : '';
+      toast.agent(absenderName || 'Agent', preview, msg.data?.onClick);
+    } else if (absenderTyp === 'system' && typeof nachricht === 'string' && nachricht.toLowerCase().includes('fehler')) {
+      toast.error('System-Fehler', nachricht.slice(0, 100));
+    }
   }, [aktivesUnternehmen?.id]);
 
   return { fetchCount };

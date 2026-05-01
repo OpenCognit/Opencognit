@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useWebSocketEvent } from '../hooks/useWebSocket';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
@@ -147,233 +148,217 @@ function useAgentNotifications() {
   const { aktivesUnternehmen } = useCompany();
   const { language } = useI18n();
   const de = language === 'de';
-  const wsRef = useRef<WebSocket | null>(null);
+  useWebSocketEvent(
+    '*',
+    (msg) => {
+      if (msg.unternehmenId && msg.unternehmenId !== aktivesUnternehmen?.id) return;
 
-  useEffect(() => {
-    if (!aktivesUnternehmen) return;
-    const token = localStorage.getItem('opencognit_token');
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${window.location.host}/ws${token ? `?token=${token}` : ''}`);
-    wsRef.current = ws;
-
-    ws.onmessage = (ev) => {
-      try {
-        const msg = JSON.parse(ev.data);
-        if (msg.unternehmenId && msg.unternehmenId !== aktivesUnternehmen.id) return;
-
-        switch (msg.type) {
-          case 'task_completed':
-            toast.agent(
-              msg.agentName
-                ? (de ? `✅ ${msg.agentName} hat Aufgabe erledigt` : `✅ ${msg.agentName} completed a task`)
-                : (de ? '✅ Aufgabe abgeschlossen' : '✅ Task completed'),
-              msg.taskTitel || undefined,
-              () => navigate('/tasks'),
-            );
-            break;
-          case 'task_started':
-            toast.toast({
-              type: 'agent',
-              title: msg.agentName
-                ? (de ? `⚡ ${msg.agentName} arbeitet jetzt` : `⚡ ${msg.agentName} is working now`)
-                : (de ? '⚡ Agent gestartet' : '⚡ Agent started'),
-              message: msg.taskTitel || undefined,
-              duration: 10000,
-              onClick: () => navigate('/war-room'),
-            });
-            break;
-          case 'task_updated': {
-            const statusLabels: Record<string, string> = {
-              done: de ? '✅ Erledigt' : '✅ Done',
-              in_progress: de ? '🔄 In Bearbeitung' : '🔄 In Progress',
-              todo: de ? '📋 Todo' : '📋 Todo',
-              blocked: de ? '🚫 Blockiert' : '🚫 Blocked',
-              cancelled: de ? '❌ Abgebrochen' : '❌ Cancelled',
-            };
-            const statusLabel = statusLabels[msg.status] || msg.status;
-            toast.info(
-              de ? `Task aktualisiert: ${statusLabel}` : `Task updated: ${statusLabel}`,
-              msg.taskTitel || undefined,
-              () => navigate('/tasks'),
-            );
-            break;
-          }
-          case 'task_deleted':
-            toast.info(
-              de ? '🗑️ Task gelöscht' : '🗑️ Task deleted',
-              msg.taskTitel || undefined,
-              () => navigate('/tasks'),
-            );
-            break;
-          case 'approval_needed':
-            toast.warning(
-              de ? '⚖️ Genehmigung erforderlich' : '⚖️ Approval required',
-              msg.taskTitel || (de ? 'Ein Agent wartet auf Freigabe' : 'An agent is waiting for approval'),
+      switch (msg.type) {
+        case 'task_completed':
+          toast.agent(
+            msg.agentName
+              ? (de ? `✅ ${msg.agentName} hat Aufgabe erledigt` : `✅ ${msg.agentName} completed a task`)
+              : (de ? '✅ Aufgabe abgeschlossen' : '✅ Task completed'),
+            msg.taskTitel || undefined,
+            () => navigate('/tasks'),
+          );
+          break;
+        case 'task_started':
+          toast.toast({
+            type: 'agent',
+            title: msg.agentName
+              ? (de ? `⚡ ${msg.agentName} arbeitet jetzt` : `⚡ ${msg.agentName} is working now`)
+              : (de ? '⚡ Agent gestartet' : '⚡ Agent started'),
+            message: msg.taskTitel || undefined,
+            duration: 10000,
+            onClick: () => navigate('/war-room'),
+          });
+          break;
+        case 'task_updated': {
+          const statusLabels: Record<string, string> = {
+            done: de ? '✅ Erledigt' : '✅ Done',
+            in_progress: de ? '🔄 In Bearbeitung' : '🔄 In Progress',
+            todo: de ? '📋 Todo' : '📋 Todo',
+            blocked: de ? '🚫 Blockiert' : '🚫 Blocked',
+            cancelled: de ? '❌ Abgebrochen' : '❌ Cancelled',
+          };
+          const statusLabel = statusLabels[msg.status] || msg.status;
+          toast.info(
+            de ? `Task aktualisiert: ${statusLabel}` : `Task updated: ${statusLabel}`,
+            msg.taskTitel || undefined,
+            () => navigate('/tasks'),
+          );
+          break;
+        }
+        case 'task_deleted':
+          toast.info(
+            de ? '🗑️ Task gelöscht' : '🗑️ Task deleted',
+            msg.taskTitel || undefined,
+            () => navigate('/tasks'),
+          );
+          break;
+        case 'approval_needed':
+          toast.warning(
+            de ? '⚖️ Genehmigung erforderlich' : '⚖️ Approval required',
+            msg.taskTitel || (de ? 'Ein Agent wartet auf Freigabe' : 'An agent is waiting for approval'),
+            () => navigate('/approvals'),
+          );
+          break;
+        case 'approval_requested': {
+          const approvalTitel = msg.data?.titel || msg.titel;
+          const approvalTyp = msg.data?.typ || msg.typ;
+          const typeLabels: Record<string, string> = {
+            hire_expert: de ? '🧑‍💼 Neueinstellung' : '🧑‍💼 Hiring',
+            approve_strategy: de ? '🎯 Strategie' : '🎯 Strategy',
+            budget_change: de ? '💰 Budget' : '💰 Budget',
+            agent_action: de ? '🤖 Agent-Aktion' : '🤖 Agent Action',
+          };
+          toast.warning(
+            `${typeLabels[approvalTyp] || (de ? '⚖️ Genehmigung' : '⚖️ Approval')}: ${approvalTitel || (de ? 'Freigabe angefordert' : 'Approval requested')}`,
+            msg.data?.beschreibung || msg.beschreibung || (de ? 'Zum Genehmigen klicken' : 'Click to review'),
+            () => navigate('/approvals'),
+          );
+          break;
+        }
+        case 'approval_updated': {
+          const isApproved = msg.data?.status === 'approved' || msg.status === 'approved';
+          const approvalTitle = msg.data?.titel || msg.titel;
+          if (isApproved) {
+            toast.success(
+              de ? '✅ Genehmigt' : '✅ Approved',
+              approvalTitle || (de ? 'Die Freigabe wurde erteilt' : 'Approval has been granted'),
               () => navigate('/approvals'),
             );
-            break;
-          case 'approval_requested': {
-            const approvalTitel = msg.data?.titel || msg.titel;
-            const approvalTyp = msg.data?.typ || msg.typ;
-            const typeLabels: Record<string, string> = {
-              hire_expert: de ? '🧑‍💼 Neueinstellung' : '🧑‍💼 Hiring',
-              approve_strategy: de ? '🎯 Strategie' : '🎯 Strategy',
-              budget_change: de ? '💰 Budget' : '💰 Budget',
-              agent_action: de ? '🤖 Agent-Aktion' : '🤖 Agent Action',
-            };
-            toast.warning(
-              `${typeLabels[approvalTyp] || (de ? '⚖️ Genehmigung' : '⚖️ Approval')}: ${approvalTitel || (de ? 'Freigabe angefordert' : 'Approval requested')}`,
-              msg.data?.beschreibung || msg.beschreibung || (de ? 'Zum Genehmigen klicken' : 'Click to review'),
+          } else {
+            toast.info(
+              de ? '❌ Abgelehnt' : '❌ Rejected',
+              approvalTitle || (de ? 'Die Freigabe wurde abgelehnt' : 'Approval was rejected'),
               () => navigate('/approvals'),
             );
-            break;
           }
-          case 'approval_updated': {
-            const isApproved = msg.data?.status === 'approved' || msg.status === 'approved';
-            const approvalTitle = msg.data?.titel || msg.titel;
-            if (isApproved) {
-              toast.success(
-                de ? '✅ Genehmigt' : '✅ Approved',
-                approvalTitle || (de ? 'Die Freigabe wurde erteilt' : 'Approval has been granted'),
-                () => navigate('/approvals'),
-              );
-            } else {
-              toast.info(
-                de ? '❌ Abgelehnt' : '❌ Rejected',
-                approvalTitle || (de ? 'Die Freigabe wurde abgelehnt' : 'Approval was rejected'),
-                () => navigate('/approvals'),
-              );
-            }
-            break;
-          }
-          case 'goal_achieved':
+          break;
+        }
+        case 'goal_achieved':
+          toast.success(
+            msg.zielTitel
+              ? (de ? `🎯 Ziel erreicht: ${msg.zielTitel}` : `🎯 Goal achieved: ${msg.zielTitel}`)
+              : (de ? '🎯 Ziel erreicht!' : '🎯 Goal achieved!'),
+            de ? 'Alle verknüpften Aufgaben wurden abgeschlossen.' : 'All linked tasks have been completed.',
+            () => navigate('/goals'),
+          );
+          break;
+        case 'budget_warning':
+          toast.warning(
+            de ? '💰 Budget-Warnung' : '💰 Budget warning',
+            msg.message || (de ? 'Ein Agent nähert sich dem Budget-Limit' : 'An agent is approaching the budget limit'),
+            () => navigate('/costs'),
+          );
+          break;
+        case 'expert_deleted':
+          toast.info(
+            msg.name
+              ? (de ? `🗑️ ${msg.name} entlassen` : `🗑️ ${msg.name} dismissed`)
+              : (de ? '🗑️ Agent entlassen' : '🗑️ Agent dismissed'),
+            undefined,
+            () => navigate('/experts'),
+          );
+          break;
+        case 'expert_created': {
+          const expertName = msg.data?.name || msg.name;
+          toast.success(
+            de ? `🤖 Agent erstellt: ${expertName}` : `🤖 Agent created: ${expertName}`,
+            msg.data?.rolle || msg.rolle || undefined,
+            () => navigate('/experts'),
+          );
+          break;
+        }
+        case 'tasks_unblocked': {
+          const n = msg.taskIds?.length || 0;
+          if (n > 0) toast.info(
+            de ? `🔓 ${n} Aufgabe${n > 1 ? 'n' : ''} entsperrt` : `🔓 ${n} task${n > 1 ? 's' : ''} unblocked`,
+            de ? 'Blockierte Aufgaben sind wieder verfügbar' : 'Blocked tasks are available again',
+            () => navigate('/tasks'),
+          );
+          break;
+        }
+        case 'meeting_created':
+          toast.agent(
+            de ? '💬 Meeting gestartet' : '💬 Meeting started',
+            msg.titel || (de ? 'Agenten halten eine Besprechung' : 'Agents are holding a meeting'),
+            () => navigate('/meetings'),
+          );
+          break;
+        case 'meeting_updated':
+          if (msg.status === 'completed') {
             toast.success(
-              msg.zielTitel
-                ? (de ? `🎯 Ziel erreicht: ${msg.zielTitel}` : `🎯 Goal achieved: ${msg.zielTitel}`)
-                : (de ? '🎯 Ziel erreicht!' : '🎯 Goal achieved!'),
-              de ? 'Alle verknüpften Aufgaben wurden abgeschlossen.' : 'All linked tasks have been completed.',
-              () => navigate('/goals'),
-            );
-            break;
-          case 'budget_warning':
-            toast.warning(
-              de ? '💰 Budget-Warnung' : '💰 Budget warning',
-              msg.message || (de ? 'Ein Agent nähert sich dem Budget-Limit' : 'An agent is approaching the budget limit'),
-              () => navigate('/costs'),
-            );
-            break;
-          case 'expert_deleted':
-            toast.info(
-              msg.name
-                ? (de ? `🗑️ ${msg.name} entlassen` : `🗑️ ${msg.name} dismissed`)
-                : (de ? '🗑️ Agent entlassen' : '🗑️ Agent dismissed'),
-              undefined,
-              () => navigate('/experts'),
-            );
-            break;
-          case 'expert_created': {
-            const expertName = msg.data?.name || msg.name;
-            toast.success(
-              de ? `🤖 Agent erstellt: ${expertName}` : `🤖 Agent created: ${expertName}`,
-              msg.data?.rolle || msg.rolle || undefined,
-              () => navigate('/experts'),
-            );
-            break;
-          }
-          case 'tasks_unblocked': {
-            const n = msg.taskIds?.length || 0;
-            if (n > 0) toast.info(
-              de ? `🔓 ${n} Aufgabe${n > 1 ? 'n' : ''} entsperrt` : `🔓 ${n} task${n > 1 ? 's' : ''} unblocked`,
-              de ? 'Blockierte Aufgaben sind wieder verfügbar' : 'Blocked tasks are available again',
-              () => navigate('/tasks'),
-            );
-            break;
-          }
-          case 'meeting_created':
-            toast.agent(
-              de ? '💬 Meeting gestartet' : '💬 Meeting started',
-              msg.titel || (de ? 'Agenten halten eine Besprechung' : 'Agents are holding a meeting'),
-              () => navigate('/meetings'),
-            );
-            break;
-          case 'meeting_updated':
-            if (msg.status === 'completed') {
-              toast.success(
-                de ? '💬 Meeting abgeschlossen' : '💬 Meeting completed',
-                msg.titel || undefined,
-                () => navigate('/meetings'),
-              );
-            } else if (msg.status === 'cancelled') {
-              toast.info(
-                de ? '💬 Meeting abgebrochen' : '💬 Meeting cancelled',
-                msg.titel || undefined,
-                () => navigate('/meetings'),
-              );
-            }
-            break;
-          case 'meeting_deleted':
-            toast.info(
-              de ? '🗑️ Meeting gelöscht' : '🗑️ Meeting deleted',
+              de ? '💬 Meeting abgeschlossen' : '💬 Meeting completed',
               msg.titel || undefined,
               () => navigate('/meetings'),
             );
-            break;
-          case 'agents_imported': {
-            const count = msg.agentsCreated || 0;
-            if (count > 0) toast.success(
-              de ? `📥 ${count} Agent${count > 1 ? 'en' : ''} importiert` : `📥 ${count} agent${count > 1 ? 's' : ''} imported`,
-              msg.templateName || undefined,
-              () => navigate('/experts'),
-            );
-            break;
-          }
-          case 'company_imported': {
-            const imported = msg.agentsImported || 0;
-            toast.success(
-              de ? '📥 Import abgeschlossen' : '📥 Import completed',
-              imported > 0
-                ? (de ? `${imported} Agenten importiert` : `${imported} agents imported`)
-                : undefined,
-              () => navigate('/experts'),
-            );
-            break;
-          }
-          case 'routine_executed':
+          } else if (msg.status === 'cancelled') {
             toast.info(
-              de ? '⏰ Routine ausgeführt' : '⏰ Routine executed',
-              msg.routineTitel || msg.result || undefined,
-              () => navigate('/routines'),
+              de ? '💬 Meeting abgebrochen' : '💬 Meeting cancelled',
+              msg.titel || undefined,
+              () => navigate('/meetings'),
             );
-            break;
-          case 'memory_cleared':
-            toast.info(
-              de ? '🧠 Memory gelöscht' : '🧠 Memory cleared',
-              msg.expertName || (de ? 'Der Agent hat sein Kurzzeitgedächtnis zurückgesetzt' : 'The agent reset its short-term memory'),
-              () => navigate('/experts'),
-            );
-            break;
-          case 'task_escalated':
-            toast.warning(
-              de ? `🚨 Task eskaliert` : `🚨 Task escalated`,
-              msg.taskTitel
-                ? (de
-                    ? `"${msg.taskTitel}" ist ${msg.failureCount}× fehlgeschlagen${msg.orchestratorName ? ` → ${msg.orchestratorName} informiert` : ''}`
-                    : `"${msg.taskTitel}" failed ${msg.failureCount}×${msg.orchestratorName ? ` → ${msg.orchestratorName} notified` : ''}`)
-                : (de ? 'Ein Task wurde nach wiederholten Fehlern eskaliert' : 'A task was escalated after repeated failures'),
-              () => navigate('/tasks'),
-            );
-            break;
+          }
+          break;
+        case 'meeting_deleted':
+          toast.info(
+            de ? '🗑️ Meeting gelöscht' : '🗑️ Meeting deleted',
+            msg.titel || undefined,
+            () => navigate('/meetings'),
+          );
+          break;
+        case 'agents_imported': {
+          const count = msg.agentsCreated || 0;
+          if (count > 0) toast.success(
+            de ? `📥 ${count} Agent${count > 1 ? 'en' : ''} importiert` : `📥 ${count} agent${count > 1 ? 's' : ''} imported`,
+            msg.templateName || undefined,
+            () => navigate('/experts'),
+          );
+          break;
         }
-      } catch {}
-    };
-
-    return () => {
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
-        ws.close();
+        case 'company_imported': {
+          const imported = msg.agentsImported || 0;
+          toast.success(
+            de ? '📥 Import abgeschlossen' : '📥 Import completed',
+            imported > 0
+              ? (de ? `${imported} Agenten importiert` : `${imported} agents imported`)
+              : undefined,
+            () => navigate('/experts'),
+          );
+          break;
+        }
+        case 'routine_executed':
+          toast.info(
+            de ? '⏰ Routine ausgeführt' : '⏰ Routine executed',
+            msg.routineTitel || msg.result || undefined,
+            () => navigate('/routines'),
+          );
+          break;
+        case 'memory_cleared':
+          toast.info(
+            de ? '🧠 Memory gelöscht' : '🧠 Memory cleared',
+            msg.expertName || (de ? 'Der Agent hat sein Kurzzeitgedächtnis zurückgesetzt' : 'The agent reset its short-term memory'),
+            () => navigate('/experts'),
+          );
+          break;
+        case 'task_escalated':
+          toast.warning(
+            de ? `🚨 Task eskaliert` : `🚨 Task escalated`,
+            msg.taskTitel
+              ? (de
+                  ? `"${msg.taskTitel}" ist ${msg.failureCount}× fehlgeschlagen${msg.orchestratorName ? ` → ${msg.orchestratorName} informiert` : ''}`
+                  : `"${msg.taskTitel}" failed ${msg.failureCount}×${msg.orchestratorName ? ` → ${msg.orchestratorName} notified` : ''}`)
+              : (de ? 'Ein Task wurde nach wiederholten Fehlern eskaliert' : 'A task was escalated after repeated failures'),
+            () => navigate('/tasks'),
+          );
+          break;
       }
-      wsRef.current = null;
-    };
-  }, [aktivesUnternehmen?.id, de]);
+    },
+    [aktivesUnternehmen?.id, de, toast, navigate],
+  );
 }
 
 export function Layout() {

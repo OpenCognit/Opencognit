@@ -90,6 +90,18 @@ class HeartbeatServiceImpl implements HeartbeatService {
       return 0;
     }
 
+    // ─── Agent-Level Mutex: prevent concurrent heartbeats for the same agent ───
+    if (agent.status === 'running') {
+      const lastCycle = agent.lastCycle ? new Date(agent.lastCycle).getTime() : 0;
+      const elapsed = Date.now() - lastCycle;
+      if (elapsed < 5 * 60 * 1000) {
+        console.log(`⏳ Agent ${agentId} is already running (${Math.round(elapsed / 1000)}s ago) — skipping duplicate heartbeat`);
+        return 0;
+      }
+      console.log(`⏰ Agent ${agentId} stuck running for ${Math.round(elapsed / 1000)}s — reclaiming`);
+    }
+    // ────────────────────────────────────────────────────────────────────────────
+
     // ─── Budget-Autothrottling ────────────────────────────────────────────────────
     if (agent.monthlyBudgetCent > 0) {
       const verbrauchPct = (agent.monthlySpendCent / agent.monthlyBudgetCent) * 100;
@@ -350,6 +362,7 @@ class HeartbeatServiceImpl implements HeartbeatService {
       executionRunId: tasks.executionRunId,
       targetId: tasks.goalId,
       isMaximizerMode: tasks.isMaximizerMode,
+      projectId: tasks.projectId,
     })
     .from(tasks)
     .where(
@@ -457,7 +470,11 @@ class HeartbeatServiceImpl implements HeartbeatService {
       .where(
         and(
           eq(tasks.id, task.id),
-          or(eq(tasks.assignedTo, agentId), isNull(tasks.assignedTo))
+          or(eq(tasks.assignedTo, agentId), isNull(tasks.assignedTo)),
+          or(
+            isNull(tasks.executionRunId),
+            sql`${tasks.executionLockedAt} < ${new Date(Date.now() - 30 * 60 * 1000).toISOString()}`
+          )
         )
       );
 
@@ -559,6 +576,68 @@ class HeartbeatServiceImpl implements HeartbeatService {
       const memoryContext = loadRelevantMemory(agentId, taskKeywords) || null;
       // ────────────────────────────────────────────────────────────────────
 
+      // ─── Letzte Chat-Nachrichten laden (Board ↔ Agent) ──────────────────
+      let boardKommunikation: string | undefined;
+      try {
+        const recentChat = await db.select({
+          senderType: chatMessages.senderType,
+          message: chatMessages.message,
+          createdAt: chatMessages.createdAt,
+        })
+          .from(chatMessages)
+          .where(and(
+            eq(chatMessages.companyId, companyId),
+            eq(chatMessages.agentId, agentId),
+          ))
+          .orderBy(desc(chatMessages.createdAt))
+          .limit(8)
+          .then(rows => rows.reverse());
+        if (recentChat.length > 0) {
+          const lines = recentChat
+            .filter(m => m.senderType !== 'system')
+            .map(m => {
+              const who = m.senderType === 'board' ? '👤 Board' : `🤖 ${expert?.name || 'Agent'}`;
+              const ts = m.createdAt ? new Date(m.createdAt).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+              return `[${ts}] ${who}: ${m.message}`;
+            });
+          if (lines.length > 0) boardKommunikation = lines.join('\n');
+        }
+      } catch { /* non-critical */ }
+      // ────────────────────────────────────────────────────────────────────
+
+      // ─── CEO Decision Log: letzten Planungs-Eintrag laden ───────────────
+      let letzteEntscheidung: string | undefined;
+      if (expert?.isOrchestrator) {
+        try {
+          const lastDecision = await db.select()
+            .from(ceoDecisionLog as any)
+            .where(and(
+              eq((ceoDecisionLog as any).agentId, agentId),
+              eq((ceoDecisionLog as any).companyId, companyId),
+            ))
+            .orderBy(desc((ceoDecisionLog as any).createdAt))
+            .limit(1)
+            .then((rows: any[]) => rows[0]);
+          if (lastDecision) {
+            const ts = new Date(lastDecision.createdAt).toLocaleString('de-DE', {
+              day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+            });
+            const actions: string[] = JSON.parse(lastDecision.actionsJson || '[]');
+            const actionList = actions.length > 0
+              ? '\nAusgeführte Aktionen:\n' + actions.map((a: string) => `  • ${a}`).join('\n')
+              : '\n(Keine Aktionen ausgeführt)';
+            letzteEntscheidung = [
+              `[${ts}] Fokus: ${lastDecision.focusSummary}`,
+              lastDecision.goalsSnapshot ? `Ziele: ${lastDecision.goalsSnapshot}` : null,
+              `Offene Tasks zu dem Zeitpunkt: ${lastDecision.pendingTaskCount}`,
+              lastDecision.teamSummary ? `Team: ${lastDecision.teamSummary}` : null,
+              actionList,
+            ].filter(Boolean).join('\n');
+          }
+        } catch { /* non-critical */ }
+      }
+      // ────────────────────────────────────────────────────────────────────
+
       // ─── Load active goals with live task progress ──────────────────────
       let activeGoals: CompanyGoal[] = [];
       try {
@@ -655,6 +734,8 @@ class HeartbeatServiceImpl implements HeartbeatService {
             } catch { return {}; }
           })(),
           ...(memoryContext ? { memory: memoryContext } : {}),
+          ...(letzteEntscheidung ? { letzteEntscheidung } : {}),
+          ...(boardKommunikation ? { boardKommunikation } : {}),
           ...(blockerOutputs ? { vorgaengerOutputs: blockerOutputs } : {}),
           ...(advisorPlan ? { advisorPlan: `### 🧠 STRATEGISCHER PLAN DES ARCHITEKTEN/ADVISORS\n\n${advisorPlan}\n\n*Bitte befolge diesen Plan strikt bei der Ausführung der Aufgabe.*` } : {}),
           ...(expert?.isOrchestrator && teamMembers.length > 0 ? {
@@ -728,7 +809,7 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "targetId". Aktualisiere
           try {
             await db.insert(comments).values({
               id: crypto.randomUUID(), companyId, taskId: task.id,
-              authorAgentId: agentId, senderType: 'agent',
+              authorAgentId: agentId, authorType: 'agent',
               content: `🛑 **Ausführung blockiert — Budget-Limit erreicht**\n\n${budgetCheck.reason}\n\nBitte erhöhe das Budget-Limit in den Einstellungen oder warte auf den nächsten Abrechnungszeitraum.`,
               createdAt: new Date().toISOString(),
             });
@@ -875,7 +956,7 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "targetId". Aktualisiere
       }
       // ────────────────────────────────────────────────────────────────────
 
-      const result = await adapterRegistry.executeTask(adapterTask, adapterContext, {
+      let result = await adapterRegistry.executeTask(adapterTask, adapterContext, {
         agentId,
         companyId,
         runId,
@@ -951,10 +1032,16 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "targetId". Aktualisiere
         try {
           await db.insert(comments).values({
             id: crypto.randomUUID(), companyId, taskId: task.id,
-            authorAgentId: agentId, senderType: 'agent',
+            authorAgentId: agentId, authorType: 'agent',
             content: resultComment, createdAt: new Date().toISOString(),
           });
         } catch { /* agent may have been deleted mid-run */ }
+      }
+
+      // Hardening: empty output with success:true is treated as failure
+      if (result.success && !result.output?.trim()) {
+        console.log(`  ⚠️ Adapter returned success but empty output for task ${task.id}`);
+        result = { ...result, success: false, error: result.error || 'Adapter returned empty output' };
       }
 
       console.log(`  ✅ Adapter execution completed for task ${task.id}`);
@@ -1027,7 +1114,7 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "targetId". Aktualisiere
                 trace(agentId, companyId, 'warning', `Critic: Eskalation — ${taskFull.title}`, criticResult.feedback, runId);
                 await db.insert(comments).values({
                   id: crypto.randomUUID(), companyId, taskId: task.id,
-                  authorAgentId: agentId, senderType: 'agent',
+                  authorAgentId: agentId, authorType: 'agent',
                   content: `🚨 **Critic Review — Manuelle Prüfung erforderlich**\n\n${criticResult.feedback}\n\n*Der Agent hat die Aufgabe nach 2 Überarbeitungszyklen nicht erfolgreich abgeschlossen. Bitte prüfe manuell.*`,
                   createdAt: new Date().toISOString(),
                 });
@@ -1039,12 +1126,16 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "targetId". Aktualisiere
                 trace(agentId, companyId, 'info', `Critic: Überarbeitung nötig — ${taskFull.title}`, criticResult.feedback, runId);
                 await db.insert(comments).values({
                   id: crypto.randomUUID(), companyId, taskId: task.id,
-                  authorAgentId: agentId, senderType: 'agent',
+                  authorAgentId: agentId, authorType: 'agent',
                   content: `🔍 **Critic Review — Überarbeitung erforderlich**\n\n${criticResult.feedback}\n\n*Bitte überarbeite die Aufgabe entsprechend diesem Feedback.*`,
                   createdAt: new Date().toISOString(),
                 });
                 await db.update(tasks)
-                  .set({ executionLockedAt: null, executionRunId: null, status: 'in_progress' })
+                  .set({
+                    executionLockedAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+                    executionRunId: null,
+                    status: 'in_progress',
+                  })
                   .where(eq(tasks.id, task.id));
               }
               return;
@@ -1105,7 +1196,7 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "targetId". Aktualisiere
 
             await db.insert(comments).values({
               id: crypto.randomUUID(), companyId, taskId: task.id,
-              authorAgentId: agentId, senderType: 'agent',
+              authorAgentId: agentId, authorType: 'agent',
               content: `🔄 **Automatischer Retry ${failureCount}/${MAX_RETRIES}**\n\nTask fehlgeschlagen. Nächster Versuch in **${backoffMinutes} Minuten**.\n\n*Das System versucht automatisch, die Aufgabe erneut auszuführen.*`,
               createdAt: new Date().toISOString(),
             });
@@ -1146,7 +1237,7 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "targetId". Aktualisiere
 
             await db.insert(comments).values({
               id: crypto.randomUUID(), companyId, taskId: task.id,
-              authorAgentId: agentId, senderType: 'agent',
+              authorAgentId: agentId, authorType: 'agent',
               content:
                 `🚨 **Eskalation an ${orchestrator ? orchestrator.name : 'Orchestrator'}**\n\n` +
                 `Nach ${failureCount} automatischen Versuchen konnte dieser Task nicht abgeschlossen werden.\n\n` +
@@ -1394,6 +1485,28 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "targetId". Aktualisiere
       timestamp: new Date().toISOString(),
       createdAt: new Date().toISOString(),
     });
+
+    // ─── Post-hoc budget guard: if this call pushed the agent over budget, pause them ───
+    try {
+      const agentRow = db.select({ monthlyBudgetCent: agents.monthlyBudgetCent, monthlySpendCent: agents.monthlySpendCent, name: agents.name, companyId: agents.companyId })
+        .from(agents).where(eq(agents.id, run.agentId)).get() as any;
+      if (agentRow && agentRow.monthlyBudgetCent > 0 && agentRow.monthlySpendCent >= agentRow.monthlyBudgetCent) {
+        await db.update(agents).set({ status: 'paused', updatedAt: new Date().toISOString() }).where(eq(agents.id, run.agentId));
+        console.log(`💸 Budget-Stop nach Ausführung: ${agentRow.name} pausiert (${agentRow.monthlySpendCent}¢ >= ${agentRow.monthlyBudgetCent}¢)`);
+        await db.insert(chatMessages).values({
+          id: crypto.randomUUID(),
+          companyId: agentRow.companyId,
+          agentId: run.agentId,
+          senderType: 'system',
+          message: `🚨 **Budget-Stop**: ${agentRow.name} wurde nach dieser Ausführung automatisch pausiert. Monatsbudget (${(agentRow.monthlyBudgetCent / 100).toFixed(2)}€) überschritten.`,
+          gelesen: false,
+          createdAt: new Date().toISOString(),
+        });
+      }
+    } catch (e: any) {
+      console.warn(`[recordUsage] Post-hoc budget check failed: ${e.message}`);
+    }
+    // ────────────────────────────────────────────────────────────────────────────────────
   }
 
   /**

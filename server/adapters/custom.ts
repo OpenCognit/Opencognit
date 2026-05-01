@@ -211,6 +211,16 @@ export class CustomAdapter implements ExpertAdapter {
       finalOutput = `${finalOutput}\n\n---\n**Ausgeführte Bash-Befehle:**\n\`\`\`\n${logSection}\n\`\`\``;
     }
 
+    if (!finalOutput.trim()) {
+      return {
+        success: false,
+        output: '',
+        error: 'Custom adapter returned empty output (no content from model).',
+        duration: Date.now() - startTime,
+        tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, costCent: 0 },
+      };
+    }
+
     return {
       success: true,
       output: finalOutput,

@@ -121,6 +121,16 @@ export class OllamaAdapter implements ExpertAdapter {
       });
     }
 
+    if (!finalOutput.trim()) {
+      return {
+        success: false,
+        output: '',
+        error: 'Ollama returned empty output (no content from model).',
+        duration: Date.now() - startTime,
+        tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, costCent: 0 },
+      };
+    }
+
     return {
       success: true,
       output: finalOutput,

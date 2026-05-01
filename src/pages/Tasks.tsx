@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useWebSocketEvent } from '../hooks/useWebSocket';
 import { useLocation } from 'react-router-dom';
 import { Plus, LayoutGrid, List, GanttChartSquare, Loader2, Sparkles, Zap, Lock, Search, X as XIcon, Trash2, CheckSquare2, Square, UserCheck, ArrowRight, Download } from 'lucide-react';
 import { PageHelp } from '../components/PageHelp';
@@ -51,26 +52,17 @@ export function Tasks() {
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
 
   // Real-time WebSocket updates — reload tasks when agents start/complete work
-  useEffect(() => {
-    if (!aktivesUnternehmen) return;
-    const token = localStorage.getItem('opencognit_token');
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${window.location.host}/ws${token ? `?token=${token}` : ''}`);
-    ws.onmessage = ev => {
-      try {
-        const msg = JSON.parse(ev.data);
-        if (msg.unternehmenId && msg.unternehmenId !== aktivesUnternehmen.id) return;
-        if (['task_started', 'task_completed', 'task_updated'].includes(msg.type)) {
-          reloadAufgaben();
-        }
-      } catch {}
-    };
-    return () => {
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
-        ws.close();
+  useWebSocketEvent(
+    '*',
+    (msg) => {
+      if (!aktivesUnternehmen) return;
+      if (msg.unternehmenId && msg.unternehmenId !== aktivesUnternehmen.id) return;
+      if (['task_started', 'task_completed', 'task_updated'].includes(msg.type)) {
+        reloadAufgaben();
       }
-    };
-  }, [aktivesUnternehmen?.id]);
+    },
+    [aktivesUnternehmen?.id, reloadAufgaben],
+  );
 
   // Auto-open task drawer from navigation state (e.g., from command palette search)
   useEffect(() => {

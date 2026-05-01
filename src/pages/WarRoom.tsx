@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useWebSocketEvent } from '../hooks/useWebSocket';
 import {
   X, Zap, CheckCircle2, Clock, Wallet, Users, Radio, Target,
   Cpu, ChevronDown, ChevronUp, Activity, Terminal, CornerDownRight,
@@ -716,7 +717,7 @@ export function WarRoom() {
   const [clock, setClock] = useState(new Date());
   const [loading, setLoading] = useState(true);
   const [logAgent, setLogAgent] = useState<LiveAgent | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
+
 
   // System Pulse scroll management
   const pulseRef = useRef<HTMLDivElement>(null);
@@ -770,85 +771,74 @@ export function WarRoom() {
   }, [load]);
 
   // WebSocket for live updates
-  useEffect(() => {
-    if (!aktivesUnternehmen) return;
-    const token = localStorage.getItem('opencognit_token');
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${window.location.host}/ws${token ? `?token=${token}` : ''}`);
-    wsRef.current = ws;
+  const agentsRef = useRef(agents);
+  useEffect(() => { agentsRef.current = agents; }, [agents]);
 
-    ws.onmessage = (ev) => {
-      try {
-        const msg = JSON.parse(ev.data);
-        if (msg.unternehmenId && msg.unternehmenId !== aktivesUnternehmen.id) return;
+  useWebSocketEvent(
+    '*',
+    (msg) => {
+      if (msg.unternehmenId && msg.unternehmenId !== aktivesUnternehmen?.id) return;
 
-        if (msg.type === 'trace' && msg.data) {
-          const { expertId, typ, titel, details, erstelltAm, expertName } = msg.data;
-          const newEvent: TraceEvent = {
-            id: crypto.randomUUID(),
-            expertId, typ, titel, details,
-            expertName,
-            erstelltAm: erstelltAm || new Date().toISOString(),
-          };
+      if (msg.type === 'trace' && msg.data) {
+        const { expertId, typ, titel, details, erstelltAm, expertName } = msg.data;
+        const newEvent: TraceEvent = {
+          id: crypto.randomUUID(),
+          expertId, typ, titel, details,
+          expertName,
+          erstelltAm: erstelltAm || new Date().toISOString(),
+        };
 
-          setAgentTraces(prev => ({
-            ...prev,
-            [expertId]: [newEvent, ...(prev[expertId] || [])].slice(0, 30),
-          }));
+        setAgentTraces(prev => ({
+          ...prev,
+          [expertId]: [newEvent, ...(prev[expertId] || [])].slice(0, 30),
+        }));
 
-          setFeed(prev => [...prev, newEvent].slice(-80));
+        setFeed(prev => [...prev, newEvent].slice(-80));
 
-          setAgents(prev => prev.map(a =>
-            a.id === expertId
-              ? { ...a, lastTrace: { typ, titel }, status: 'running' }
-              : a
-          ));
-        }
-
-        if (msg.type === 'task_started' && msg.agentId) {
-          setAgents(prev => prev.map(a =>
-            a.id === msg.agentId
-              ? { ...a, status: 'running', currentTask: { id: msg.taskId || '', titel: msg.taskTitel || '', status: 'in_progress' } }
-              : a
-          ));
-          const agentName = agents.find(a => a.id === msg.agentId)?.name || msg.agentName;
-          const taskEvent: TraceEvent & { expertName?: string } = {
-            id: crypto.randomUUID(),
-            expertId: msg.agentId,
-            expertName: agentName,
-            typ: 'task_started',
-            titel: msg.taskTitel || 'Task started',
-            erstelltAm: new Date().toISOString(),
-          };
-          setFeed(prev => [...prev, taskEvent].slice(-80));
-        }
-
-        if (msg.type === 'task_completed' && msg.agentId) {
-          setAgents(prev => prev.map(a =>
-            a.id === msg.agentId ? { ...a, status: 'active', currentTask: null } : a
-          ));
-          const agentName = agents.find(a => a.id === msg.agentId)?.name || msg.agentName;
-          const doneEvent: TraceEvent & { expertName?: string } = {
-            id: crypto.randomUUID(),
-            expertId: msg.agentId,
-            expertName: agentName,
-            typ: 'task_completed',
-            titel: msg.taskTitel || 'Task abgeschlossen',
-            erstelltAm: new Date().toISOString(),
-          };
-          setFeed(prev => [...prev, doneEvent].slice(-80));
-          setTimeout(load, 2000);
-        }
-      } catch {}
-    };
-
-    return () => {
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
-        ws.close();
+        setAgents(prev => prev.map(a =>
+          a.id === expertId
+            ? { ...a, lastTrace: { typ, titel }, status: 'running' }
+            : a
+        ));
       }
-      wsRef.current = null;
-    };
-  }, [aktivesUnternehmen?.id, load]);
+
+      if (msg.type === 'task_started' && msg.agentId) {
+        setAgents(prev => prev.map(a =>
+          a.id === msg.agentId
+            ? { ...a, status: 'running', currentTask: { id: msg.taskId || '', titel: msg.taskTitel || '', status: 'in_progress' } }
+            : a
+        ));
+        const agentName = agentsRef.current.find(a => a.id === msg.agentId)?.name || msg.agentName;
+        const taskEvent: TraceEvent & { expertName?: string } = {
+          id: crypto.randomUUID(),
+          expertId: msg.agentId,
+          expertName: agentName,
+          typ: 'task_started',
+          titel: msg.taskTitel || 'Task started',
+          erstelltAm: new Date().toISOString(),
+        };
+        setFeed(prev => [...prev, taskEvent].slice(-80));
+      }
+
+      if (msg.type === 'task_completed' && msg.agentId) {
+        setAgents(prev => prev.map(a =>
+          a.id === msg.agentId ? { ...a, status: 'active', currentTask: null } : a
+        ));
+        const agentName = agentsRef.current.find(a => a.id === msg.agentId)?.name || msg.agentName;
+        const doneEvent: TraceEvent & { expertName?: string } = {
+          id: crypto.randomUUID(),
+          expertId: msg.agentId,
+          expertName: agentName,
+          typ: 'task_completed',
+          titel: msg.taskTitel || 'Task abgeschlossen',
+          erstelltAm: new Date().toISOString(),
+        };
+        setFeed(prev => [...prev, doneEvent].slice(-80));
+        setTimeout(load, 2000);
+      }
+    },
+    [aktivesUnternehmen?.id, load],
+  );
 
   // Auto-scroll System Pulse to bottom when new events arrive (if user is at bottom)
   useEffect(() => {

@@ -230,6 +230,16 @@ export class OpenRouterAdapter implements ExpertAdapter {
       ? Math.round(data.usage.cost * 100)
       : 0;
 
+    if (!finalOutput.trim()) {
+      return {
+        success: false,
+        output: '',
+        error: 'OpenRouter returned empty output (no content from model).',
+        duration: Date.now() - startTime,
+        tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, costCent },
+      };
+    }
+
     return {
       success: true,
       output: finalOutput,

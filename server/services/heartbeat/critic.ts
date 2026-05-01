@@ -135,7 +135,7 @@ export async function runCriticReview(
     .from(comments)
     .where(eq(comments.taskId, taskId));
   const criticCount = existingCriticFeedback.filter((c: any) =>
-    c.content?.includes('Critic Review')
+    c.content?.includes('**Critic Review')
   ).length;
 
   if (criticCount >= 2) {

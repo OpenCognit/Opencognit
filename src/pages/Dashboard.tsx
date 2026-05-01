@@ -12,6 +12,7 @@ import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 import { useI18n } from '../i18n';
 import { useCompany } from '../hooks/useCompany';
 import { useApi } from '../hooks/useApi';
+import { useWebSocketEvent, useWebSocketStatus } from '../hooks/useWebSocket';
 import { apiDashboard, apiChannels, type DashboardData, type Experte as ExperteType } from '../api/client';
 import { ExpertChatDrawer } from '../components/ExpertChatDrawer';
 import { StandupPanel } from '../components/StandupPanel';
@@ -648,70 +649,45 @@ const PULSE_CFG: Record<string, { color: string; bg: string; symbol: string }> =
 
 function SystemPulse({ unternehmenId, lang }: { unternehmenId: string; lang: string }) {
   const [events, setEvents] = useState<TraceEvent[]>([]);
-  const [connected, setConnected] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
+  const connected = useWebSocketStatus();
 
-  // Subscribe to real-time WS updates ONLY — no historical data
-  useEffect(() => {
-    if (!unternehmenId) return;
-    let destroyed = false;
-    const tok = localStorage.getItem('opencognit_token') || '';
-    const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProto}//${window.location.host}/ws${tok ? `?token=${tok}` : ''}`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onopen = () => { if (!destroyed) setConnected(true); };
-    ws.onclose = () => { if (!destroyed) setConnected(false); };
-    ws.onerror = () => { if (!destroyed) setConnected(false); };
-
-    ws.onmessage = ev => {
-      if (destroyed) return;
-      try {
-        const msg = JSON.parse(ev.data);
-        if (msg.unternehmenId && msg.unternehmenId !== unternehmenId) return;
-
-        if (msg.type === 'trace' && msg.data) {
-          setEvents(prev => [{
-            id: crypto.randomUUID(),
-            expertId: msg.data.expertId,
-            expertName: msg.data.expertName,
-            typ: msg.data.typ,
-            titel: msg.data.titel,
-            erstelltAm: msg.data.erstelltAm || new Date().toISOString(),
-          }, ...prev].slice(0, 12));
-        }
-        if (msg.type === 'task_started' && msg.agentId) {
-          setEvents(prev => [{
-            id: crypto.randomUUID(),
-            expertId: msg.agentId,
-            expertName: msg.agentName,
-            typ: 'task_started',
-            titel: msg.taskTitel || (lang === 'de' ? 'Task gestartet' : 'Task started'),
-            erstelltAm: new Date().toISOString(),
-          }, ...prev].slice(0, 12));
-        }
-        if (msg.type === 'task_completed' && msg.agentId) {
-          setEvents(prev => [{
-            id: crypto.randomUUID(),
-            expertId: msg.agentId,
-            expertName: msg.agentName,
-            typ: 'task_completed',
-            titel: msg.taskTitel || (lang === 'de' ? 'Task abgeschlossen' : 'Task completed'),
-            erstelltAm: new Date().toISOString(),
-          }, ...prev].slice(0, 12));
-        }
-      } catch { /* ignore */ }
-    };
-    return () => {
-      destroyed = true;
-      // Avoid "closed before connection established" warning in StrictMode
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
-        ws.close();
+  useWebSocketEvent(
+    '*',
+    (msg) => {
+      if (msg.unternehmenId && msg.unternehmenId !== unternehmenId) return;
+      if (msg.type === 'trace' && msg.data) {
+        setEvents(prev => [{
+          id: crypto.randomUUID(),
+          expertId: msg.data.expertId,
+          expertName: msg.data.expertName,
+          typ: msg.data.typ,
+          titel: msg.data.titel,
+          erstelltAm: msg.data.erstelltAm || new Date().toISOString(),
+        }, ...prev].slice(0, 12));
       }
-      wsRef.current = null;
-    };
-  }, [unternehmenId, lang]);
+      if (msg.type === 'task_started' && msg.agentId) {
+        setEvents(prev => [{
+          id: crypto.randomUUID(),
+          expertId: msg.agentId,
+          expertName: msg.agentName,
+          typ: 'task_started',
+          titel: msg.taskTitel || (lang === 'de' ? 'Task gestartet' : 'Task started'),
+          erstelltAm: new Date().toISOString(),
+        }, ...prev].slice(0, 12));
+      }
+      if (msg.type === 'task_completed' && msg.agentId) {
+        setEvents(prev => [{
+          id: crypto.randomUUID(),
+          expertId: msg.agentId,
+          expertName: msg.agentName,
+          typ: 'task_completed',
+          titel: msg.taskTitel || (lang === 'de' ? 'Task abgeschlossen' : 'Task completed'),
+          erstelltAm: new Date().toISOString(),
+        }, ...prev].slice(0, 12));
+      }
+    },
+    [unternehmenId, lang],
+  );
 
   return (
     <Card style={{ padding: '1.25rem 1.5rem' }}>
@@ -1472,7 +1448,7 @@ function MissionControl({
   const [agents, setAgents] = useState<LiveAgent[]>(initialAgents);
   const [waking, setWaking] = useState<Set<string>>(new Set());
   const [pausing, setPausing] = useState<Set<string>>(new Set());
-  const wsRef = useRef<WebSocket | null>(null);
+
 
   // Sync when parent reloads — ensure traceEvents array exists
   useEffect(() => {
@@ -1480,70 +1456,46 @@ function MissionControl({
   }, [initialAgents]);
 
   // Live WS updates for agent status changes
-  useEffect(() => {
-    if (!unternehmenId) return;
-    let destroyed = false; // StrictMode guard: prevents errors when React unmounts during WS handshake
-    const token = localStorage.getItem('opencognit_token');
-    const _proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${_proto}//${window.location.host}/ws${token ? `?token=${token}` : ''}`);
-    wsRef.current = ws;
-
-    ws.onmessage = ev => {
-      if (destroyed) return;
-      try {
-        const msg = JSON.parse(ev.data);
-        // Update agent status when heartbeat fires
-        if (msg.type === 'heartbeat' && msg.data?.expertId) {
-          setAgents(prev => prev.map(a =>
-            a.id === msg.data.expertId
-              ? { ...a, status: msg.data.status || a.status, letzterZyklus: new Date().toISOString() }
-              : a
-          ));
-        }
-        // Update agent card when task status changes
-        if (msg.type === 'task_completed' && msg.agentId) {
-          setAgents(prev => prev.map(a =>
-            a.id === msg.agentId ? { ...a, status: 'active', currentTask: null } : a
-          ));
-        }
-        if (msg.type === 'task_started' && msg.agentId) {
-          setAgents(prev => prev.map(a =>
-            a.id === msg.agentId
-              ? { ...a, status: 'running', currentTask: { id: msg.taskId || '', titel: msg.taskTitel || '', status: 'in_progress' } }
-              : a
-          ));
-        }
-        // Update trace events per agent
-        if (msg.type === 'trace' && msg.data?.expertId) {
-          setAgents(prev => prev.map(a => {
-            if (a.id !== msg.data.expertId) return a;
-            const ev = { typ: msg.data.typ, titel: msg.data.titel };
-            return {
-              ...a,
-              lastTrace: ev,
-              status: 'running',
-              traceEvents: [ev, ...(a.traceEvents || [])].slice(0, 8),
-            };
-          }));
-        }
-      } catch {}
-    };
-
-    // Suppress console noise from StrictMode double-invoke closing the socket mid-handshake
-    ws.onerror = () => { if (!destroyed) console.warn('[MissionControl] WebSocket error'); };
-    ws.onclose = () => { if (!destroyed) console.debug('[MissionControl] WebSocket closed'); };
-
-    return () => {
-      destroyed = true;
-      ws.onerror = null;
-      ws.onclose = null;
-      // Avoid "closed before connection established" warning in StrictMode
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
-        ws.close();
+  useWebSocketEvent(
+    '*',
+    (msg) => {
+      // Update agent status when heartbeat fires
+      if (msg.type === 'heartbeat' && msg.data?.expertId) {
+        setAgents(prev => prev.map(a =>
+          a.id === msg.data.expertId
+            ? { ...a, status: msg.data.status || a.status, letzterZyklus: new Date().toISOString() }
+            : a
+        ));
       }
-      wsRef.current = null;
-    };
-  }, [unternehmenId]);
+      // Update agent card when task status changes
+      if (msg.type === 'task_completed' && msg.agentId) {
+        setAgents(prev => prev.map(a =>
+          a.id === msg.agentId ? { ...a, status: 'active', currentTask: null } : a
+        ));
+      }
+      if (msg.type === 'task_started' && msg.agentId) {
+        setAgents(prev => prev.map(a =>
+          a.id === msg.agentId
+            ? { ...a, status: 'running', currentTask: { id: msg.taskId || '', titel: msg.taskTitel || '', status: 'in_progress' } }
+            : a
+        ));
+      }
+      // Update trace events per agent
+      if (msg.type === 'trace' && msg.data?.expertId) {
+        setAgents(prev => prev.map(a => {
+          if (a.id !== msg.data.expertId) return a;
+          const ev = { typ: msg.data.typ, titel: msg.data.titel };
+          return {
+            ...a,
+            lastTrace: ev,
+            status: 'running',
+            traceEvents: [ev, ...(a.traceEvents || [])].slice(0, 8),
+          };
+        }));
+      }
+    },
+    [unternehmenId],
+  );
 
   const handleWakeup = async (agentId: string) => {
     setWaking(prev => new Set(prev).add(agentId));

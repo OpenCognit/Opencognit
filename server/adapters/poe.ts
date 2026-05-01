@@ -141,6 +141,16 @@ export class PoeAdapter implements ExpertAdapter {
     // We estimate roughly based on token count (varies by model)
     const costCent = 0;
 
+    if (!finalOutput.trim()) {
+      return {
+        success: false,
+        output: '',
+        error: 'Poe returned empty output (no content from model).',
+        duration: Date.now() - startTime,
+        tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, costCent },
+      };
+    }
+
     return {
       success: true,
       output: finalOutput,

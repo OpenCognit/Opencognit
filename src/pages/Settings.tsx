@@ -11,6 +11,7 @@ import { PageHelp } from '../components/PageHelp';
 import { Select } from '../components/Select';
 import { useI18n } from '../i18n';
 import { useCompany } from '../hooks/useCompany';
+import { useWebSocketEvent } from '../hooks/useWebSocket';
 import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 import { useTheme } from '../hooks/useTheme';
 import { useToast } from '../components/ToastProvider';
@@ -226,40 +227,29 @@ export function Settings() {
   }, [aktivesUnternehmen?.id]);
 
   // WebSocket listener — react to OpenClaw agent connecting in real-time
-  useEffect(() => {
-    if (!aktivesUnternehmen) return;
-    const wsToken = localStorage.getItem('opencognit_token');
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${window.location.host}/ws${wsToken ? `?token=${wsToken}` : ''}`);
-    ws.onmessage = ev => {
-      try {
-        const msg = JSON.parse(ev.data);
-        if (msg.type === 'openclaw_agent_joined' && msg.data?.unternehmenId === aktivesUnternehmen.id) {
-          const { expertId, agentName, isNew } = msg.data;
-          // Refresh the agents list
-          authFetch(`/api/openclaw/agents?unternehmenId=${aktivesUnternehmen.id}`)
-            .then(r => r.json()).then(d => setOpenclawAgents(Array.isArray(d) ? d : [])).catch(() => {});
-          // Show toast
-          toastCtx.agent(
-            i18n.language === 'de'
-              ? `OpenClaw: ${agentName} ${isNew ? 'verbunden' : 'reconnected'}`
-              : `OpenClaw: ${agentName} ${isNew ? 'connected' : 'reconnected'}`,
-            i18n.language === 'de'
-              ? 'Agent erscheint jetzt in der Agenten-Liste'
-              : 'Agent now appears in the Agents list',
-          );
-          // Show CEO suggestion banner only for newly registered agents
-          if (isNew) setOpenclawNewAgent({ expertId, agentName });
-        }
-      } catch {}
-    };
-    ws.onerror = () => {};
-    return () => {
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
-        ws.close();
-      }
-    };
-  }, [aktivesUnternehmen?.id]);
+  useWebSocketEvent(
+    'openclaw_agent_joined',
+    (msg) => {
+      if (!aktivesUnternehmen) return;
+      if (msg.data?.unternehmenId !== aktivesUnternehmen.id) return;
+      const { expertId, agentName, isNew } = msg.data;
+      // Refresh the agents list
+      authFetch(`/api/openclaw/agents?unternehmenId=${aktivesUnternehmen.id}`)
+        .then(r => r.json()).then(d => setOpenclawAgents(Array.isArray(d) ? d : [])).catch(() => {});
+      // Show toast
+      toastCtx.agent(
+        i18n.language === 'de'
+          ? `OpenClaw: ${agentName} ${isNew ? 'verbunden' : 'reconnected'}`
+          : `OpenClaw: ${agentName} ${isNew ? 'connected' : 'reconnected'}`,
+        i18n.language === 'de'
+          ? 'Agent erscheint jetzt in der Agenten-Liste'
+          : 'Agent now appears in the Agents list',
+      );
+      // Show CEO suggestion banner only for newly registered agents
+      if (isNew) setOpenclawNewAgent({ expertId, agentName });
+    },
+    [aktivesUnternehmen?.id, i18n.language, toastCtx.agent],
+  );
 
   const regenerateOpenclawToken = async () => {
     if (!aktivesUnternehmen) return;
