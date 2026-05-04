@@ -234,7 +234,8 @@ class HeartbeatServiceImpl implements HeartbeatService {
       if (lockResult.length === 0) {
         const agentRow = await db.select({ lastCycle: agents.lastCycle })
           .from(agents).where(eq(agents.id, agentId)).get();
-        const lastCycleTime = agentRow?.lastCycle ? new Date(agentRow.lastCycle).getTime() : 0;
+        const observedLastCycle = agentRow?.lastCycle ?? null;
+        const lastCycleTime = observedLastCycle ? new Date(observedLastCycle).getTime() : 0;
         const elapsed = Date.now() - lastCycleTime;
 
         if (elapsed < 5 * 60 * 1000) {
@@ -245,9 +246,18 @@ class HeartbeatServiceImpl implements HeartbeatService {
 
         console.log(`⏰ Agent ${agentId} stuck running for ${Math.round(elapsed / 1000)}s — reclaiming`);
 
+        // Race-safe reclaim: only succeed if lastCycle still matches what we observed.
+        // If another worker reclaimed first, lastCycle was updated to its `now` and our
+        // WHERE clause matches zero rows.
         const reclaimed = await db.update(agents)
           .set({ status: 'running', lastCycle: now, updatedAt: now })
-          .where(and(eq(agents.id, agentId), eq(agents.status, 'running')))
+          .where(and(
+            eq(agents.id, agentId),
+            eq(agents.status, 'running'),
+            observedLastCycle === null
+              ? isNull(agents.lastCycle)
+              : eq(agents.lastCycle, observedLastCycle),
+          ))
           .returning();
 
         if (reclaimed.length === 0) {
