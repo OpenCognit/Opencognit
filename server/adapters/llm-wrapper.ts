@@ -7,6 +7,7 @@ import { db } from '../db/client.js';
 import { settings, agents, companies } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { decryptSetting } from '../utils/crypto.js';
+import { CHECKPOINT_PROMPT_BLOCK } from '../services/heartbeat/checkpoint.js';
 
 export class LLMWrapperAdapter implements Adapter {
   public readonly name: string;
@@ -261,6 +262,8 @@ export class LLMWrapperAdapter implements Adapter {
       }
       parts.push('');
     }
+
+    parts.push(CHECKPOINT_PROMPT_BLOCK);
 
     return parts.join('\n');
   }

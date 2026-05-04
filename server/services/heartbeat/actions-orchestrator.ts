@@ -661,34 +661,32 @@ export async function processOrchestratorActions(
           }
 
           const projectId = uuid();
-          await db.insert(projects).values({
-            id: projectId,
-            companyId,
-            name: action.name,
-            description: action.description || null,
-            status: 'aktiv',
-            priority: action.priority || 'medium',
-            goalId: action.goalId || null,
-            ownerAgentId: orchestratorId,
-            color: action.color || '#23CDCB',
-            createdAt: now,
-            updatedAt: now,
-          } as any).run();
-
-          console.log(`  ✅ CEO erstellt Projekt: "${action.name}" (${projectId})`);
-          trace(orchestratorId, companyId, 'action', `Projekt erstellt: ${action.name}`, `ID: ${projectId}`);
-          actionSummary.push(`create_project: "${action.name}" [${action.priority || 'medium'}]`);
 
           // Auto-generate subtasks if none provided, based on project type
           const projectSubtasks = action.tasks && Array.isArray(action.tasks) && action.tasks.length > 0
             ? action.tasks
             : generateProjectSubtasks(action.name, team);
 
-          if (projectSubtasks && projectSubtasks.length > 0) {
+          // Atomic transaction: project + subtasks
+          db.transaction((tx) => {
+            tx.insert(projects).values({
+              id: projectId,
+              companyId,
+              name: action.name,
+              description: action.description || null,
+              status: 'aktiv',
+              priority: action.priority || 'medium',
+              goalId: action.goalId || null,
+              ownerAgentId: orchestratorId,
+              color: action.color || '#23CDCB',
+              createdAt: now,
+              updatedAt: now,
+            } as any).run();
+
             for (const t of projectSubtasks) {
               const newTaskId = uuid();
               const taskAgent = t.agentId ? team.find(a => a.id === t.agentId) : null;
-              await db.insert(tasks).values({
+              tx.insert(tasks).values({
                 id: newTaskId,
                 companyId,
                 title: t.title,
@@ -701,14 +699,25 @@ export async function processOrchestratorActions(
                 createdAt: now,
                 updatedAt: now,
               } as any).run();
-              console.log(`    📋 Projekt-Task erstellt: "${t.title}" → ${taskAgent?.name || 'offen'}`);
-              trace(orchestratorId, companyId, 'action', `Projekt-Task erstellt: ${t.title}`, `Projekt: ${action.name}`);
+            }
+          });
+
+          console.log(`  ✅ CEO erstellt Projekt: "${action.name}" (${projectId})`);
+          trace(orchestratorId, companyId, 'action', `Projekt erstellt: ${action.name}`, `ID: ${projectId}`);
+          actionSummary.push(`create_project: "${action.name}" [${action.priority || 'medium'}]`);
+
+          // Wakeup calls outside transaction
+          if (projectSubtasks && projectSubtasks.length > 0) {
+            for (const t of projectSubtasks) {
+              const taskAgent = t.agentId ? team.find(a => a.id === t.agentId) : null;
               if (taskAgent) {
-                await wakeupService.wakeup(taskAgent.id, companyId, {
+                console.log(`    📋 Projekt-Task erstellt: "${t.title}" → ${taskAgent.name || 'offen'}`);
+                trace(orchestratorId, companyId, 'action', `Projekt-Task erstellt: ${t.title}`, `Projekt: ${action.name}`);
+                wakeupService.wakeup(taskAgent.id, companyId, {
                   source: 'automation',
                   triggerDetail: 'issue_assigned',
                   reason: `Neuer Projekt-Task: ${t.title}`,
-                });
+                }).catch(() => {});
               }
             }
           }
@@ -726,27 +735,32 @@ export async function processOrchestratorActions(
           }
           const routineId = uuid();
           const ts = new Date().toISOString();
-          await db.insert(routines).values({
-            id: routineId,
-            companyId,
-            title: rtitel,
-            description: rdesc || '',
-            assignedTo: assignToSelf !== false ? orchestratorId : null,
-            priority: (action.priority || 'medium') as any,
-            status: 'active',
-            createdAt: ts,
-            updatedAt: ts,
-          }).run();
-          await db.insert(routineTrigger).values({
-            id: uuid(),
-            companyId,
-            routineId,
-            kind: 'schedule',
-            active: true,
-            cronExpression,
-            timezone: timezone || 'Europe/Berlin',
-            createdAt: ts,
-          }).run();
+
+          // Atomic transaction: routine + trigger
+          db.transaction((tx) => {
+            tx.insert(routines).values({
+              id: routineId,
+              companyId,
+              title: rtitel,
+              description: rdesc || '',
+              assignedTo: assignToSelf !== false ? orchestratorId : null,
+              priority: (action.priority || 'medium') as any,
+              status: 'active',
+              createdAt: ts,
+              updatedAt: ts,
+            }).run();
+            tx.insert(routineTrigger).values({
+              id: uuid(),
+              companyId,
+              routineId,
+              kind: 'schedule',
+              active: true,
+              cronExpression,
+              timezone: timezone || 'Europe/Berlin',
+              createdAt: ts,
+            }).run();
+          });
+
           console.log(`  ✅ CEO erstellt Routine: "${rtitel}" (${cronExpression})`);
           trace(orchestratorId, companyId, 'action', `Routine erstellt: ${rtitel}`, `Zeitplan: ${cronExpression}`);
           actionSummary.push(`create_routine: "${rtitel}" (${cronExpression})`);

@@ -101,7 +101,7 @@ const priorityConfig: Record<Priority, { labelDe: string; labelEn: string; dot: 
   critical: { labelDe: "Kritisch", labelEn: "Critical", dot: "bg-rose-400" },
 };
 
-export default function AgentPlan({
+function AgentPlan({
   tasks,
   title,
   language = "de",
@@ -427,3 +427,5 @@ export default function AgentPlan({
     </div>
   );
 }
+
+export default React.memo(AgentPlan);

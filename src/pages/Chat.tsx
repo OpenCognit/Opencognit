@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useTransition } from 'react';
+import { useState, useEffect, useRef, useCallback, useTransition, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Send, ChevronDown, User, Loader2, AlertCircle,
@@ -323,7 +323,8 @@ export function Chat() {
 
   useEffect(() => {
     if (!aktivesUnternehmen) return;
-    fetch(`/api/unternehmen/${aktivesUnternehmen.id}/experten`, { credentials: 'include', headers: authHeaders() })
+    const ctrl = new AbortController();
+    fetch(`/api/unternehmen/${aktivesUnternehmen.id}/experten`, { credentials: 'include', headers: authHeaders(), signal: ctrl.signal })
       .then(r => r.json())
       .then((data: Agent[]) => {
         const ceos = data.filter(a => a.isOrchestrator);
@@ -332,6 +333,7 @@ export function Chat() {
       })
       .catch(() => {})
       .finally(() => setLoadingAgents(false));
+    return () => ctrl.abort();
   }, [aktivesUnternehmen?.id]);
 
   useEffect(() => {
@@ -350,9 +352,11 @@ export function Chat() {
     setMessages([welcomeMsg]);
 
     // Load server-side chat history so messages survive refresh
+    const historyCtrl = new AbortController();
     fetch(`/api/experten/${selectedAgent.id}/chat`, {
       credentials: 'include',
       headers: authHeaders({ 'x-unternehmen-id': aktivesUnternehmen.id }),
+      signal: historyCtrl.signal,
     })
       .then(r => r.json())
       .then((data: any[]) => {
@@ -372,9 +376,24 @@ export function Chat() {
         setCurrentSession(prev => ({ ...prev, messages: next }));
       })
       .catch(() => {});
+    return () => historyCtrl.abort();
   }, [selectedAgent?.id, aktivesUnternehmen?.id]);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, streaming]);
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
+
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (scrollTimeoutRef.current) return;
+    scrollTimeoutRef.current = setTimeout(() => {
+      scrollTimeoutRef.current = null;
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 300);
+    return () => { if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current); };
+  }, [messages, streaming]);
   useEffect(() => { setCurrentSession(prev => ({ ...prev, messages })); }, [messages]);
 
   const persistSession = useCallback((msgs: Message[], session: ChatSession, agentId: string) => {
@@ -426,8 +445,18 @@ export function Chat() {
   const handleImageFile = async (file: File) => {
     if (!file.type.startsWith('image/')) return;
     const data = await fileToBase64(file);
-    setPendingImage({ data, mimeType: file.type, name: file.name, previewUrl: URL.createObjectURL(file) });
+    const previewUrl = URL.createObjectURL(file);
+    setPendingImage({ data, mimeType: file.type, name: file.name, previewUrl });
   };
+
+  // Revoke object URL when pendingImage changes or unmounts
+  useEffect(() => {
+    return () => {
+      if (pendingImage?.previewUrl) {
+        URL.revokeObjectURL(pendingImage.previewUrl);
+      }
+    };
+  }, [pendingImage?.previewUrl]);
 
   const send = useCallback(async () => {
     const txt = input.trim();
@@ -461,6 +490,7 @@ export function Chat() {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        if (!isMountedRef.current) { ctrl.abort(); break; }
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
@@ -532,6 +562,10 @@ export function Chat() {
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
+  // Hooks must be called before any early returns
+  const visibleMessages = useMemo(() => messages.filter(m => m.role !== 'system'), [messages]);
+  const hasMessages = visibleMessages.length > 0;
+
   if (loadingAgents) return (
     <div style={{ flex: 1, ...flex('column', { center: true }), gap: 12, color: C.textMuted }}>
       <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
@@ -545,9 +579,6 @@ export function Chat() {
       <span style={{ fontSize: 14 }}>{de ? 'Keine Agenten konfiguriert.' : 'No agents configured.'}</span>
     </div>
   );
-
-  const visibleMessages = messages.filter(m => m.role !== 'system');
-  const hasMessages = visibleMessages.length > 0;
 
   return (
     <div style={{ ...flex('column'), height: 'calc(100dvh - 120px)', background: C.bg, position: 'relative', overflow: 'hidden' }} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleImageFile(f); }}>

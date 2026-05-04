@@ -14,7 +14,7 @@ import {
   routines, routineRuns, palaceKg, traceEvents, ceoDecisionLog,
 } from '../../db/schema.js';
 import { eq, and, sql, inArray, or, isNull, asc, desc, gte } from 'drizzle-orm';
-import { pruefeUndEntblocke } from '../issue-dependencies.js';
+import { unblockDependents } from '../issue-dependencies.js';
 import { wakeupService } from '../wakeup.js';
 import { adapterRegistry } from '../../adapters/registry.js';
 import type { AdapterTask, AdapterContext, CompanyGoal } from '../../adapters/types.js';
@@ -37,6 +37,7 @@ import { processOrchestratorActions } from './actions-orchestrator.js';
 import { processWorkerActions } from './actions-worker.js';
 import { recordWorkProducts, scanForBlockedTasks, unlockDependentTasks } from './dependencies.js';
 import { notifyOrchestratorTaskDone, handleMeetingWakeup } from './notifications.js';
+import { parseCheckpoint, saveCheckpoint } from './checkpoint.js';
 // ──────────────────────────────────────────────────────────────────────────────
 
 class HeartbeatServiceImpl implements HeartbeatService {
@@ -90,21 +91,23 @@ class HeartbeatServiceImpl implements HeartbeatService {
       return 0;
     }
 
-    // ─── Agent-Level Mutex: prevent concurrent heartbeats for the same agent ───
-    if (agent.status === 'running') {
-      const lastCycle = agent.lastCycle ? new Date(agent.lastCycle).getTime() : 0;
-      const elapsed = Date.now() - lastCycle;
-      if (elapsed < 5 * 60 * 1000) {
-        console.log(`⏳ Agent ${agentId} is already running (${Math.round(elapsed / 1000)}s ago) — skipping duplicate heartbeat`);
-        return 0;
-      }
-      console.log(`⏰ Agent ${agentId} stuck running for ${Math.round(elapsed / 1000)}s — reclaiming`);
-    }
+    // ─── Agent-Level Mutex moved to executeRun for atomic lock ─────────────────
+    // Atomic UPDATE ... WHERE status != 'running' is handled inside executeRun
     // ────────────────────────────────────────────────────────────────────────────
 
-    // ─── Budget-Autothrottling ────────────────────────────────────────────────────
-    if (agent.monthlyBudgetCent > 0) {
-      const verbrauchPct = (agent.monthlySpendCent / agent.monthlyBudgetCent) * 100;
+    // ─── Budget-Autothrottling (fresh read — not stale from initial load) ───────
+    const freshBudget = db.select({
+      monthlyBudgetCent: agents.monthlyBudgetCent,
+      monthlySpendCent: agents.monthlySpendCent,
+      name: agents.name,
+      companyId: agents.companyId,
+    })
+      .from(agents)
+      .where(eq(agents.id, agentId))
+      .get();
+
+    if (freshBudget && freshBudget.monthlyBudgetCent > 0) {
+      const verbrauchPct = (freshBudget.monthlySpendCent / freshBudget.monthlyBudgetCent) * 100;
 
       if (verbrauchPct >= 100) {
         console.log(`💸 Budget erschöpft (${verbrauchPct.toFixed(0)}%) — pausiere Agent ${agentId}`);
@@ -113,10 +116,10 @@ class HeartbeatServiceImpl implements HeartbeatService {
           .where(eq(agents.id, agentId));
         await db.insert(chatMessages).values({
           id: crypto.randomUUID(),
-          companyId: agent.companyId,
+          companyId: freshBudget.companyId,
           agentId,
           senderType: 'system',
-          message: `🚨 **Budget-Stop**: ${agent.name} wurde automatisch pausiert. Monatsbudget (${(agent.monthlyBudgetCent / 100).toFixed(2)}€) zu 100% verbraucht. Bitte Budget erhöhen oder Agent manuell reaktivieren.`,
+          message: `🚨 **Budget-Stop**: ${freshBudget.name} wurde automatisch pausiert. Monatsbudget (${(freshBudget.monthlyBudgetCent / 100).toFixed(2)}€) zu 100% verbraucht. Bitte Budget erhöhen oder Agent manuell reaktivieren.`,
           gelesen: false,
           createdAt: new Date().toISOString(),
         });
@@ -137,10 +140,10 @@ class HeartbeatServiceImpl implements HeartbeatService {
           console.log(`⚠️ Budget-Warnung (${verbrauchPct.toFixed(0)}%) für Agent ${agentId}`);
           await db.insert(chatMessages).values({
             id: crypto.randomUUID(),
-            companyId: agent.companyId,
+            companyId: freshBudget.companyId,
             agentId,
             senderType: 'system',
-            message: `⚠️ **Budget-Warnung**: ${agent.name} hat ${verbrauchPct.toFixed(0)}% des Monatsbudgets verbraucht (${(agent.monthlySpendCent / 100).toFixed(2)}€ von ${(agent.monthlyBudgetCent / 100).toFixed(2)}€). Bei 100% wird der Agent automatisch pausiert.`,
+            message: `⚠️ **Budget-Warnung**: ${freshBudget.name} hat ${verbrauchPct.toFixed(0)}% des Monatsbudgets verbraucht (${(freshBudget.monthlySpendCent / 100).toFixed(2)}€ von ${(freshBudget.monthlyBudgetCent / 100).toFixed(2)}€). Bei 100% wird der Agent automatisch pausiert.`,
             gelesen: false,
             createdAt: new Date().toISOString(),
           });
@@ -172,7 +175,11 @@ class HeartbeatServiceImpl implements HeartbeatService {
           createdAt: now,
         });
 
-        await wakeupService.claimWakeup(wakeup.id, runId);
+        const claimed = await wakeupService.claimWakeup(wakeup.id, runId);
+        if (!claimed) {
+          console.log(`⏳ Wakeup ${wakeup.id} already claimed by another process — skipping`);
+          continue;
+        }
         await this.executeRun(runId, agentId, agent.companyId, {
           invocationSource: wakeup.source,
           triggerDetail: wakeup.triggerDetail,
@@ -209,14 +216,52 @@ class HeartbeatServiceImpl implements HeartbeatService {
         return;
       }
 
+      // ─── Atomarer Agent-Level Mutex ───────────────────────────────────────────
+      const lockResult = await db.update(agents)
+        .set({ status: 'running', lastCycle: now, updatedAt: now })
+        .where(and(
+          eq(agents.id, agentId),
+          or(
+            eq(agents.status, 'idle'),
+            eq(agents.status, 'available'),
+            eq(agents.status, 'error'),
+            eq(agents.status, 'paused'),
+            isNull(agents.status)
+          )
+        ))
+        .returning();
+
+      if (lockResult.length === 0) {
+        const agentRow = await db.select({ lastCycle: agents.lastCycle })
+          .from(agents).where(eq(agents.id, agentId)).get();
+        const lastCycleTime = agentRow?.lastCycle ? new Date(agentRow.lastCycle).getTime() : 0;
+        const elapsed = Date.now() - lastCycleTime;
+
+        if (elapsed < 5 * 60 * 1000) {
+          console.log(`⏳ Agent ${agentId} is already running (${Math.round(elapsed / 1000)}s ago) — skipping duplicate heartbeat`);
+          await this.updateRunStatus(runId, 'skipped', { error: 'Agent already running' });
+          return;
+        }
+
+        console.log(`⏰ Agent ${agentId} stuck running for ${Math.round(elapsed / 1000)}s — reclaiming`);
+
+        const reclaimed = await db.update(agents)
+          .set({ status: 'running', lastCycle: now, updatedAt: now })
+          .where(and(eq(agents.id, agentId), eq(agents.status, 'running')))
+          .returning();
+
+        if (reclaimed.length === 0) {
+          console.log(`⏳ Agent ${agentId} was reclaimed by another process — skipping`);
+          await this.updateRunStatus(runId, 'skipped', { error: 'Agent reclaimed by another process' });
+          return;
+        }
+      }
+      // ────────────────────────────────────────────────────────────────────────────
+
       await this.updateRunStatus(runId, 'running');
       const inbox = await this.getAgentInbox(agentId, companyId);
 
       console.log(`▶️ Heartbeat ${runId}: Processing ${inbox.length} tasks for expert ${agentId}`);
-
-      await db.update(agents)
-        .set({ status: 'running', lastCycle: now, updatedAt: now })
-        .where(eq(agents.id, agentId));
 
       // ─── Routine Handler ─────────────────────────────────────────────────────
       if (options.payload?.routineId) {
@@ -458,14 +503,14 @@ class HeartbeatServiceImpl implements HeartbeatService {
     }
 
     const now = new Date().toISOString();
-    await db.update(tasks)
+    const updated = await db.update(tasks)
       .set({
         executionRunId: runId,
         executionAgentNameKey: `expert-${agentId}`,
         executionLockedAt: now,
         workspacePath,
         status: task.status === 'backlog' ? 'todo' : task.status,
-        gestartetAm: (task as any).startedAt || now,
+        startedAt: (task as any).startedAt || now,
       })
       .where(
         and(
@@ -476,7 +521,13 @@ class HeartbeatServiceImpl implements HeartbeatService {
             sql`${tasks.executionLockedAt} < ${new Date(Date.now() - 30 * 60 * 1000).toISOString()}`
           )
         )
-      );
+      )
+      .returning();
+
+    if (updated.length === 0) {
+      console.log(`⏳ Task ${task.id} already checked out by another process — skipping`);
+      return;
+    }
 
     console.log(`  🔒 Task ${task.id} checked out → workspace: ${workspacePath}`);
     trace(agentId, companyId, 'action', `Task gestartet: ${task.title}`, `Workspace: ${workspacePath}`, runId);
@@ -506,7 +557,7 @@ class HeartbeatServiceImpl implements HeartbeatService {
           targetId: null,
           workspacePath: null,
           completedAt: null,
-          gestartetAm: null,
+          startedAt: null,
           executionRunId: null,
         };
 
@@ -525,7 +576,8 @@ class HeartbeatServiceImpl implements HeartbeatService {
       const commentRows = await db.select()
         .from(comments)
         .where(eq(comments.taskId, task.id))
-        .orderBy(comments.createdAt);
+        .orderBy(comments.createdAt)
+        .limit(50);
 
       // ─── Task-Output-as-Input: load outputs from blocker tasks ──────────────
       let blockerOutputs: string | null = null;
@@ -535,20 +587,39 @@ class HeartbeatServiceImpl implements HeartbeatService {
           .where(eq(issueRelations.targetId, task.id));
 
         if (blockers.length > 0) {
+          const blockerIds = blockers.map(b => b.blockerId);
           const blockerResults: string[] = [];
-          for (const { blockerId } of blockers) {
-            const lastComment = await db.select({ content: comments.content, createdAt: comments.createdAt })
-              .from(comments)
-              .where(eq(comments.taskId, blockerId))
-              .orderBy(desc(comments.createdAt))
-              .limit(1)
-              .then((r: any[]) => r[0]);
-            const blockerTask = await db.select({ title: tasks.title })
-              .from(tasks).where(eq(tasks.id, blockerId)).limit(1).then((r: any[]) => r[0]);
-            if (lastComment && blockerTask) {
-              blockerResults.push(`### Ergebnis aus "${blockerTask.title}":\n${lastComment.content.slice(0, 1500)}`);
+
+          // Batch-load latest comments and task titles for all blockers
+          const lastComments = await db.select({
+            taskId: comments.taskId,
+            content: comments.content,
+            createdAt: comments.createdAt,
+          })
+            .from(comments)
+            .where(inArray(comments.taskId, blockerIds))
+            .orderBy(desc(comments.createdAt))
+            .all();
+
+          const blockerTasks = await db.select({ id: tasks.id, title: tasks.title })
+            .from(tasks)
+            .where(inArray(tasks.id, blockerIds))
+            .all();
+
+          const taskMap = new Map(blockerTasks.map(t => [t.id, t]));
+          const commentMap = new Map<string, typeof lastComments[0]>();
+          for (const c of lastComments) {
+            if (!commentMap.has(c.taskId)) commentMap.set(c.taskId, c);
+          }
+
+          for (const blockerId of blockerIds) {
+            const comment = commentMap.get(blockerId);
+            const task = taskMap.get(blockerId);
+            if (comment && task) {
+              blockerResults.push(`### Ergebnis aus "${task.title}":\n${comment.content.slice(0, 1500)}`);
             }
           }
+
           if (blockerResults.length > 0) {
             blockerOutputs = `## Outputs vorheriger abhängiger Tasks\n\n${blockerResults.join('\n\n---\n\n')}`;
             console.log(`  🔗 Task ${task.id} hat ${blockerResults.length} Blocker-Output(s) als Kontext`);
@@ -729,7 +800,8 @@ class HeartbeatServiceImpl implements HeartbeatService {
               const allFiles = fs.readdirSync(wp, { recursive: true } as any) as string[];
               const files = allFiles
                 .filter((f: string) => !f.includes('node_modules') && !f.includes('.git'))
-                .slice(0, 60).join('\n');
+                .slice(0, 200)
+                .join('\n');
               return files ? { workspaceFiles: `## Bereits vorhandene Dateien im Workspace\n\`\`\`\n${files}\n\`\`\`\nBitte konsistenten Code-Stil verwenden und bestehende Dateien beachten.` } : {};
             } catch { return {}; }
           })(),
@@ -772,13 +844,15 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "targetId". Aktualisiere
 
       // ─── TOKEN BUDGET GUARD ────────────────────────────────────────────────
       const CONTEXT_CHAR_LIMIT = 320_000;
-      const estimatedSize = JSON.stringify(adapterContext).length;
+      let serializedContext = JSON.stringify(adapterContext);
+      const estimatedSize = serializedContext.length;
       if (estimatedSize > CONTEXT_CHAR_LIMIT) {
         console.warn(`  ⚠️ Context too large (${Math.round(estimatedSize / 1000)}k chars) — trimming`);
         const agentCtx = adapterContext.agentContext as any;
         if (agentCtx.vorgaengerOutputs) agentCtx.vorgaengerOutputs = agentCtx.vorgaengerOutputs.slice(0, 20_000) + '\n[...gekürzt]';
         if (adapterContext.agentContext.memory) adapterContext.agentContext.memory = (adapterContext.agentContext.memory as string).slice(0, 10_000) + '\n[...gekürzt]';
-        if (JSON.stringify(adapterContext).length > CONTEXT_CHAR_LIMIT) adapterContext.previousComments = adapterContext.previousComments.slice(-5);
+        serializedContext = JSON.stringify(adapterContext);
+        if (serializedContext.length > CONTEXT_CHAR_LIMIT) adapterContext.previousComments = adapterContext.previousComments.slice(-5);
         if (agentCtx.offeneTasks) agentCtx.offeneTasks = agentCtx.offeneTasks.slice(0, 20);
         const afterSize = JSON.stringify(adapterContext).length;
         console.log(`  ✂️ Context trimmed: ${Math.round(estimatedSize / 1000)}k → ${Math.round(afterSize / 1000)}k chars`);
@@ -983,6 +1057,36 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "targetId". Aktualisiere
         });
       }
 
+      // ─── Checkpoint parsing & persistence ───────────────────────────────
+      if (!isSyntheticTaskEarly && result.output) {
+        try {
+          const checkpoint = parseCheckpoint(result.output);
+          if (checkpoint) {
+            await saveCheckpoint(checkpoint, {
+              companyId,
+              agentId,
+              taskId: task.id,
+              runId,
+              model: heartbeatParsedConfig.model || heartbeatGlobalDefaultModel,
+              tokens: (result.inputTokens || 0) + (result.outputTokens || 0),
+              costCents: result.costCents,
+              durationMs: result.durationMs,
+            });
+            console.log(`  📋 Checkpoint gespeichert: ${checkpoint.state} für Task ${task.id}`);
+            trace(agentId, companyId, 'info',
+              `Checkpoint ${checkpoint.state}: ${taskFull.title}`,
+              JSON.stringify({ blocker: checkpoint.blocker, nextAction: checkpoint.nextAction }),
+              runId,
+            );
+          } else {
+            console.log(`  ⚠️ Kein Checkpoint-Block im Output von Task ${task.id}`);
+          }
+        } catch (cpErr: any) {
+          console.warn(`  ⚠️ Checkpoint-Parsing fehlgeschlagen: ${cpErr.message}`);
+        }
+      }
+      // ────────────────────────────────────────────────────────────────────
+
       // Transient errors (429, rate limit, network) → silently retry next cycle
       const isSyntheticTask = task.id.startsWith('planning-');
       const isRateLimit = !result.success && (
@@ -1151,9 +1255,9 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "targetId". Aktualisiere
             .where(eq(tasks.id, task.id));
 
           // Unblock dependent tasks
-          const entblockt = pruefeUndEntblocke(task.id);
-          if (entblockt.length > 0) {
-            trace(agentId, companyId, 'info', `🔓 ${entblockt.length} Task(s) entblockt`, entblockt.join(', '), runId);
+          const unblocked = unblockDependents(task.id);
+          if (unblocked.length > 0) {
+            trace(agentId, companyId, 'info', `🔓 ${unblocked.length} task(s) unblocked`, unblocked.join(', '), runId);
           }
 
           // Auto-update goal progress
@@ -1348,24 +1452,43 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "targetId". Aktualisiere
         .from(agents)
         .where(and(eq(agents.companyId, companyId), eq(agents.isOrchestrator, false)));
 
-      const workloadPerAgent = await Promise.all(teamForPlanning.map(async (m) => {
-        const count = await db.select({ n: sql<number>`COUNT(*)` })
-          .from(tasks)
-          .where(and(eq(tasks.companyId, companyId), eq(tasks.assignedTo, m.id), inArray(tasks.status, ['todo', 'in_progress', 'backlog'])))
-          .then(r => (r[0]?.n ?? 0) as number);
+      // Batch-load task counts and skills per agent (N+1 → 2 queries)
+      const taskCounts = await db.select({
+        agentId: tasks.assignedTo,
+        n: sql<number>`COUNT(*)`,
+      })
+        .from(tasks)
+        .where(and(
+          eq(tasks.companyId, companyId),
+          inArray(tasks.status, ['todo', 'in_progress', 'backlog']),
+          inArray(tasks.assignedTo, teamForPlanning.map(m => m.id)),
+        ))
+        .groupBy(tasks.assignedTo);
+      const taskCountMap = new Map(taskCounts.map(t => [t.agentId, t.n]));
 
-        const structuredSkills = await db.select({ skillName: skillsLibrary.name })
-          .from(agentSkills)
-          .innerJoin(skillsLibrary, eq(agentSkills.skillId, skillsLibrary.id))
-          .where(eq(agentSkills.agentId, m.id));
+      const structuredSkills = await db.select({
+        agentId: agentSkills.agentId,
+        skillName: skillsLibrary.name,
+      })
+        .from(agentSkills)
+        .innerJoin(skillsLibrary, eq(agentSkills.skillId, skillsLibrary.id))
+        .where(inArray(agentSkills.agentId, teamForPlanning.map(m => m.id)));
+      const skillsMap = new Map<string, string[]>();
+      for (const s of structuredSkills) {
+        if (!skillsMap.has(s.agentId)) skillsMap.set(s.agentId, []);
+        skillsMap.get(s.agentId)!.push(s.skillName);
+      }
 
+      const workloadPerAgent = teamForPlanning.map(m => {
+        const count = taskCountMap.get(m.id) ?? 0;
+        const agentSkills = skillsMap.get(m.id) ?? [];
         const allSkills = [
-          ...structuredSkills.map(s => s.skillName),
+          ...agentSkills,
           ...(m.skills ? m.skills.split(',').map((s: string) => s.trim()).filter(Boolean) : []),
         ];
         const skillStr = [...new Set(allSkills)].join(', ') || 'keine';
         return { name: m.name, skills: skillStr, openTasks: count };
-      }));
+      });
 
       const staleDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const staleTasks = await db.select({ title: tasks.title, priority: tasks.priority })

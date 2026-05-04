@@ -72,10 +72,17 @@ function guardPath(p: string): { safe: boolean; resolved: string; error?: string
 }
 
 function guardCommand(cmd: string): { safe: boolean; error?: string } {
-  const dangerous = /(^|\s|;|&&|\|\|)(rm\s+-rf\s*\/|dd\s+|mkfs|>:\s*\/dev\/(null|zero|random)|shutdown|reboot|poweroff|halt|init\s+0|curl\s+.*\|\s*sh|wget\s+.*\|\s*sh|eval\s*\(|base64\s+-d\s*\|)/i;
+  // Block subshells, backticks, and process substitution
+  if (/[`$]\(|\$\{.*\}|`.*`|<\(|\)>/i.test(cmd)) {
+    return { safe: false, error: 'Subshells and command substitution are not allowed.' };
+  }
+
+  // Block dangerous commands and patterns
+  const dangerous = /(^|\s|;|&&|\|\||\|)(rm\s+-rf\s*[\/\\]|dd\s+|mkfs|>:\s*\/dev\/(null|zero|random|sd[a-z])|shutdown|reboot|poweroff|halt|init\s+0|curl\s+.*\|\s*sh|wget\s+.*\|\s*sh|eval\s*\(|base64\s+.*\||python3?\s+.*\|.*sh|perl\s+.*\|.*sh|nc\s+|netcat\s+|ncat\s+|bash\s+-c|sh\s+-c|cmd\s+\/c|powershell\s+-c|python3?\s+-c\s+.*os\.system|python3?\s+-c\s+.*subprocess\.call|python3?\s+-c\s+.*subprocess\.run)/i;
   if (dangerous.test(cmd)) {
     return { safe: false, error: 'Dangerous command blocked by guardrail.' };
   }
+
   return { safe: true };
 }
 
@@ -100,7 +107,14 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
           encoding: 'utf-8',
           timeout,
           maxBuffer: 1024 * 1024,
-          env: { ...process.env, PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin' },
+          env: {
+            PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
+            HOME: process.env.HOME || '/tmp',
+            LANG: process.env.LANG || 'en_US.UTF-8',
+            USER: process.env.USER || 'opencognit',
+            SHELL: process.env.SHELL || '/bin/sh',
+            TERM: process.env.TERM || 'xterm',
+          },
         });
         return { tool: name, success: true, output: result.slice(0, 50000) };
       }

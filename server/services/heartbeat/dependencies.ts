@@ -61,13 +61,13 @@ export async function scanForBlockedTasks(companyId: string, orchestratorId: str
       title: tasks.title,
       status: tasks.status,
       assignedTo: tasks.assignedTo,
-      gestartetAm: tasks.startedAt,
+      startedAt: tasks.startedAt,
     })
       .from(tasks)
       .where(and(
         eq(tasks.companyId, companyId),
         inArray(tasks.status, ['in_progress', 'blocked']),
-      )) as any[];
+      ));
 
     const now = Date.now();
     for (const task of stuckTasks) {

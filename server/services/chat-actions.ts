@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { db } from '../db/client.js';
 import { tasks, agents, goals, agentPermissions, approvals, agentMeetings, agentWakeupRequests, settings, routines, routineTrigger, comments, projects } from '../db/schema.js';
+import { z } from 'zod';
 import { eq, and, inArray, or, desc, gte } from 'drizzle-orm';
 import { wakeupService } from './wakeup.js';
 import { v4 as uuid } from 'uuid';
@@ -39,8 +40,23 @@ export async function processChatActions(
   companyId: string,
   replyText: string,
 ): Promise<ChatActionResult> {
+  // ─── Zod Schema for Chat Actions ───────────────────────────────────────────
+  const chatActionSchema = z.array(z.discriminatedUnion('type', [
+    z.object({ type: z.literal('create_task'), title: z.string().min(1).max(200), description: z.string().max(5000).optional(), priority: z.string().optional(), assignTo: z.string().optional(), goalId: z.string().optional(), projectId: z.string().optional() }),
+    z.object({ type: z.literal('assign_task'), taskId: z.string().min(1), assignTo: z.string().min(1) }),
+    z.object({ type: z.literal('mark_done'), taskId: z.string().min(1) }),
+    z.object({ type: z.literal('approve_task'), taskId: z.string().min(1) }),
+    z.object({ type: z.literal('reject_task'), taskId: z.string().min(1), reason: z.string().max(2000).optional() }),
+    z.object({ type: z.literal('update_goal'), goalId: z.string().min(1), progress: z.number().min(0).max(100).optional(), status: z.string().optional() }),
+    z.object({ type: z.literal('hire_agent'), role: z.string().min(1).max(100), skills: z.string().optional(), connectionType: z.string().optional(), monthlyBudgetCent: z.number().optional(), begruendung: z.string().optional() }),
+    z.object({ type: z.literal('call_meeting'), thema: z.string().min(1).max(200), participantIds: z.array(z.string()).optional(), agenda: z.string().optional() }),
+    z.object({ type: z.literal('create_project'), name: z.string().min(1).max(200), description: z.string().max(5000).optional(), type: z.string().optional(), priority: z.string().optional(), goalId: z.string().optional(), color: z.string().optional(), tasks: z.array(z.any()).optional() }),
+    z.object({ type: z.literal('create_routine'), title: z.string().min(1).max(200), description: z.string().optional(), cronExpression: z.string().min(1), timezone: z.string().optional(), assignToSelf: z.boolean().optional(), priority: z.string().optional() }),
+  ]));
+  // ─────────────────────────────────────────────────────────────────────────────
+
   // Extract JSON blocks from [ACTION]{...}[/ACTION]
-  let actions: any[] = [];
+  let rawActions: any[] = [];
   const actionSummary: string[] = [];
 
   const actionRegex = /\[ACTION\]([\s\S]*?)\[\/ACTION\]/g;
@@ -49,9 +65,9 @@ export async function processChatActions(
     try {
       const parsed = JSON.parse(match[1].trim());
       if (Array.isArray(parsed.actions) && parsed.actions.length > 0) {
-        actions.push(...parsed.actions);
+        rawActions.push(...parsed.actions);
       } else if (parsed.type) {
-        actions.push(parsed);
+        rawActions.push(parsed);
       }
     } catch { /* invalid JSON */ }
   }
@@ -64,10 +80,20 @@ export async function processChatActions(
     try {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed.actions) && parsed.actions.length > 0) {
-        actions.push(...parsed.actions);
+        rawActions.push(...parsed.actions);
         break;
       }
     } catch { /* invalid JSON */ }
+  }
+
+  // Validate actions with Zod
+  let actions: any[] = [];
+  const validationResult = chatActionSchema.safeParse(rawActions);
+  if (validationResult.success) {
+    actions = validationResult.data;
+  } else {
+    console.warn(`  ⚠️ Chat Actions Zod-Validierung fehlgeschlagen: ${validationResult.error.errors.map(e => e.message).join(', ')}`);
+    actions = rawActions.filter((a: any) => typeof a?.type === 'string');
   }
 
   const createdTaskIds: string[] = [];
@@ -572,30 +598,28 @@ export async function processChatActions(
           }
 
           const projectId = uuid();
-          await db.insert(projects).values({
-            id: projectId,
-            companyId,
-            name: action.name,
-            description: action.description || null,
-            status: 'aktiv',
-            priority: action.priority || 'medium',
-            goalId: action.goalId || null,
-            ownerAgentId: agentId,
-            color: action.color || '#23CDCB',
-            createdAt: now,
-            updatedAt: now,
-          } as any).run();
-          createdProjectIds.push(projectId);
+          const projectTasks = action.tasks && Array.isArray(action.tasks) ? action.tasks : [];
 
-          console.log(`  ✅ CEO erstellt Projekt: "${action.name}" (${projectId})`);
-          emitTrace(agentId, companyId, 'action', `Projekt erstellt: ${action.name}`, `ID: ${projectId}`);
-          actionSummary.push(`✅ create_project: "${action.name}"`);
+          // Atomic transaction: project + subtasks
+          db.transaction((tx) => {
+            tx.insert(projects).values({
+              id: projectId,
+              companyId,
+              name: action.name,
+              description: action.description || null,
+              status: 'aktiv',
+              priority: action.priority || 'medium',
+              goalId: action.goalId || null,
+              ownerAgentId: agentId,
+              color: action.color || '#23CDCB',
+              createdAt: now,
+              updatedAt: now,
+            } as any).run();
 
-          if (action.tasks && Array.isArray(action.tasks)) {
-            for (const t of action.tasks) {
+            for (const t of projectTasks) {
               const newTaskId = uuid();
               const taskAgent = t.agentId ? team.find(a => a.id === t.agentId) : null;
-              await db.insert(tasks).values({
+              tx.insert(tasks).values({
                 id: newTaskId,
                 companyId,
                 title: t.title,
@@ -608,17 +632,26 @@ export async function processChatActions(
                 createdAt: now,
                 updatedAt: now,
               } as any).run();
-              createdTaskIds.push(newTaskId);
-              console.log(`    📋 Projekt-Task erstellt: "${t.title}" → ${taskAgent?.name || 'offen'}`);
+            }
+          });
+
+          createdProjectIds.push(projectId);
+          console.log(`  ✅ CEO erstellt Projekt: "${action.name}" (${projectId})`);
+          emitTrace(agentId, companyId, 'action', `Projekt erstellt: ${action.name}`, `ID: ${projectId}`);
+          actionSummary.push(`✅ create_project: "${action.name}"`);
+
+          // Wakeup calls outside transaction
+          for (const t of projectTasks) {
+            const taskAgent = t.agentId ? team.find(a => a.id === t.agentId) : null;
+            if (taskAgent) {
+              console.log(`    📋 Projekt-Task erstellt: "${t.title}" → ${taskAgent.name || 'offen'}`);
               emitTrace(agentId, companyId, 'action', `Projekt-Task erstellt: ${t.title}`, `Projekt: ${action.name}`);
-              actionSummary.push(`  📋 Projekt-Task: "${t.title}" → ${taskAgent?.name || 'offen'}`);
-              if (taskAgent) {
-                await wakeupService.wakeup(taskAgent.id, companyId, {
-                  source: 'automation',
-                  triggerDetail: 'issue_assigned',
-                  reason: `Neuer Projekt-Task: ${t.title}`,
-                });
-              }
+              actionSummary.push(`  📋 Projekt-Task: "${t.title}" → ${taskAgent.name || 'offen'}`);
+              wakeupService.wakeup(taskAgent.id, companyId, {
+                source: 'automation',
+                triggerDetail: 'issue_assigned',
+                reason: `Neuer Projekt-Task: ${t.title}`,
+              }).catch(() => {});
             }
           }
 
@@ -634,27 +667,32 @@ export async function processChatActions(
             break;
           }
           const routineId = uuid();
-          await db.insert(routines).values({
-            id: routineId,
-            companyId,
-            title: rtitel,
-            description: rdesc || '',
-            assignedTo: assignToSelf !== false ? agentId : null,
-            priority: (action.priority || 'medium') as any,
-            status: 'active',
-            createdAt: now,
-            updatedAt: now,
-          }).run();
-          await db.insert(routineTrigger).values({
-            id: uuid(),
-            companyId,
-            routineId,
-            kind: 'schedule',
-            active: true,
-            cronExpression,
-            timezone: timezone || 'Europe/Berlin',
-            createdAt: now,
-          }).run();
+
+          // Atomic transaction: routine + trigger
+          db.transaction((tx) => {
+            tx.insert(routines).values({
+              id: routineId,
+              companyId,
+              title: rtitel,
+              description: rdesc || '',
+              assignedTo: assignToSelf !== false ? agentId : null,
+              priority: (action.priority || 'medium') as any,
+              status: 'active',
+              createdAt: now,
+              updatedAt: now,
+            }).run();
+            tx.insert(routineTrigger).values({
+              id: uuid(),
+              companyId,
+              routineId,
+              kind: 'schedule',
+              active: true,
+              cronExpression,
+              timezone: timezone || 'Europe/Berlin',
+              createdAt: now,
+            }).run();
+          });
+
           console.log(`  ✅ CEO erstellt Routine: "${rtitel}" (${cronExpression})`);
           emitTrace(agentId, companyId, 'action', `Routine erstellt: ${rtitel}`, `Zeitplan: ${cronExpression}`);
           actionSummary.push(`✅ create_routine: "${rtitel}" (${cronExpression})`);

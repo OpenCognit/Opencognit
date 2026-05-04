@@ -546,19 +546,21 @@ export function createAgentFromTemplate(
   unternehmenId: string,
   roleKey: string,
   index: number = 1,
-  overrides: Partial<typeof agents.$inferInsert> = {}
+  overrides: Partial<typeof agents.$inferInsert> = {},
+  tx?: typeof db
 ): typeof agents.$inferSelect {
   const template = ROLE_TEMPLATES[roleKey];
   if (!template) throw new Error(`Unknown role template: ${roleKey}`);
 
   const now = new Date().toISOString();
-  const safeCompanyName = db.select({ name: companies.name }).from(companies).where(eq(companies.id, unternehmenId)).get()?.name || 'Company';
+  const dbOrTx = tx ?? db;
+  const safeCompanyName = dbOrTx.select({ name: companies.name }).from(companies).where(eq(companies.id, unternehmenId)).get()?.name || 'Company';
   const agentName = `${template.namePrefix} ${index > 1 ? index : ''}`.trim();
 
   const id = crypto.randomUUID();
 
   // Insert agent
-  db.insert(agents).values({
+  dbOrTx.insert(agents).values({
     id,
     companyId: unternehmenId,
     name: agentName,
@@ -594,31 +596,32 @@ export function createAgentFromTemplate(
   fs.writeFileSync(agentsPath, template.agentsMdTemplate, 'utf-8');
 
   // Update soulPath in DB
-  db.update(agents)
+  dbOrTx.update(agents)
     .set({ soulPath, updatedAt: now })
     .where(eq(agents.id, id))
     .run();
 
   // NOTE: agentCapabilities table removed during refactor; capabilities stored in agents.capabilities JSON field
-  // db.insert(agentCapabilities).values({...}).run();
+  // dbOrTx.insert(agentCapabilities).values({...}).run();
 
   console.log(`  🤖 Agent Factory: Created ${agentName} (${template.role}) → ${soulPath}`);
 
-  return db.select().from(agents).where(eq(agents.id, id)).get()!;
+  return dbOrTx.select().from(agents).where(eq(agents.id, id)).get()!;
 }
 
 /**
  * Resolve reportsTo relationships after all agents are created.
  */
-export function linkAgentHierarchy(agentList: Array<{ id: string; role: string }>): void {
+export function linkAgentHierarchy(agentList: Array<{ id: string; role: string }>, tx?: typeof db): void {
   const byRole = new Map(agentList.map(a => [a.role, a.id]));
+  const dbOrTx = tx ?? db;
 
   for (const agent of agentList) {
     const template = Object.values(ROLE_TEMPLATES).find(t => t.role === agent.role);
     if (template?.reportsTo) {
       const supervisorId = byRole.get(template.reportsTo);
       if (supervisorId) {
-        db.update(agents)
+        dbOrTx.update(agents)
           .set({ reportsTo: supervisorId, updatedAt: new Date().toISOString() })
           .where(eq(agents.id, agent.id))
           .run();

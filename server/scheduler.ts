@@ -1995,7 +1995,7 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
        broadcast('chat_message', msg);
     } else if (action === 'add_dependency') {
        // ─── Issue Dependencies (Task-Manager-Vorbild) ──────────────────────
-       const { erstelleAbhaengigkeit: addDep } = await import('./services/issue-dependencies.js');
+       const { addBlocker: addDep } = await import('./services/issue-dependencies.js');
        const depResult = addDep(params.blockerId, params.blockedId, agentId);
        const msg = {
          id: uuid(), companyId, agentId,

@@ -8,6 +8,7 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { resolveAgentWorkdir, SAFE_DEFAULT_WORKDIR } from './workspace-guard.js';
 import { resolveCliPath } from './cli-paths.js';
+import { CHECKPOINT_PROMPT_BLOCK } from '../services/heartbeat/checkpoint.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -392,6 +393,8 @@ Respond in the language of the task (German if the task is in German, English if
 
     // Instructions with memory tag hint — must match format parsed by memory-auto.ts
     parts.push('[ANWEISUNG]\nBearbeite die obenstehende Aufgabe. Antworte strukturiert und klar.\n\nOptional: Nutze [REMEMBER:raum] Tags um Wissen dauerhaft zu speichern:\n[REMEMBER:projekt] laufendes Projekt, Ziele, Deadlines\n[REMEMBER:erkenntnisse] gelernte Fakten, API-Details, Lösungen\n[REMEMBER:entscheidungen] Entscheidungen und ihre Begründung\n[REMEMBER:kontakte] Ansprechpartner, Zugangsdaten\n[REMEMBER:fehler] bekannte Probleme und Workarounds\n[REMEMBER:kg] {"subject": "Ich", "predicate": "arbeite_an", "object": "Projektname"}\nDer Inhalt nach dem Tag wird direkt ins Langzeitgedächtnis gespeichert.');
+
+    parts.push(CHECKPOINT_PROMPT_BLOCK);
 
     return parts.join('\n');
   }

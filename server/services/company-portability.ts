@@ -203,7 +203,15 @@ export function importCompany(
   const existingNames = new Set(existingAgents.map(a => a.name));
   const nameToId = new Map<string, string>();
 
-  // Phase 1: Agenten importieren
+  // ─── Pre-transaction: collision handling + ID generation ────────────
+  const agentsToImport: Array<{
+    agentDef: CompanyManifest['agenten'][0];
+    name: string;
+    agentId: string;
+    verbindungsTyp: string;
+    config: string;
+  }> = [];
+
   for (const agentDef of manifest.agenten) {
     if (options.agentFilter && !options.agentFilter.includes(agentDef.name)) continue;
 
@@ -217,83 +225,90 @@ export function importCompany(
       // 'replace': Lösche existierenden Agent → wird unten neu erstellt
     }
 
-    try {
-      const agentId = uuid();
-      nameToId.set(agentDef.name, agentId);
+    const agentId = uuid();
+    nameToId.set(agentDef.name, agentId);
 
-      const verbindungsTyp = options.adapterOverride || agentDef.connectionType;
-      const config = agentDef.isOrchestrator
-        ? JSON.stringify({ isOrchestrator: true, autonomyLevel: 'teamplayer' })
-        : JSON.stringify({ autonomyLevel: 'copilot' });
+    const verbindungsTyp = options.adapterOverride || agentDef.connectionType;
+    const config = agentDef.isOrchestrator
+      ? JSON.stringify({ isOrchestrator: true, autonomyLevel: 'teamplayer' })
+      : JSON.stringify({ autonomyLevel: 'copilot' });
 
-      db.insert(agents).values({
-        id: agentId,
-        companyId: targetUnternehmenId,
-        name,
-        role: agentDef.role,
-        title: agentDef.title,
-        capabilities: agentDef.skills,
-        connectionType: verbindungsTyp,
-        connectionConfig: config,
-        avatar: agentDef.avatar,
-        avatarColor: agentDef.avatarColor,
-        monthlyBudgetCent: agentDef.monthlyBudgetCent,
-        monthlySpendCent: 0,
-        systemPrompt: agentDef.systemPrompt,
-        status: 'idle',
-        messageCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      }).run();
+    agentsToImport.push({ agentDef, name, agentId, verbindungsTyp, config });
+  }
 
-      // Skills importieren
-      for (const skillDef of agentDef.skills) {
-        const skillId = uuid();
-        db.insert(skillsLibrary).values({
-          id: skillId,
+  // Tasks vorbereiten
+  const tasksToImport = options.importTasks !== false
+    ? manifest.tasks.map(taskDef => ({
+        taskDef,
+        zugewiesenAn: taskDef.assignedToName ? nameToId.get(taskDef.assignedToName) || null : null,
+      }))
+    : [];
+
+  // ─── Atomic transaction: all DB mutations ───────────────────────────
+  try {
+    db.transaction((tx) => {
+      for (const { agentDef, name, agentId, verbindungsTyp, config } of agentsToImport) {
+        tx.insert(agents).values({
+          id: agentId,
           companyId: targetUnternehmenId,
-          name: skillDef.name,
-          description: skillDef.description,
-          content: skillDef.content,
-          tags: skillDef.tags,
-          confidence: skillDef.confidence || 50,
-          uses: 0,
-          successes: 0,
-          source: (skillDef.source as any) || 'manuell',
-          createdBy: 'import',
+          name,
+          role: agentDef.role,
+          title: agentDef.title,
+          capabilities: agentDef.skills,
+          connectionType: verbindungsTyp,
+          connectionConfig: config,
+          avatar: agentDef.avatar,
+          avatarColor: agentDef.avatarColor,
+          monthlyBudgetCent: agentDef.monthlyBudgetCent,
+          monthlySpendCent: 0,
+          systemPrompt: agentDef.systemPrompt,
+          status: 'idle',
+          messageCount: 0,
           createdAt: now,
           updatedAt: now,
         }).run();
 
-        db.insert(agentSkills).values({
-          id: uuid(), agentId: agentId, skillId, createdAt: now,
-        }).run();
+        for (const skillDef of agentDef.skills) {
+          const skillId = uuid();
+          tx.insert(skillsLibrary).values({
+            id: skillId,
+            companyId: targetUnternehmenId,
+            name: skillDef.name,
+            description: skillDef.description,
+            content: skillDef.content,
+            tags: skillDef.tags,
+            confidence: skillDef.confidence || 50,
+            uses: 0,
+            successes: 0,
+            source: (skillDef.source as any) || 'manuell',
+            createdBy: 'import',
+            createdAt: now,
+            updatedAt: now,
+          }).run();
+
+          tx.insert(agentSkills).values({
+            id: uuid(), agentId, skillId, createdAt: now,
+          }).run();
+        }
+
+        agentsImported++;
       }
 
-      agentsImported++;
-    } catch (err: any) {
-      errors.push(`Agent "${name}": ${err.message}`);
-    }
-  }
-
-  // Phase 2: reportsTo auflösen
-  for (const agentDef of manifest.agenten) {
-    if (agentDef.reportsToName) {
-      const agentId = nameToId.get(agentDef.name);
-      const reportsToId = nameToId.get(agentDef.reportsToName);
-      if (agentId && reportsToId) {
-        db.update(agents).set({ reportsTo: reportsToId, updatedAt: now })
-          .where(eq(agents.id, agentId)).run();
+      // Phase 2: reportsTo auflösen
+      for (const agentDef of manifest.agenten) {
+        if (agentDef.reportsToName) {
+          const agentId = nameToId.get(agentDef.name);
+          const reportsToId = nameToId.get(agentDef.reportsToName);
+          if (agentId && reportsToId) {
+            tx.update(agents).set({ reportsTo: reportsToId, updatedAt: now })
+              .where(eq(agents.id, agentId)).run();
+          }
+        }
       }
-    }
-  }
 
-  // Phase 3: Tasks importieren
-  if (options.importTasks !== false) {
-    for (const taskDef of manifest.tasks) {
-      try {
-        const zugewiesenAn = taskDef.assignedToName ? nameToId.get(taskDef.assignedToName) || null : null;
-        db.insert(tasks).values({
+      // Phase 3: Tasks importieren
+      for (const { taskDef, zugewiesenAn } of tasksToImport) {
+        tx.insert(tasks).values({
           id: uuid(),
           companyId: targetUnternehmenId,
           title: taskDef.title,
@@ -305,10 +320,11 @@ export function importCompany(
           updatedAt: now,
         }).run();
         tasksImported++;
-      } catch (err: any) {
-        errors.push(`Task "${taskDef.title}": ${err.message}`);
       }
-    }
+    });
+  } catch (err: any) {
+    errors.push(`Import-Transaktion fehlgeschlagen: ${err.message}`);
+    return { success: false, agentsImported: 0, tasksImported: 0, errors };
   }
 
   return { success: errors.length === 0, agentsImported, tasksImported, errors };
