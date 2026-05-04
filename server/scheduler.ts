@@ -384,9 +384,9 @@ export class Scheduler {
       id: laufId,
       companyId,
       agentId,
-      quelle,
+      source: quelle,
       status: 'running',
-      gestartetAm: now(),
+      startedAt: now(),
       createdAt: now(),
     }).run();
 
@@ -463,7 +463,7 @@ export class Scheduler {
             const latestTrace = db.select({
               typ: traceEvents.type,
               titel: traceEvents.title,
-              erstelltAm: traceEvents.createdAt,
+              createdAt: traceEvents.createdAt,
             }).from(traceEvents)
               .where(eq(traceEvents.agentId, e.id))
               .orderBy(desc(traceEvents.createdAt))
@@ -901,7 +901,7 @@ ${systemObservations.length > 0 ? `\nLetzte Aktionsergebnisse:\n${systemObservat
         // 1. Stale in-progress tasks (>24h without update → agent might be stuck)
         const staleThreshold = now_ts - 24 * 60 * 60 * 1000;
         const staleTasks = db.select({
-          id: tasks.id, titel: tasks.title, zugewiesenAn: tasks.assignedTo, aktualisiertAm: tasks.updatedAt,
+          id: tasks.id, titel: tasks.title, zugewiesenAn: tasks.assignedTo, updatedAt: tasks.updatedAt,
         }).from(tasks)
           .where(and(eq(tasks.companyId, companyId), eq(tasks.status, 'in_progress')))
           .all()
@@ -1049,7 +1049,7 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
     } catch (adapterErr: any) {
       console.error(`[Scheduler] adapter.run() threw for ${expert.name}:`, adapterErr?.message);
       trace(agentId, companyId, 'error', `Adapter-Exception`, adapterErr?.message ?? 'Unbekannt', laufId);
-      db.update(workCycles).set({ status: 'failed', beendetAm: now(), fehler: adapterErr?.message }).where(eq(workCycles.id, laufId)).run();
+      db.update(workCycles).set({ status: 'failed', endedAt: now(), error: adapterErr?.message }).where(eq(workCycles.id, laufId)).run();
       db.update(agents).set({ status: 'error' as any, updatedAt: now() }).where(eq(agents.id, agentId)).run();
       return;
     }
@@ -1086,8 +1086,8 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
           absenderTyp: 'agent' as const,
           absenderName: expert.name,
           nachricht: replyText.trim(),
-          gelesen: false,
-          erstelltAm: now(),
+          read: false,
+          createdAt: now(),
         };
         db.insert(chatMessages).values(responseMsg).run();
         broadcast('chat_message', responseMsg);
@@ -1114,7 +1114,7 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
 
             db.update(agentMeetings)
               .set({
-                replies: JSON.stringify(antworten),
+                responses: JSON.stringify(antworten),
                 ...(alleDa ? { status: 'completed', completedAt: now() } : {}),
               })
               .where(and(eq(agentMeetings.id, meetingId), eq(agentMeetings.status, 'running')))
@@ -1138,8 +1138,8 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
                 threadId: meetingId,
                 absenderTyp: 'system' as const,
                 nachricht: `📊 **Meeting abgeschlossen: "${meeting.title}"**\n\nAlle Teilnehmer haben geantwortet:\n\n${antwortenText}\n\nBitte erstelle eine Zusammenfassung für das Board.`,
-                gelesen: false,
-                erstelltAm: now(),
+                read: false,
+                createdAt: now(),
               };
               db.insert(chatMessages).values(synthMsg).run();
               broadcast('chat_message', synthMsg);
@@ -1171,8 +1171,8 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
           absenderTyp: 'agent' as const,
           absenderName: expert.name,
           nachricht: replyText.trim(),
-          gelesen: false,
-          erstelltAm: now(),
+          read: false,
+          createdAt: now(),
         };
         db.insert(chatMessages).values(msg).run();
         broadcast('chat_message', msg);
@@ -1195,7 +1195,7 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
             const alleDa = agentTeilnehmer.every((id: string) => antworten[id]);
 
             db.update(agentMeetings).set({
-              replies: JSON.stringify(antworten),
+              responses: JSON.stringify(antworten),
               ...(alleDa ? { status: 'completed', completedAt: now() } : {}),
             }).where(and(eq(agentMeetings.id, meetingId), eq(agentMeetings.status, 'running'))).run();
 
@@ -1209,7 +1209,7 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
                 threadId: meetingId,
                 absenderTyp: 'system' as const,
                 nachricht: `📊 **Meeting abgeschlossen: "${mtg.title}"**\n\nAlle Antworten eingegangen. Bitte erstelle eine Zusammenfassung für das Board.`,
-                gelesen: false, erstelltAm: now(),
+                read: false, createdAt: now(),
               };
               db.insert(chatMessages).values(synthMsg).run();
               broadcast('chat_message', synthMsg);
@@ -1235,8 +1235,8 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
           absenderTyp: 'system' as const,
           absenderName: expert.name,
           nachricht: `⚠ Fehler: ${result.error ?? 'Unbekannter Fehler'}`,
-          gelesen: true,
-          erstelltAm: now(),
+          read: true,
+          createdAt: now(),
         };
         db.insert(chatMessages).values(errMsg).run();
         broadcast('chat_message', errMsg);
@@ -1249,9 +1249,9 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
 
     db.update(workCycles).set({
       status: result.success ? 'succeeded' : 'failed',
-      beendetAm: now(),
-      ausgabe: result.output,
-      fehler: result.error,
+      endedAt: now(),
+      output: result.output,
+      error: result.error,
     }).where(eq(workCycles.id, laufId)).run();
 
     db.update(agents).set({ 
@@ -1263,7 +1263,7 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
     // Inkrementiere Nachrichtencounter und speichere alle 15 Nachrichtenwechsel
     if (result.success) {
       const neuCount = (expert.messageCount || 0) + 1;
-      db.update(agents).set({ nachrichtenCount: neuCount }).where(eq(agents.id, agentId)).run();
+      db.update(agents).set({ messageCount: neuCount }).where(eq(agents.id, agentId)).run();
       
       if (neuCount >= 15) {
         this.saveMemoryHistory(agentId, companyId, result.output).catch(e => {
@@ -1354,9 +1354,9 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
                 actorId: 'system',
                 actorName: 'System',
                 action: `${updatedExpert.name} pausiert (Budget ${percent.toFixed(0)}% ≥ ${pauseThreshold}% Schwellwert)`,
-                entitaetTyp: 'agents',
-                entitaetId: agentId,
-                erstelltAm: now()
+                entityType: 'agents',
+                entityId: agentId,
+                createdAt: now()
               }).run();
            }
         } else if (isMaximizerActive && updatedExpert.monthlyBudgetCent > 0) {
@@ -1428,7 +1428,7 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
       });
 
       // 4. Counter zurücksetzen
-      db.update(agents).set({ nachrichtenCount: 0 }).where(eq(agents.id, agentId)).run();
+      db.update(agents).set({ messageCount: 0 }).where(eq(agents.id, agentId)).run();
       
       trace(agentId, companyId, 'info', '💾 Memory Save', 'Verlauf und Tagebuch erfolgreich gesichert.');
     } catch (err: any) {
@@ -1527,8 +1527,8 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
              agentId,
              absenderTyp: 'system' as const,
              nachricht,
-             gelesen: false,
-             erstelltAm: new Date().toISOString()
+             read: false,
+             createdAt: new Date().toISOString()
            };
            db.insert(chatMessages).values(msg).run();
            broadcast('chat_message', msg);
@@ -1556,12 +1556,12 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
              companyId,
              type: 'agent_action',
              title: `Aktion freigeben: ${action}`,
-             beschreibung: `Agent ${expert.name} möchte folgende Aktion ausführen: ${action}`,
-             angefordertVon: agentId,
+             description: `Agent ${expert.name} möchte folgende Aktion ausführen: ${action}`,
+             requestedBy: agentId,
              status: 'pending',
              payload: JSON.stringify({ action, params }),
-             erstelltAm: new Date().toISOString(),
-             aktualisiertAm: new Date().toISOString()
+             createdAt: new Date().toISOString(),
+             updatedAt: new Date().toISOString()
            }).run();
            broadcast('approval_created', { companyId, agentName: expert.name, action, titel: `Aktion freigeben: ${action}` });
          }
@@ -1604,7 +1604,7 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
          title: params.title || 'Neue Aufgabe',
          description: params.description || '',
          assignedTo: assignTo,
-         projektId,
+         projectId: projektId,
          status: 'todo',
          priority: (params.priority || 'medium') as any,
          createdAt: new Date().toISOString(),
@@ -1626,8 +1626,8 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
          agentId,
          absenderTyp: 'system' as const,
          nachricht: `✅ Aufgabe erstellt: **${params.title || 'Neue Aufgabe'}**${assigneeName}`,
-         gelesen: false,
-         erstelltAm: new Date().toISOString(),
+         read: false,
+         createdAt: new Date().toISOString(),
        };
        db.insert(chatMessages).values(confirmMsg).run();
        broadcast('chat_message', confirmMsg);
@@ -1673,8 +1673,8 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
          absenderTyp: 'agent' as const,
          absenderName: expert.name,
          nachricht: briefing,
-         gelesen: false,
-         erstelltAm: new Date().toISOString(),
+         read: false,
+         createdAt: new Date().toISOString(),
        };
        db.insert(chatMessages).values(delegateMsg).run();
        broadcast('chat_message', delegateMsg);
@@ -1686,8 +1686,8 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
          agentId,
          absenderTyp: 'system' as const,
          nachricht: `📋 ${expert.name} hat "${task.title}" an ${targetAgent.name} delegiert.`,
-         gelesen: false,
-         erstelltAm: new Date().toISOString(),
+         read: false,
+         createdAt: new Date().toISOString(),
        };
        db.insert(chatMessages).values(boardMsg).run();
        broadcast('chat_message', boardMsg);
@@ -1714,8 +1714,8 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
            agentId,
            absenderTyp: 'system' as const,
            nachricht: `✅ Gerät ${params.nodeId} antwortet auf '${params.action}':\n${JSON.stringify(result, null, 2)}`,
-           gelesen: false,
-           erstelltAm: new Date().toISOString()
+           read: false,
+           createdAt: new Date().toISOString()
          };
          db.insert(chatMessages).values(msg).run();
          broadcast('chat_message', msg);
@@ -1731,8 +1731,8 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
            agentId,
            absenderTyp: 'system' as const,
            nachricht: `❌ Fehler bei Geräte-Aktion '${params.action}': ${errorMsg}`,
-           gelesen: false,
-           erstelltAm: new Date().toISOString()
+           read: false,
+           createdAt: new Date().toISOString()
          };
          db.insert(chatMessages).values(msg).run();
          broadcast('chat_message', msg);
@@ -1752,8 +1752,8 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
              agentId,
              absenderTyp: 'agent' as const,
              nachricht: `[Gesendet via Telegram]: ${text}`,
-             gelesen: true,
-             erstelltAm: new Date().toISOString()
+             read: true,
+             createdAt: new Date().toISOString()
            };
            db.insert(chatMessages).values(msg).run();
          } else {
@@ -1829,7 +1829,7 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
                  authorAgentId: agentId,
                  authorType: 'agent',
                  content: `${commentPrefix}\n\n${criticResult.feedback}\n\n${commentSuffix}`,
-                 erstelltAm: new Date().toISOString(),
+                 createdAt: new Date().toISOString(),
                }).run();
 
                db.update(tasks).set({ status: finalStatus, updatedAt: new Date().toISOString() }).where(eq(tasks.id, params.id)).run();
@@ -1882,9 +1882,9 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
          title: frage,
          organizerAgentId: agentId,
          participantIds: JSON.stringify(validTeilnehmer),
-         replies: '{}',
+         responses: '{}',
          status: 'running',
-         erstelltAm: now(),
+         createdAt: now(),
        }).run();
 
        trace(agentId, companyId, 'action', `Meeting gestartet`, `"${frage}" · ${validTeilnehmer.length} Teilnehmer`);
@@ -1897,8 +1897,8 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
          agentId,
          absenderTyp: 'system' as const,
          nachricht: `📋 Meeting gestartet: "${frage}"\n${validTeilnehmer.length} Teilnehmer eingeladen.`,
-         gelesen: false,
-         erstelltAm: now(),
+         read: false,
+         createdAt: now(),
        };
        db.insert(chatMessages).values(statusMsg).run();
        broadcast('chat_message', statusMsg);
@@ -1914,8 +1914,8 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
            absenderTyp: 'agent' as const,
            absenderName: expert.name,
            nachricht: `📋 **Meeting-Anfrage von ${expert.name}**\n\n${frage}\n\nBitte antworte kurz und direkt.`,
-           gelesen: false,
-           erstelltAm: now(),
+           read: false,
+           createdAt: now(),
          };
          db.insert(chatMessages).values(frageMsg).run();
          broadcast('chat_message', frageMsg);
@@ -1943,8 +1943,8 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
              nachricht: empfaenger
                ? `[Von ${expert.name}]: ${text}`
                : text,
-             gelesen: false,
-             erstelltAm: new Date().toISOString()
+             read: false,
+             createdAt: new Date().toISOString()
            };
            db.insert(chatMessages).values(msg).run();
            broadcast('chat_message', msg);
@@ -1989,7 +1989,7 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
          nachricht: hireResult.success
            ? (hireResult.approvalId ? `⏳ Hiring von "${params.name}" wartet auf Board-Genehmigung.` : `✅ "${params.name}" (${params.role}) erfolgreich eingestellt.`)
            : `❌ Hiring fehlgeschlagen: ${hireResult.error}`,
-         gelesen: false, erstelltAm: new Date().toISOString()
+         read: false, createdAt: new Date().toISOString()
        };
        db.insert(chatMessages).values(msg).run();
        broadcast('chat_message', msg);
@@ -2003,7 +2003,7 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
          nachricht: depResult.success
            ? `🔗 Dependency erstellt: ${params.blockerId.slice(0,8)} blockiert ${params.blockedId.slice(0,8)}`
            : `❌ Dependency Fehler: ${depResult.error}`,
-         gelesen: false, erstelltAm: new Date().toISOString()
+         read: false, createdAt: new Date().toISOString()
        };
        db.insert(chatMessages).values(msg).run();
        broadcast('chat_message', msg);
@@ -2056,7 +2056,7 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
            id: uuid(), companyId, agentId,
            absenderTyp: 'system' as const,
            nachricht: `🖥️ ${beschreibung}:\n${resultText.slice(0, 1500)}`,
-           gelesen: false, erstelltAm: new Date().toISOString()
+           read: false, createdAt: new Date().toISOString()
          };
          db.insert(chatMessages).values(msg).run();
          broadcast('chat_message', msg);
@@ -2069,7 +2069,7 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
            id: uuid(), companyId, agentId,
            absenderTyp: 'system' as const,
            nachricht: `❌ ${action} fehlgeschlagen: ${errorMsg}`,
-           gelesen: false, erstelltAm: new Date().toISOString()
+           read: false, createdAt: new Date().toISOString()
          };
          db.insert(chatMessages).values(msg).run();
          broadcast('chat_message', msg);
@@ -2085,8 +2085,8 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
          agentId,
          absenderTyp: 'system' as const,
          nachricht: `🔍 ${searchResult.slice(0, 1500)}`,
-         gelesen: false,
-         erstelltAm: new Date().toISOString()
+         read: false,
+         createdAt: new Date().toISOString()
        };
        db.insert(chatMessages).values(msg).run();
        broadcast('chat_message', msg);
@@ -2103,8 +2103,8 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
            agentId,
            absenderTyp: 'system' as const,
            nachricht: `🧠 Memory (${action}):\n${resultText.slice(0, 1500)}`,
-           gelesen: false,
-           erstelltAm: new Date().toISOString()
+           read: false,
+           createdAt: new Date().toISOString()
          };
          db.insert(chatMessages).values(msg).run();
          broadcast('chat_message', msg);
@@ -2115,8 +2115,8 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
            agentId,
            absenderTyp: 'system' as const,
            nachricht: `⚠️ Memory Fehler (${action}): ${err.message}`,
-           gelesen: false,
-           erstelltAm: new Date().toISOString()
+           read: false,
+           createdAt: new Date().toISOString()
          };
          db.insert(chatMessages).values(msg).run();
          broadcast('chat_message', msg);
@@ -2127,7 +2127,7 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
        const { titel: rtitel, beschreibung: rbeschr, cronExpression, assignToSelf, timezone } = params;
        if (!rtitel || !cronExpression) {
          const errMsg = { id: uuid(), companyId, agentId, absenderTyp: 'system' as const,
-           nachricht: `❌ create_routine: titel und cronExpression sind erforderlich`, gelesen: false, erstelltAm: new Date().toISOString() };
+           nachricht: `❌ create_routine: titel und cronExpression sind erforderlich`, read: false, createdAt: new Date().toISOString() };
          db.insert(chatMessages).values(errMsg).run();
          broadcast('chat_message', errMsg);
          return;
@@ -2165,7 +2165,7 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
        const confirmMsg = {
          id: uuid(), companyId, agentId, absenderTyp: 'system' as const,
          nachricht: `✅ Routine eingerichtet: **${rtitel}**\n⏰ Zeitplan: \`${cronExpression}\` (${timezone || 'Europe/Berlin'})\nID: \`${routineId}\``,
-         gelesen: false, erstelltAm: ts,
+         read: false, createdAt: ts,
        };
        db.insert(chatMessages).values(confirmMsg).run();
        broadcast('chat_message', confirmMsg);
@@ -2177,7 +2177,7 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
        const { name: secretName, value: secretValue, description: secretDesc } = params;
        if (!secretName || !secretValue) {
          const errMsg = { id: uuid(), companyId, agentId, absenderTyp: 'system' as const,
-           nachricht: `❌ store_secret: name und value sind erforderlich`, gelesen: false, erstelltAm: new Date().toISOString() };
+           nachricht: `❌ store_secret: name und value sind erforderlich`, read: false, createdAt: new Date().toISOString() };
          db.insert(chatMessages).values(errMsg).run();
          broadcast('chat_message', errMsg);
          return;
@@ -2196,7 +2196,7 @@ Du arbeitest im Maximizer-Modus. Budget-Limits sind aufgehoben.
        const confirmMsg = {
          id: uuid(), companyId, agentId, absenderTyp: 'system' as const,
          nachricht: `🔐 Credential gespeichert: **${secretName}**\nVerschlüsselt abgelegt — Agenten können es mit Schlüssel \`${key}\` abrufen.`,
-         gelesen: false, erstelltAm: new Date().toISOString(),
+         read: false, createdAt: new Date().toISOString(),
        };
        db.insert(chatMessages).values(confirmMsg).run();
        broadcast('chat_message', confirmMsg);

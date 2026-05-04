@@ -995,8 +995,8 @@ STRENGE REGELN:
             agentId: agent.id,
             senderType: 'system',
             message: `📋 Neue Aufgabe von CEO zugewiesen: "${task.title}" — ${action.reason || ''}${wsInfo}`,
-            gelesen: false,
-            erstelltAm: now(),
+            read: false,
+            createdAt: now(),
           }).run();
 
           agentsToWake.push({ agentId: agent.id, unternehmenId: options.companyId });
@@ -1022,7 +1022,7 @@ STRENGE REGELN:
           status: agent ? 'todo' : 'backlog',
           priority: action.priority || 'medium',
           assignedTo: agent?.id || null,
-          erstelltVon: options.agentId,
+          createdBy: options.agentId,
           workspacePath: wsPath,
           createdAt: now(),
           updatedAt: now(),
@@ -1036,8 +1036,8 @@ STRENGE REGELN:
             agentId: agent.id,
             senderType: 'system',
             message: `📋 CEO hat neue Aufgabe erstellt und dir zugewiesen: "${action.title}"${wsInfo}`,
-            gelesen: false,
-            erstelltAm: now(),
+            read: false,
+            createdAt: now(),
           }).run();
           agentsToWake.push({ agentId: agent.id, unternehmenId: options.companyId });
           log.push(`🆕 "${action.title}" → ${agent.name}${wsPath ? ` 📁 ${path.basename(wsPath)}` : ''}`);
@@ -1063,8 +1063,8 @@ STRENGE REGELN:
             companyId: options.companyId,
             type: 'hire_expert',
             title: `Neue Stelle: ${action.role}`,
-            beschreibung: `${action.reason || ''}\n\nBenötigte Fähigkeiten: ${action.skills || action.role}`,
-            angefordertVon: options.agentId,
+            description: `${action.reason || ''}\n\nBenötigte Fähigkeiten: ${action.skills || action.role}`,
+            requestedBy: options.agentId,
             status: 'pending',
             payload: JSON.stringify({
               rolle: action.role,
@@ -1072,8 +1072,8 @@ STRENGE REGELN:
               budgetMonatCent: 50000,
               verbindungsTyp: 'openrouter',
             }),
-            erstelltAm: now(),
-            aktualisiertAm: now(),
+            createdAt: now(),
+            updatedAt: now(),
           }).run();
 
           log.push(`👥 Hiring-Antrag für "${action.role}" zur Board-Genehmigung eingereicht`);
@@ -1088,8 +1088,8 @@ STRENGE REGELN:
             vonExpertId: options.agentId,
             senderType: 'agent',
             message: `[CEO]: ${action.message || action.text}`,
-            gelesen: false,
-            erstelltAm: now(),
+            read: false,
+            createdAt: now(),
           }).run();
           // Wake up the agent so they process the message (batched with others for parallel fire)
           agentsToWake.push({ agentId: agent.id, unternehmenId: options.companyId });
@@ -1178,8 +1178,8 @@ STRENGE REGELN:
           agentId: agent.id,
           senderType: 'system',
           message: `📋 Neue Aufgabe zugewiesen: "${task.title}"`,
-          gelesen: false,
-          erstelltAm: now(),
+          read: false,
+          createdAt: now(),
         }).run();
 
         log.push(`✅ "${task.title}" → ${agent.name}`);

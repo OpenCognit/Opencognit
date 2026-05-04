@@ -54,7 +54,7 @@ async function runTest() {
 
     db.update(agents).set({
       monthlySpendCent: sql`${agents.monthlySpendCent} + ${kostenCent}`,
-      aktualisiertAm: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     }).where(eq(agents.id, testAgentId)).run();
 
     const agent = db.select().from(agents).where(eq(agents.id, testAgentId)).get();

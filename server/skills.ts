@@ -238,24 +238,24 @@ export async function executeSkill(expertId: string, unternehmenId: string, acti
   const msgId = uuid();
   db.insert(chatMessages).values({
     id: msgId,
-    unternehmenId,
-    expertId,
+    companyId: unternehmenId,
+    agentId: expertId,
     senderType: 'system',
     message: `[SYSTEM BEOBACHTUNG - ${action.toUpperCase()}]\n${result}`,
-    gelesen: false,
-    erstelltAm: new Date().toISOString()
+    read: false,
+    createdAt: new Date().toISOString()
   }).run();
 
   // Log to Activity
   if (logAction) {
     db.insert(activityLog).values({
       id: uuid(),
-      unternehmenId,
+      companyId: unternehmenId,
       actorType: 'agent',
       actorId: expertId,
       action: logAction,
-      entitaetTyp: 'skill',
-      entitaetId: action,
+      entityType: 'skill',
+      entityId: action,
       createdAt: new Date().toISOString()
     }).run();
   }
