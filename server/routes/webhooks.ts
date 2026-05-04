@@ -252,11 +252,11 @@ router.post('/routine/:publicId', async (req, res) => {
     companyId: trigger.companyId,
     routineId: routine.id,
     triggerId: trigger.id,
-    quelle: 'webhook',
+    source: 'webhook',
     status: 'received',
     payload: JSON.stringify(req.body),
     createdAt: now,
-  } as any).run();
+  }).run();
 
   // Update trigger last fired
   db.update(routineTrigger)

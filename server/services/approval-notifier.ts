@@ -107,7 +107,7 @@ async function tick() {
           titel: a.title,
           beschreibung: a.description,
           typ: a.type,
-          angefordertVon: a.requestedBy,
+          requestedBy: a.requestedBy,
         },
       });
     }

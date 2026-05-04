@@ -240,7 +240,7 @@ export function importCompany(
   const tasksToImport = options.importTasks !== false
     ? manifest.tasks.map(taskDef => ({
         taskDef,
-        zugewiesenAn: taskDef.assignedToName ? nameToId.get(taskDef.assignedToName) || null : null,
+        assignedTo: taskDef.assignedToName ? nameToId.get(taskDef.assignedToName) || null : null,
       }))
     : [];
 
@@ -307,7 +307,7 @@ export function importCompany(
       }
 
       // Phase 3: Tasks importieren
-      for (const { taskDef, zugewiesenAn } of tasksToImport) {
+      for (const { taskDef, assignedTo } of tasksToImport) {
         tx.insert(tasks).values({
           id: uuid(),
           companyId: targetUnternehmenId,
@@ -315,7 +315,7 @@ export function importCompany(
           description: taskDef.description,
           status: taskDef.status as any,
           priority: taskDef.priority as any,
-          zugewiesenAn,
+          assignedTo,
           createdAt: now,
           updatedAt: now,
         }).run();

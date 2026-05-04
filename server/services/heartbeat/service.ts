@@ -120,7 +120,7 @@ class HeartbeatServiceImpl implements HeartbeatService {
           agentId,
           senderType: 'system',
           message: `🚨 **Budget-Stop**: ${freshBudget.name} wurde automatisch pausiert. Monatsbudget (${(freshBudget.monthlyBudgetCent / 100).toFixed(2)}€) zu 100% verbraucht. Bitte Budget erhöhen oder Agent manuell reaktivieren.`,
-          gelesen: false,
+          read: false,
           createdAt: new Date().toISOString(),
         });
         return 0;
@@ -144,7 +144,7 @@ class HeartbeatServiceImpl implements HeartbeatService {
             agentId,
             senderType: 'system',
             message: `⚠️ **Budget-Warnung**: ${freshBudget.name} hat ${verbrauchPct.toFixed(0)}% des Monatsbudgets verbraucht (${(freshBudget.monthlySpendCent / 100).toFixed(2)}€ von ${(freshBudget.monthlyBudgetCent / 100).toFixed(2)}€). Bei 100% wird der Agent automatisch pausiert.`,
-            gelesen: false,
+            read: false,
             createdAt: new Date().toISOString(),
           });
         }
@@ -166,7 +166,7 @@ class HeartbeatServiceImpl implements HeartbeatService {
           id: runId,
           companyId: wakeup.contextSnapshot?.companyId || agent.companyId,
           agentId,
-          quelle: wakeup.source === 'timer' ? 'scheduler' :
+          source: wakeup.source === 'timer' ? 'scheduler' :
                   wakeup.source === 'assignment' ? 'callback' : 'manual',
           status: 'queued',
           invocationSource: wakeup.source,
@@ -294,8 +294,8 @@ class HeartbeatServiceImpl implements HeartbeatService {
         }
 
         await this.updateRunStatus(runId, 'succeeded', {
-          ausgabe: routine ? `Routine ausgeführt: ${routine.title}` : `Routine ${routineId} nicht gefunden`,
-          beendetAm: new Date().toISOString(),
+          output: routine ? `Routine ausgeführt: ${routine.title}` : `Routine ${routineId} nicht gefunden`,
+          endedAt: new Date().toISOString(),
         });
         await db.update(agents).set({ status: 'idle', updatedAt: new Date().toISOString() }).where(eq(agents.id, agentId));
         return;
@@ -307,8 +307,8 @@ class HeartbeatServiceImpl implements HeartbeatService {
       if (meetingPayload?.meetingId) {
         await handleMeetingWakeup(runId, agentId, companyId, meetingPayload.meetingId as string);
         await this.updateRunStatus(runId, 'succeeded', {
-          ausgabe: `Meeting beantwortet: ${meetingPayload.thema || meetingPayload.meetingId}`,
-          beendetAm: new Date().toISOString(),
+          output: `Meeting beantwortet: ${meetingPayload.thema || meetingPayload.meetingId}`,
+          endedAt: new Date().toISOString(),
         });
         await db.update(agents).set({ status: 'idle', updatedAt: new Date().toISOString() }).where(eq(agents.id, agentId));
         return;
@@ -356,8 +356,8 @@ class HeartbeatServiceImpl implements HeartbeatService {
       // ──────────────────────────────────────────────────────────────────────
 
       await this.updateRunStatus(runId, 'succeeded', {
-        ausgabe: inbox.length > 0 ? `Abgeschlossen: ${inbox.map((t: any) => t.title).join(', ')}` : 'Planungszyklus abgeschlossen',
-        beendetAm: new Date().toISOString(),
+        output: inbox.length > 0 ? `Abgeschlossen: ${inbox.map((t: any) => t.title).join(', ')}` : 'Planungszyklus abgeschlossen',
+        endedAt: new Date().toISOString(),
       });
 
       await db.update(agents)
@@ -368,8 +368,8 @@ class HeartbeatServiceImpl implements HeartbeatService {
       console.error(`❌ Heartbeat ${runId} failed:`, error);
 
       await this.updateRunStatus(runId, 'failed', {
-        fehler: error instanceof Error ? error.message : String(error),
-        beendetAm: new Date().toISOString(),
+        error: error instanceof Error ? error.message : String(error),
+        endedAt: new Date().toISOString(),
       });
 
       await db.update(agents)
@@ -892,7 +892,7 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "targetId". Aktualisiere
             .set({ executionLockedAt: null, executionRunId: null, status: 'blocked' })
             .where(eq(tasks.id, task.id));
         }
-        await this.updateRunStatus(runId, 'failed', { fehler: budgetCheck.reason });
+        await this.updateRunStatus(runId, 'failed', { error: budgetCheck.reason });
         return;
       }
       // ──────────────────────────────────────────────────────────────────────────
@@ -913,7 +913,7 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "targetId". Aktualisiere
       const heartbeatModel: string = heartbeatParsedConfig.model || '';
       if (heartbeatModel.endsWith(':free') || heartbeatModel === 'auto:free') {
         console.error(`[Heartbeat] Agent ${expert?.name} hat Free-Model (${heartbeatModel}). Ausführung blockiert.`);
-        await this.updateRunStatus(runId, 'failed', { fehler: `Free-Model "${heartbeatModel}" blockiert. Bitte wechsle zu einem bezahlten Modell.` });
+        await this.updateRunStatus(runId, 'failed', { error: `Free-Model "${heartbeatModel}" blockiert. Bitte wechsle zu einem bezahlten Modell.` });
         return;
       }
 
@@ -1043,7 +1043,7 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "targetId". Aktualisiere
       });
 
       await this.updateRunStatus(runId, result.success ? 'succeeded' : 'failed', {
-        ausgabe: result.output, fehler: result.error || null,
+        output: result.output, error: result.error || null,
         exitCode: result.exitCode,
         sessionIdBefore: result.sessionIdBefore,
         sessionIdAfter: result.sessionIdAfter,
@@ -1622,7 +1622,7 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "targetId". Aktualisiere
           agentId: run.agentId,
           senderType: 'system',
           message: `🚨 **Budget-Stop**: ${agentRow.name} wurde nach dieser Ausführung automatisch pausiert. Monatsbudget (${(agentRow.monthlyBudgetCent / 100).toFixed(2)}€) überschritten.`,
-          gelesen: false,
+          read: false,
           createdAt: new Date().toISOString(),
         });
       }

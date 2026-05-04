@@ -1450,9 +1450,9 @@ export const messagingService = {
 
       if (respondingAgent) {
         const replyMsg = {
-          id: uuid(), companyId, expertId: respondingAgent.id,
-          absenderTyp: 'agent' as const, absenderName: respondingAgent.name || 'Agent',
-          nachricht: reply, gelesen: false, erstelltAm: new Date().toISOString(),
+          id: uuid(), companyId, agentId: respondingAgent.id,
+          senderType: 'agent' as const,
+          message: reply, read: false, createdAt: new Date().toISOString(),
         };
         db.insert(chatMessages).values(replyMsg).run();
         appEvents.emit('broadcast', { type: 'chat_message', data: replyMsg });
