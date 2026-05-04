@@ -2,7 +2,7 @@
 
 import { db } from '../../db/client.js';
 import { agents, settings, comments } from '../../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, and, sql, count } from 'drizzle-orm';
 import { adapterRegistry } from '../../adapters/registry.js';
 import { decryptSetting } from '../../utils/crypto.js';
 import { v4 as uuid } from 'uuid';
@@ -130,13 +130,14 @@ export async function runCriticReview(
   agentId: string,
   companyId: string,
 ): Promise<{ approved: boolean; feedback: string; escalate?: boolean }> {
-  // Check existing critic feedback count
-  const existingCriticFeedback = await db.select({ content: comments.content })
+  // Check existing critic feedback count (atomic SQL count instead of JS filter)
+  const criticCountResult = await db.select({ count: count() })
     .from(comments)
-    .where(eq(comments.taskId, taskId));
-  const criticCount = existingCriticFeedback.filter((c: any) =>
-    c.content?.includes('**Critic Review')
-  ).length;
+    .where(and(
+      eq(comments.taskId, taskId),
+      sql`${comments.content} LIKE '%**Critic Review%'`
+    )).get();
+  const criticCount = criticCountResult?.count ?? 0;
 
   if (criticCount >= 2) {
     console.log(`  ⚠️ Critic: max retries reached for task ${taskId} — escalating to human review`);

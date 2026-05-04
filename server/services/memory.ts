@@ -200,9 +200,24 @@ function memoryListWings(_args: any) {
 
   if (wings.length === 0) return mcpResult('Keine Wings vorhanden.');
 
+  const wingIds = wings.map(w => w.id);
+  const drawerCounts = db.select({ wingId: palaceDrawers.wingId, count: sql<number>`COUNT(*)` })
+    .from(palaceDrawers)
+    .where(inArray(palaceDrawers.wingId, wingIds))
+    .groupBy(palaceDrawers.wingId)
+    .all();
+  const diaryCounts = db.select({ wingId: palaceDiary.wingId, count: sql<number>`COUNT(*)` })
+    .from(palaceDiary)
+    .where(inArray(palaceDiary.wingId, wingIds))
+    .groupBy(palaceDiary.wingId)
+    .all();
+
+  const drawerMap = new Map(drawerCounts.map(d => [d.wingId, d.count]));
+  const diaryMap = new Map(diaryCounts.map(d => [d.wingId, d.count]));
+
   const lines = wings.map(w => {
-    const drawerCount = db.select().from(palaceDrawers).where(eq(palaceDrawers.wingId, w.id)).all().length;
-    const diaryCount = db.select().from(palaceDiary).where(eq(palaceDiary.wingId, w.id)).all().length;
+    const drawerCount = drawerMap.get(w.id) ?? 0;
+    const diaryCount = diaryMap.get(w.id) ?? 0;
     return `- **${w.name}** (${drawerCount} Drawers, ${diaryCount} Diary-Einträge) — Aktualisiert: ${w.updatedAt.slice(0, 10)}`;
   });
 

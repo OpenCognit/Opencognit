@@ -125,7 +125,7 @@ export const companies = sqliteTable('unternehmen', {
 // ===== Experten (Agenten, ehem. Mitarbeiter) =====
 export const agents = sqliteTable('experten', {
   id: text('id').primaryKey(),
-  companyId: text('unternehmen_id').notNull().references(() => companies.id),
+  companyId: text('unternehmen_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   role: text('rolle').notNull(),
   title: text('titel'),
@@ -157,7 +157,7 @@ export const agents = sqliteTable('experten', {
 // ===== Aufgaben =====
 export const tasks = sqliteTable('aufgaben', {
   id: text('id').primaryKey(),
-  companyId: text('unternehmen_id').notNull().references(() => companies.id),
+  companyId: text('unternehmen_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
   title: text('titel').notNull(),
   description: text('beschreibung'),
   status: text('status', { enum: ['backlog', 'todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled'] }).notNull().default('backlog'),
@@ -190,9 +190,9 @@ export const tasks = sqliteTable('aufgaben', {
 // ===== Kommentare =====
 export const comments = sqliteTable('kommentare', {
   id: text('id').primaryKey(),
-  companyId: text('unternehmen_id').notNull().references(() => companies.id),
-  taskId: text('aufgabe_id').notNull().references(() => tasks.id),
-  authorAgentId: text('autor_expert_id').references(() => agents.id),
+  companyId: text('unternehmen_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  taskId: text('aufgabe_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+  authorAgentId: text('autor_expert_id').references(() => agents.id, { onDelete: 'set null' }),
   authorType: text('autor_typ', { enum: ['agent', 'board'] }).notNull().default('board'),
   content: text('inhalt').notNull(),
   createdAt: text('erstellt_am').notNull(),
@@ -201,8 +201,8 @@ export const comments = sqliteTable('kommentare', {
 // ===== Chat-Nachrichten =====
 export const chatMessages = sqliteTable('chat_nachrichten', {
   id: text('id').primaryKey(),
-  companyId: text('unternehmen_id').notNull().references(() => companies.id),
-  agentId: text('expert_id').notNull().references(() => agents.id),
+  companyId: text('unternehmen_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  agentId: text('expert_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
   vonExpertId: text('von_expert_id'), // sender expertId when agent→agent P2P
   threadId: text('thread_id'),        // meeting thread grouping
   senderType: text('absender_typ', { enum: ['board', 'agent', 'system'] }).notNull(),
@@ -250,8 +250,8 @@ export const approvals = sqliteTable('genehmigungen', {
 // ===== Kostenbuchungen =====
 export const costEntries = sqliteTable('kostenbuchungen', {
   id: text('id').primaryKey(),
-  companyId: text('unternehmen_id').notNull().references(() => companies.id),
-  agentId: text('expert_id').notNull().references(() => agents.id),
+  companyId: text('unternehmen_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  agentId: text('expert_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
   taskId: text('aufgabe_id').references(() => tasks.id),
   provider: text('anbieter').notNull(), // 'openai', 'anthropic', etc.
   model: text('modell').notNull(),
@@ -279,8 +279,8 @@ export const activityLog = sqliteTable('aktivitaetslog', {
 // ===== Arbeitszyklen (Heartbeat-Läufe) =====
 export const workCycles = sqliteTable('arbeitszyklen', {
   id: text('id').primaryKey(),
-  companyId: text('unternehmen_id').notNull().references(() => companies.id),
-  agentId: text('expert_id').notNull().references(() => agents.id),
+  companyId: text('unternehmen_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  agentId: text('expert_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
   source: text('quelle', { enum: ['scheduler', 'manual', 'callback', 'assignment', 'automation'] }).notNull().default('manual'),
   status: text('status', { enum: ['queued', 'running', 'succeeded', 'failed', 'cancelled', 'timed_out', 'deferred'] }).notNull().default('queued'),
   command: text('befehl'), // command that was run
@@ -320,6 +320,27 @@ export const workCyclesArchive = sqliteTable('arbeitszyklen_archiv', {
 }, (t) => ({
   idxUnternehmenDatum: index('archiv_unternehmen_datum_idx').on(t.companyId, t.archiveDate),
   idxExpert: index('archiv_expert_idx').on(t.agentId, t.archiveDate),
+}));
+
+// ===== Task Checkpoints (Hermes-inspired) =====
+export const taskCheckpoints = sqliteTable('task_checkpoints', {
+  id: text('id').primaryKey(),
+  taskId: text('task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+  runId: text('run_id').references(() => workCycles.id, { onDelete: 'set null' }),
+  agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
+  companyId: text('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  stateLabel: text('state_label', { enum: ['DONE', 'BLOCKED', 'NEEDS_INPUT', 'HANDOFF', 'IN_PROGRESS'] }).notNull(),
+  filesChanged: text('files_changed'), // JSON array of paths
+  commandsRun: text('commands_run'), // JSON array of commands
+  result: text('result'),
+  blocker: text('blocker'),
+  nextAction: text('next_action'),
+  createdAt: text('created_at').notNull(),
+}, (t) => ({
+  idxTask: index('checkpoint_task_idx').on(t.taskId),
+  idxRun: index('checkpoint_run_idx').on(t.runId),
+  idxAgent: index('checkpoint_agent_idx').on(t.agentId),
+  idxCompany: index('checkpoint_company_idx').on(t.companyId),
 }));
 
 // ===== Ziele =====
@@ -389,8 +410,8 @@ export const routines = sqliteTable('routinen', {
 // ===== Routine Trigger =====
 export const routineTrigger = sqliteTable('routine_trigger', {
   id: text('id').primaryKey(),
-  companyId: text('unternehmen_id').notNull().references(() => companies.id),
-  routineId: text('routine_id').notNull().references(() => routines.id),
+  companyId: text('unternehmen_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  routineId: text('routine_id').notNull().references(() => routines.id, { onDelete: 'cascade' }),
   kind: text('kind', { enum: ['schedule', 'webhook', 'api'] }).notNull(),
   active: integer('aktiv', { mode: 'boolean' }).notNull().default(true),
   cronExpression: text('cron_expression'), // for schedule triggers
@@ -405,9 +426,9 @@ export const routineTrigger = sqliteTable('routine_trigger', {
 // ===== Routine Ausführungen =====
 export const routineRuns = sqliteTable('routine_ausfuehrung', {
   id: text('id').primaryKey(),
-  companyId: text('unternehmen_id').notNull().references(() => companies.id),
-  routineId: text('routine_id').notNull().references(() => routines.id),
-  triggerId: text('trigger_id').references(() => routineTrigger.id),
+  companyId: text('unternehmen_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  routineId: text('routine_id').notNull().references(() => routines.id, { onDelete: 'cascade' }),
+  triggerId: text('trigger_id').references(() => routineTrigger.id, { onDelete: 'cascade' }),
   source: text('quelle', { enum: ['schedule', 'manual', 'api', 'webhook'] }).notNull(),
   status: text('status', { enum: ['received', 'enqueued', 'completed', 'failed'] }).notNull().default('received'),
   payload: text('payload'), // JSON: trigger payload
@@ -419,9 +440,9 @@ export const routineRuns = sqliteTable('routine_ausfuehrung', {
 // ===== Work Products =====
 export const workProducts = sqliteTable('work_products', {
   id: text('id').primaryKey(),
-  companyId: text('unternehmen_id').notNull().references(() => companies.id),
-  taskId: text('aufgabe_id').notNull().references(() => tasks.id),
-  agentId: text('expert_id').notNull().references(() => agents.id),
+  companyId: text('unternehmen_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  taskId: text('aufgabe_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+  agentId: text('expert_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
   runId: text('run_id').references(() => workCycles.id),
   type: text('typ').notNull().default('file'), // file, text, url, directory
   name: text('name').notNull(),
@@ -549,6 +570,11 @@ export const agentCapabilities = sqliteTable('agent_capabilities', {
   agentId: text('expert_id').notNull().references(() => agents.id),
   companyId: text('unternehmen_id').notNull().references(() => companies.id),
   capabilitiesJson: text('capabilities_json').notNull(), // JSON { domains, tools, languages, complexity }
+  quelle: text('quelle').notNull().default('manual'), // auto-extracted, manual, hybrid
+  konfidenz: integer('konfidenz').notNull().default(50),
+  letzteAktualisierung: text('letzte_aktualisierung'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
 });
 
 // ===== Contract Net Bids (Task Auction System) =====
@@ -753,7 +779,7 @@ export const memoryEmbeddings = sqliteTable('memory_embeddings', {
   chunkText: text('chunk_text').notNull(),        // the actual text content
   embeddingJson: text('embedding_json').notNull(), // JSON array of floats
   model: text('model').notNull().default('openai/text-embedding-3-small'),
-  tokenCount: integer('token_count').notNull().default(0),
+  tokenCount: integer('token_count').default(0),
   charCount: integer('char_count').notNull().default(0),
   tags: text('tags'),                             // comma-separated tags
   createdAt: text('erstellt_am').notNull(),
@@ -761,6 +787,22 @@ export const memoryEmbeddings = sqliteTable('memory_embeddings', {
   idxUnternehmen: index('mem_emb_unternehmen_idx').on(t.companyId),
   idxExpert: index('mem_emb_expert_idx').on(t.agentId),
   idxQuelle: index('mem_emb_quelle_idx').on(t.source),
+}));
+
+// Memory Conflicts (actor-aware conflict detection)
+export const memoryConflicts = sqliteTable('memory_conflicts', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull().references(() => companies.id),
+  conflictingTriplesJson: text('conflicting_triples_json').notNull(),
+  conflictTyp: text('conflict_typ', { enum: ['contradiction', 'outdated', 'ambiguity', 'stale'] }).notNull(),
+  beschreibung: text('beschreibung').notNull(),
+  status: text('status', { enum: ['open', 'resolved', 'ignored'] }).notNull().default('open'),
+  resolution: text('resolution'),
+  resolvedByAgentId: text('resolved_by_expert_id').references(() => agents.id),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+}, (t) => ({
+  idxUnternehmenStatus: index('mem_conflict_unternehmen_status_idx').on(t.companyId, t.status),
 }));
 
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
@@ -807,7 +849,13 @@ export const allTables = {
   ceoDecisionLog,
   workerNodes,
   memoryEmbeddings,
+  agentCapabilities,
+  contractNetBids,
+  agentVotes,
+  agentTrustScores,
   workCyclesArchive,
+  taskCheckpoints,
+  memoryConflicts,
   user,
   session,
   account,

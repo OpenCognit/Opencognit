@@ -45,6 +45,7 @@ export interface CronService {
 class CronServiceImpl implements CronService {
   private intervalId: NodeJS.Timeout | null = null;
   private consolidationIntervalId: NodeJS.Timeout | null = null;
+  private budgetResetIntervalId: NodeJS.Timeout | null = null;
   private isRunning = false;
 
   /**
@@ -177,6 +178,22 @@ class CronServiceImpl implements CronService {
         console.warn('⚠️ Cron: Memory consolidation fehlgeschlagen:', e.message);
       }
     }, 60 * 60 * 1000); // every hour
+
+    // Reset monthly budgets on the 1st of each month (check every 30 min)
+    this.budgetResetIntervalId = setInterval(() => {
+      try {
+        const now = new Date();
+        if (now.getDate() === 1 && now.getHours() === 0 && now.getMinutes() < 30) {
+          console.log('💰 Resetting monthly budgets for all agents...');
+          db.update(agents)
+            .set({ monthlySpendCent: 0, updatedAt: new Date().toISOString() })
+            .where(sql`${agents.monthlyBudgetCent} > 0`).run();
+          console.log('💰 Monthly budgets reset complete');
+        }
+      } catch (e: any) {
+        console.warn('⚠️ Cron: Budget reset fehlgeschlagen:', e.message);
+      }
+    }, 30 * 60 * 1000); // check every 30 minutes
   }
 
   /**
@@ -190,6 +207,10 @@ class CronServiceImpl implements CronService {
     if (this.consolidationIntervalId) {
       clearInterval(this.consolidationIntervalId);
       this.consolidationIntervalId = null;
+    }
+    if (this.budgetResetIntervalId) {
+      clearInterval(this.budgetResetIntervalId);
+      this.budgetResetIntervalId = null;
     }
     this.isRunning = false;
     console.log('⏹️ Cron scheduler stopped');

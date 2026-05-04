@@ -199,307 +199,279 @@ export function importCompany(data: CompanyExport, newName?: string): ImportResu
     idMap.set(p.id, uuid());
   }
 
-  // ===== Insert =====
-  // Insert Unternehmen
-  db.insert(companies).values({
-    id: newUnternehmenId,
-    name: importedName,
-    description: data.companies.description ?? null,
-    ziel: data.companies.goal ?? null,
-    status: data.companies.status ?? 'active',
-    createdAt: n(),
-    updatedAt: n(),
-  }).run();
-
-  // Insert Experten
+  // ===== Atomic Insert =====
   let importedExperten = 0;
-  for (const e of data.agents) {
-    try {
-      db.insert(agents).values({
-        id: remapRequired(e.id),
-        companyId: newUnternehmenId,
-        name: e.name,
-        role: e.role,
-        title: e.title ?? null,
-        status: 'idle', // reset status on import
-        reportsTo: remap(e.reportsTo),
-        skills: e.skills ?? null,
-        connectionType: e.connectionType ?? 'claude',
-        connectionConfig: e.connectionConfig?.includes('SCRUBBED') ? null : (e.connectionConfig ?? null),
-        avatar: e.avatar ?? null,
-        avatarColor: e.avatarColor ?? '#23CDCA',
-        monthlyBudgetCent: e.monthlyBudgetCent ?? 0,
-        monthlySpendCent: 0, // reset on import
-        lastCycle: null,
-        autoCycleIntervalSec: e.autoCycleIntervalSec ?? 300,
-        autoCycleActive: false, // don't auto-start on import
-        systemPrompt: e.systemPrompt ?? null,
-        createdAt: n(),
-        updatedAt: n(),
-      }).run();
-      importedExperten++;
-    } catch (err: any) {
-      warnings.push(`Experte "${e.name}" konnte nicht importiert werden: ${err.message}`);
-    }
-  }
-
-  // Insert Ziele (two-pass: first without parentId, then with)
   let importedZiele = 0;
-  const zieleWithParent: any[] = [];
-  for (const z of data.goals) {
-    const hasParent = !!z.parentId && data.goals.some(p => p.id === z.parentId);
-    if (hasParent) {
-      zieleWithParent.push(z);
-      continue;
-    }
-    try {
-      db.insert(goals).values({
-        id: remapRequired(z.id),
-        companyId: newUnternehmenId,
-        title: z.title,
-        description: z.description ?? null,
-        ebene: z.level ?? 'company',
-        parentId: null,
-        ownerAgentId: remap(z.ownerAgentId),
-        status: z.status ?? 'planned',
-        createdAt: n(),
-        updatedAt: n(),
-      }).run();
-      importedZiele++;
-    } catch (err: any) {
-      warnings.push(`Ziel "${z.title}" konnte nicht importiert werden: ${err.message}`);
-    }
-  }
-  for (const z of zieleWithParent) {
-    try {
-      db.insert(goals).values({
-        id: remapRequired(z.id),
-        companyId: newUnternehmenId,
-        title: z.title,
-        description: z.description ?? null,
-        ebene: z.level ?? 'team',
-        parentId: remap(z.parentId),
-        ownerAgentId: remap(z.ownerAgentId),
-        status: z.status ?? 'planned',
-        createdAt: n(),
-        updatedAt: n(),
-      }).run();
-      importedZiele++;
-    } catch (err: any) {
-      warnings.push(`Ziel "${z.title}" (mit Parent) konnte nicht importiert werden: ${err.message}`);
-    }
-  }
-
-  // Insert Projekte
   let importedProjekte = 0;
-  for (const p of data.projects) {
-    try {
-      db.insert(projects).values({
-        id: remapRequired(p.id),
-        companyId: newUnternehmenId,
-        name: p.name,
-        description: p.description ?? null,
-        status: p.status ?? 'aktiv',
-        priority: p.priority ?? 'medium',
-        zielId: remap(p.goalId),
-        ownerAgentId: remap(p.eigentuemerId),
-        farbe: p.farbe ?? '#23CDCB',
-        deadline: p.deadline ?? null,
-        progress: p.progress ?? 0,
-        createdAt: n(),
-        updatedAt: n(),
-      }).run();
-      importedProjekte++;
-    } catch (err: any) {
-      warnings.push(`Projekt "${p.name}" konnte nicht importiert werden: ${err.message}`);
-    }
-  }
-
-  // Insert Aufgaben (two-pass for parentId)
   let importedAufgaben = 0;
-  const aufgabenWithParent: any[] = [];
-  for (const a of data.tasks) {
-    const hasParent = !!a.parentId && data.tasks.some(p => p.id === a.parentId);
-    if (hasParent) {
-      aufgabenWithParent.push(a);
-      continue;
-    }
-    try {
-      db.insert(tasks).values({
-        id: remapRequired(a.id),
-        companyId: newUnternehmenId,
-        title: a.title,
-        description: a.description ?? null,
-        status: a.status === 'in_progress' ? 'todo' : (a.status ?? 'backlog'), // reset running tasks
-        priority: a.priority ?? 'medium',
-        assignedTo: remap(a.assignedTo),
-        erstelltVon: a.createdBy ?? null,
-        parentId: null,
-        projektId: remap(a.projectId),
-        zielId: remap(a.goalId),
-        executionRunId: null,
-        executionAgentNameKey: null,
-        executionLockedAt: null,
-        blockedBy: null,
-        workspacePath: null,
-        gestartetAm: null,
-        completedAt: a.completedAt ?? null,
-        abgebrochenAm: a.cancelledAt ?? null,
-        createdAt: n(),
-        updatedAt: n(),
-      }).run();
-      importedAufgaben++;
-    } catch (err: any) {
-      warnings.push(`Aufgabe "${a.title}" konnte nicht importiert werden: ${err.message}`);
-    }
-  }
-  for (const a of aufgabenWithParent) {
-    try {
-      db.insert(tasks).values({
-        id: remapRequired(a.id),
-        companyId: newUnternehmenId,
-        title: a.title,
-        description: a.description ?? null,
-        status: a.status === 'in_progress' ? 'todo' : (a.status ?? 'backlog'),
-        priority: a.priority ?? 'medium',
-        assignedTo: remap(a.assignedTo),
-        erstelltVon: a.createdBy ?? null,
-        parentId: remap(a.parentId),
-        projektId: remap(a.projectId),
-        zielId: remap(a.goalId),
-        executionRunId: null,
-        executionAgentNameKey: null,
-        executionLockedAt: null,
-        blockedBy: null,
-        workspacePath: null,
-        gestartetAm: null,
-        completedAt: a.completedAt ?? null,
-        abgebrochenAm: a.cancelledAt ?? null,
-        createdAt: n(),
-        updatedAt: n(),
-      }).run();
-      importedAufgaben++;
-    } catch (err: any) {
-      warnings.push(`Aufgabe "${a.title}" (mit Parent) konnte nicht importiert werden: ${err.message}`);
-    }
-  }
-
-  // Insert Routinen
   let importedRoutinen = 0;
-  for (const r of data.routines) {
-    try {
-      db.insert(routines).values({
-        id: remapRequired(r.id),
-        companyId: newUnternehmenId,
-        title: r.title,
-        description: r.description ?? null,
-        assignedTo: remap(r.assignedTo),
-        priority: r.priority ?? 'medium',
-        status: r.status ?? 'active',
-        concurrencyPolicy: r.concurrencyPolicy ?? 'coalesce_if_active',
-        catchUpPolicy: r.catchUpPolicy ?? 'skip_missed',
-        variablen: r.variables ?? null,
-        zuletztAusgefuehrtAm: null,
-        zuletztEnqueuedAm: null,
-        createdAt: n(),
-        updatedAt: n(),
-      }).run();
-      importedRoutinen++;
-    } catch (err: any) {
-      warnings.push(`Routine "${r.title}" konnte nicht importiert werden: ${err.message}`);
-    }
-  }
-
-  // Insert Routine Trigger
   let importedTrigger = 0;
-  for (const t of data.routineTrigger) {
-    try {
-      db.insert(routineTrigger).values({
-        id: remapRequired(t.id),
-        companyId: newUnternehmenId,
-        routineId: remapRequired(t.routineId),
-        kind: t.kind,
-        active: t.active ?? true,
-        cronExpression: t.cronExpression ?? null,
-        timezone: t.timezone ?? 'UTC',
-        naechsterAusfuehrungAm: null, // will be recalculated by cron service
-        zuletztGefeuertAm: null,
-        publicId: t.publicId ?? null,
-        secretId: null, // scrub webhook secrets
-        createdAt: n(),
-      }).run();
-      importedTrigger++;
-    } catch (err: any) {
-      warnings.push(`Trigger konnte nicht importiert werden: ${err.message}`);
-    }
-  }
-
-  // Insert Kommentare
   let importedKommentare = 0;
-  for (const k of data.comments) {
-    try {
-      db.insert(comments).values({
-        id: remapRequired(k.id),
-        companyId: newUnternehmenId,
-        taskId: remapRequired(k.taskId),
-        authorAgentId: remap(k.authorAgentId),
-        authorType: k.authorType ?? 'board',
-        content: k.content,
-        createdAt: n(),
-      }).run();
-      importedKommentare++;
-    } catch (err: any) {
-      // Non-critical — comments may reference deleted tasks
-      warnings.push(`Kommentar konnte nicht importiert werden: ${err.message}`);
-    }
-  }
-
-  // Insert Genehmigungen
   let importedGenehmigungen = 0;
-  for (const g of data.approvals) {
-    try {
-      db.insert(approvals).values({
-        id: remapRequired(g.id),
-        companyId: newUnternehmenId,
-        type: g.type,
-        title: g.title,
-        description: g.description ?? null,
-        requestedBy: g.requestedBy ?? null,
-        status: g.status ?? 'pending',
-        payload: g.payload ?? null,
-        decisionNote: g.decisionNote ?? null,
-        decidedAt: g.decidedAt ?? null,
-        createdAt: n(),
-        updatedAt: n(),
-      }).run();
-      importedGenehmigungen++;
-    } catch (err: any) {
-      warnings.push(`Genehmigung konnte nicht importiert werden: ${err.message}`);
-    }
-  }
-
-  // Insert Agent Permissions
   let importedPermissions = 0;
-  for (const p of data.agentPermissions) {
-    try {
-      db.insert(agentPermissions).values({
-        id: remapRequired(p.id),
-        agentId: remapRequired(p.agentId),
-        darfAufgabenErstellen: p.darfAufgabenErstellen ?? true,
-        darfAufgabenZuweisen: p.darfAufgabenZuweisen ?? false,
-        darfGenehmigungAnfordern: p.darfGenehmigungAnfordern ?? true,
-        darfGenehmigungEntscheiden: p.darfGenehmigungEntscheiden ?? false,
-        darfExpertenAnwerben: p.darfExpertenAnwerben ?? false,
-        budgetLimitCent: p.budgetLimitCent ?? null,
-        erlaubtePfade: p.erlaubtePfade ?? null,
-        erlaubteDomains: p.erlaubteDomains ?? null,
+
+  try {
+    db.transaction((tx) => {
+      // Insert Unternehmen
+      tx.insert(companies).values({
+        id: newUnternehmenId,
+        name: importedName,
+        description: data.companies.description ?? null,
+        ziel: data.companies.goal ?? null,
+        status: data.companies.status ?? 'active',
         createdAt: n(),
         updatedAt: n(),
       }).run();
-      importedPermissions++;
-    } catch (err: any) {
-      warnings.push(`Agent-Permission konnte nicht importiert werden: ${err.message}`);
-    }
+
+      // Insert Experten
+      for (const e of data.agents) {
+        tx.insert(agents).values({
+          id: remapRequired(e.id),
+          companyId: newUnternehmenId,
+          name: e.name,
+          role: e.role,
+          title: e.title ?? null,
+          status: 'idle',
+          reportsTo: remap(e.reportsTo),
+          skills: e.skills ?? null,
+          connectionType: e.connectionType ?? 'claude',
+          connectionConfig: e.connectionConfig?.includes('SCRUBBED') ? null : (e.connectionConfig ?? null),
+          avatar: e.avatar ?? null,
+          avatarColor: e.avatarColor ?? '#23CDCA',
+          monthlyBudgetCent: e.monthlyBudgetCent ?? 0,
+          monthlySpendCent: 0,
+          lastCycle: null,
+          autoCycleIntervalSec: e.autoCycleIntervalSec ?? 300,
+          autoCycleActive: false,
+          systemPrompt: e.systemPrompt ?? null,
+          createdAt: n(),
+          updatedAt: n(),
+        }).run();
+        importedExperten++;
+      }
+
+      // Insert Ziele (two-pass: first without parentId, then with)
+      const zieleWithParent: any[] = [];
+      for (const z of data.goals) {
+        const hasParent = !!z.parentId && data.goals.some(p => p.id === z.parentId);
+        if (hasParent) {
+          zieleWithParent.push(z);
+          continue;
+        }
+        tx.insert(goals).values({
+          id: remapRequired(z.id),
+          companyId: newUnternehmenId,
+          title: z.title,
+          description: z.description ?? null,
+          ebene: z.level ?? 'company',
+          parentId: null,
+          ownerAgentId: remap(z.ownerAgentId),
+          status: z.status ?? 'planned',
+          createdAt: n(),
+          updatedAt: n(),
+        }).run();
+        importedZiele++;
+      }
+      for (const z of zieleWithParent) {
+        tx.insert(goals).values({
+          id: remapRequired(z.id),
+          companyId: newUnternehmenId,
+          title: z.title,
+          description: z.description ?? null,
+          ebene: z.level ?? 'team',
+          parentId: remap(z.parentId),
+          ownerAgentId: remap(z.ownerAgentId),
+          status: z.status ?? 'planned',
+          createdAt: n(),
+          updatedAt: n(),
+        }).run();
+        importedZiele++;
+      }
+
+      // Insert Projekte
+      for (const p of data.projects) {
+        tx.insert(projects).values({
+          id: remapRequired(p.id),
+          companyId: newUnternehmenId,
+          name: p.name,
+          description: p.description ?? null,
+          status: p.status ?? 'aktiv',
+          priority: p.priority ?? 'medium',
+          goalId: remap(p.goalId),
+          ownerAgentId: remap(p.eigentuemerId),
+          color: p.farbe ?? '#23CDCB',
+          deadline: p.deadline ?? null,
+          progress: p.progress ?? 0,
+          createdAt: n(),
+          updatedAt: n(),
+        }).run();
+        importedProjekte++;
+      }
+
+      // Insert Aufgaben (two-pass for parentId)
+      const aufgabenWithParent: any[] = [];
+      for (const a of data.tasks) {
+        const hasParent = !!a.parentId && data.tasks.some(p => p.id === a.parentId);
+        if (hasParent) {
+          aufgabenWithParent.push(a);
+          continue;
+        }
+        tx.insert(tasks).values({
+          id: remapRequired(a.id),
+          companyId: newUnternehmenId,
+          title: a.title,
+          description: a.description ?? null,
+          status: a.status === 'in_progress' ? 'todo' : (a.status ?? 'backlog'),
+          priority: a.priority ?? 'medium',
+          assignedTo: remap(a.assignedTo),
+          createdBy: a.createdBy ?? null,
+          parentId: null,
+          projectId: remap(a.projectId),
+          goalId: remap(a.goalId),
+          executionRunId: null,
+          executionAgentNameKey: null,
+          executionLockedAt: null,
+          blockedBy: null,
+          workspacePath: null,
+          startedAt: null,
+          completedAt: a.completedAt ?? null,
+          cancelledAt: a.cancelledAt ?? null,
+          createdAt: n(),
+          updatedAt: n(),
+        }).run();
+        importedAufgaben++;
+      }
+      for (const a of aufgabenWithParent) {
+        tx.insert(tasks).values({
+          id: remapRequired(a.id),
+          companyId: newUnternehmenId,
+          title: a.title,
+          description: a.description ?? null,
+          status: a.status === 'in_progress' ? 'todo' : (a.status ?? 'backlog'),
+          priority: a.priority ?? 'medium',
+          assignedTo: remap(a.assignedTo),
+          createdBy: a.createdBy ?? null,
+          parentId: remap(a.parentId),
+          projectId: remap(a.projectId),
+          goalId: remap(a.goalId),
+          executionRunId: null,
+          executionAgentNameKey: null,
+          executionLockedAt: null,
+          blockedBy: null,
+          workspacePath: null,
+          startedAt: null,
+          completedAt: a.completedAt ?? null,
+          cancelledAt: a.cancelledAt ?? null,
+          createdAt: n(),
+          updatedAt: n(),
+        }).run();
+        importedAufgaben++;
+      }
+
+      // Insert Routinen
+      for (const r of data.routines) {
+        tx.insert(routines).values({
+          id: remapRequired(r.id),
+          companyId: newUnternehmenId,
+          title: r.title,
+          description: r.description ?? null,
+          assignedTo: remap(r.assignedTo),
+          priority: r.priority ?? 'medium',
+          status: r.status ?? 'active',
+          concurrencyPolicy: r.concurrencyPolicy ?? 'coalesce_if_active',
+          catchUpPolicy: r.catchUpPolicy ?? 'skip_missed',
+          variablen: r.variables ?? null,
+          zuletztAusgefuehrtAm: null,
+          zuletztEnqueuedAm: null,
+          createdAt: n(),
+          updatedAt: n(),
+        }).run();
+        importedRoutinen++;
+      }
+
+      // Insert Routine Trigger
+      for (const t of data.routineTrigger) {
+        tx.insert(routineTrigger).values({
+          id: remapRequired(t.id),
+          companyId: newUnternehmenId,
+          routineId: remapRequired(t.routineId),
+          kind: t.kind,
+          active: t.active ?? true,
+          cronExpression: t.cronExpression ?? null,
+          timezone: t.timezone ?? 'UTC',
+          naechsterAusfuehrungAm: null,
+          zuletztGefeuertAm: null,
+          publicId: t.publicId ?? null,
+          secretId: null,
+          createdAt: n(),
+        }).run();
+        importedTrigger++;
+      }
+
+      // Insert Kommentare
+      for (const k of data.comments) {
+        tx.insert(comments).values({
+          id: remapRequired(k.id),
+          companyId: newUnternehmenId,
+          taskId: remapRequired(k.taskId),
+          authorAgentId: remap(k.authorAgentId),
+          authorType: k.authorType ?? 'board',
+          content: k.content,
+          createdAt: n(),
+        }).run();
+        importedKommentare++;
+      }
+
+      // Insert Genehmigungen
+      for (const g of data.approvals) {
+        tx.insert(approvals).values({
+          id: remapRequired(g.id),
+          companyId: newUnternehmenId,
+          type: g.type,
+          title: g.title,
+          description: g.description ?? null,
+          requestedBy: g.requestedBy ?? null,
+          status: g.status ?? 'pending',
+          payload: g.payload ?? null,
+          decisionNote: g.decisionNote ?? null,
+          decidedAt: g.decidedAt ?? null,
+          createdAt: n(),
+          updatedAt: n(),
+        }).run();
+        importedGenehmigungen++;
+      }
+
+      // Insert Agent Permissions
+      for (const p of data.agentPermissions) {
+        tx.insert(agentPermissions).values({
+          id: remapRequired(p.id),
+          agentId: remapRequired(p.agentId),
+          darfAufgabenErstellen: p.darfAufgabenErstellen ?? true,
+          darfAufgabenZuweisen: p.darfAufgabenZuweisen ?? false,
+          darfGenehmigungAnfordern: p.darfGenehmigungAnfordern ?? true,
+          darfGenehmigungEntscheiden: p.darfGenehmigungEntscheiden ?? false,
+          darfExpertenAnwerben: p.darfExpertenAnwerben ?? false,
+          budgetLimitCent: p.budgetLimitCent ?? null,
+          erlaubtePfade: p.erlaubtePfade ?? null,
+          erlaubteDomains: p.erlaubteDomains ?? null,
+          createdAt: n(),
+          updatedAt: n(),
+        }).run();
+        importedPermissions++;
+      }
+    });
+  } catch (err: any) {
+    warnings.push(`Import-Transaktion fehlgeschlagen: ${err.message}`);
+    // Reset counters on rollback
+    importedExperten = 0;
+    importedZiele = 0;
+    importedProjekte = 0;
+    importedAufgaben = 0;
+    importedRoutinen = 0;
+    importedTrigger = 0;
+    importedKommentare = 0;
+    importedGenehmigungen = 0;
+    importedPermissions = 0;
   }
 
   return {
@@ -561,10 +533,10 @@ export async function exportTrainingData(
   let tasksQuery = db
     .select({
       id: tasks.id,
-      titel: tasks.title,
-      beschreibung: tasks.description,
-      zugewiesenAn: tasks.assignedTo,
-      abgeschlossenAm: tasks.completedAt,
+      title: tasks.title,
+      description: tasks.description,
+      assignedTo: tasks.assignedTo,
+      completedAt: tasks.completedAt,
     })
     .from(tasks)
     .where(

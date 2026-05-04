@@ -96,7 +96,7 @@ export function analyzeGoalForRoles(goal: string): string[] {
  * Main bootstrap function. Creates the entire company structure.
  */
 export function bootstrapCompany(config: BootstrapConfig): BootstrapResult {
-  const { companyId: companyId, userGoal, apiProvider = 'openrouter', preferredLanguage = 'de' } = config;
+  const { companyId, userGoal, apiProvider = 'openrouter', preferredLanguage = 'de' } = config;
   const now = new Date().toISOString();
 
   const result: BootstrapResult = {
@@ -109,7 +109,7 @@ export function bootstrapCompany(config: BootstrapConfig): BootstrapResult {
   };
 
   try {
-    // Ensure workspace exists
+    // Ensure workspace exists (filesystem op — outside transaction)
     const company = db.select().from(companies).where(eq(companies.id, companyId)).get();
     if (!company) {
       result.error = 'Company not found';
@@ -121,79 +121,85 @@ export function bootstrapCompany(config: BootstrapConfig): BootstrapResult {
     const roleKeys = analyzeGoalForRoles(userGoal);
     console.log(`🚀 Bootstrap: Analyzing goal "${userGoal.slice(0, 60)}..." → Roles: ${roleKeys.join(', ')}`);
 
-    // Create CEO first (always needed)
-    const ceo = createAgentFromTemplate(companyId, 'ceo', 1, {
-      connectionType: apiProvider as any,
-      connectionConfig: config.apiKey ? JSON.stringify({ apiKey: config.apiKey }) : undefined,
-    } as any);
-    result.ceoId = ceo.id;
-    result.createdAgents.push({ id: ceo.id, name: ceo.name, role: ceo.role });
+    // ─── All DB mutations in a single atomic transaction ────────────────
+    db.transaction((tx) => {
+      // Create CEO first (always needed)
+      const ceo = createAgentFromTemplate(companyId, 'ceo', 1, {
+        connectionType: apiProvider as any,
+        connectionConfig: config.apiKey ? JSON.stringify({ apiKey: config.apiKey }) : undefined,
+      } as any, tx);
+      result.ceoId = ceo.id;
+      result.createdAgents.push({ id: ceo.id, name: ceo.name, role: ceo.role });
 
-    // Create other agents
-    const allAgents = [ceo];
-    for (const roleKey of roleKeys) {
-      if (roleKey === 'ceo') continue; // Already created
-      const existing = db.select().from(agents)
-        .where(and(eq(agents.companyId, companyId), eq(agents.role, ROLE_TEMPLATES[roleKey].role)))
-        .get();
-      if (existing) continue; // Skip if already exists
+      // Create other agents
+      const allAgents = [ceo];
+      for (const roleKey of roleKeys) {
+        if (roleKey === 'ceo') continue; // Already created
+        const existing = tx.select().from(agents)
+          .where(and(eq(agents.companyId, companyId), eq(agents.role, ROLE_TEMPLATES[roleKey].role)))
+          .get();
+        if (existing) continue; // Skip if already exists
 
-      const agent = createAgentFromTemplate(companyId, roleKey);
-      result.createdAgents.push({ id: agent.id, name: agent.name, role: agent.role });
-      allAgents.push(agent);
+        const agent = createAgentFromTemplate(companyId, roleKey, 1, {}, tx);
+        result.createdAgents.push({ id: agent.id, name: agent.name, role: agent.role });
+        allAgents.push(agent);
+      }
+
+      // Link hierarchy (reportsTo)
+      linkAgentHierarchy(allAgents.map(a => ({ id: a.id, role: a.role })), tx);
+
+      // Create initial project based on goal
+      const projectName = extractProjectName(userGoal);
+      const projectId = crypto.randomUUID();
+      tx.insert(projects).values({
+        id: projectId,
+        companyId,
+        name: projectName,
+        description: `Automatisch erstellt aus Ziel: "${userGoal}"`,
+        status: 'aktiv',
+        priority: 'high',
+        ownerAgentId: ceo.id,
+        progress: 0,
+        createdAt: now,
+        updatedAt: now,
+      }).run();
+      result.createdProjects.push({ id: projectId, name: projectName });
+
+      // Create company goal
+      const goalId = crypto.randomUUID();
+      tx.insert(goals).values({
+        id: goalId,
+        companyId,
+        title: preferredLanguage === 'de' ? `Company-Ziel: ${projectName}` : `Company Goal: ${projectName}`,
+        description: userGoal,
+        level: 'company',
+        status: 'active',
+        progress: 0,
+        createdAt: now,
+        updatedAt: now,
+      }).run();
+      result.createdGoals.push({ id: goalId, title: projectName });
+
+      // Create initial tasks based on goal type
+      const initialTasks = generateInitialTasks(userGoal, projectId, ceo.id, companyId, preferredLanguage);
+      for (const task of initialTasks) {
+        tx.insert(tasks).values(task).run();
+        result.createdTasks.push({ id: task.id, title: task.title });
+      }
+    });
+    // ─────────────────────────────────────────────────────────────────────
+
+    // Wakeup CEO to start planning (outside transaction — async side-effect)
+    if (result.ceoId) {
+      wakeupService.wakeup(result.ceoId, companyId, {
+        source: 'automation',
+        triggerDetail: 'system',
+        reason: preferredLanguage === 'de'
+          ? `Company bootstrap complete. ${result.createdAgents.length} agents created. Please review the team and start planning.`
+          : `Company bootstrap complete. ${result.createdAgents.length} agents created. Please review the team and start planning.`,
+        payload: { projectId: result.createdProjects[0]?.id, goalId: result.createdGoals[0]?.id },
+      }).catch(() => {});
     }
-
-    // Link hierarchy (reportsTo)
-    linkAgentHierarchy(allAgents.map(a => ({ id: a.id, role: a.role })));
-
-    // Create initial project based on goal
-    const projectName = extractProjectName(userGoal);
-    const projectId = crypto.randomUUID();
-    db.insert(projects).values({
-      id: projectId,
-      companyId,
-      name: projectName,
-      description: `Automatisch erstellt aus Ziel: "${userGoal}"`,
-      status: 'aktiv',
-      priority: 'high',
-      ownerAgentId: ceo.id,
-      progress: 0,
-      createdAt: now,
-      updatedAt: now,
-    }).run();
-    result.createdProjects.push({ id: projectId, name: projectName });
-
-    // Create company goal
-    const goalId = crypto.randomUUID();
-    db.insert(goals).values({
-      id: goalId,
-      companyId,
-      title: preferredLanguage === 'de' ? `Company-Ziel: ${projectName}` : `Company Goal: ${projectName}`,
-      description: userGoal,
-      level: 'company',
-      status: 'active',
-      progress: 0,
-      createdAt: now,
-      updatedAt: now,
-    }).run();
-    result.createdGoals.push({ id: goalId, title: projectName });
-
-    // Create initial tasks based on goal type
-    const initialTasks = generateInitialTasks(userGoal, projectId, ceo.id, companyId, preferredLanguage);
-    for (const task of initialTasks) {
-      db.insert(tasks).values(task).run();
-      result.createdTasks.push({ id: task.id, title: task.title });
-    }
-
-    // Wakeup CEO to start planning
-    wakeupService.wakeup(ceo.id, companyId, {
-      source: 'automation',
-      triggerDetail: 'system',
-      reason: preferredLanguage === 'de'
-        ? `Company bootstrap complete. ${result.createdAgents.length} agents created. Please review the team and start planning.`
-        : `Company bootstrap complete. ${result.createdAgents.length} agents created. Please review the team and start planning.`,
-      payload: { projectId, goalId },
-    }).catch(() => {});
 
     result.success = true;
     console.log(`✅ Bootstrap complete: ${result.createdAgents.length} agents, ${result.createdProjects.length} projects, ${result.createdTasks.length} tasks`);

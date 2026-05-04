@@ -30,8 +30,8 @@ export function berechneBudgetStatus(policyId: string): BudgetStatus | null {
 
   if (policy.fenster === 'monatlich') {
     const monatsStart = new Date();
-    monatsStart.setDate(1);
-    monatsStart.setHours(0, 0, 0, 0);
+    monatsStart.setUTCDate(1);
+    monatsStart.setUTCHours(0, 0, 0, 0);
     const startISO = monatsStart.toISOString();
 
     const buchungen = db.select().from(costEntries)

@@ -18,6 +18,8 @@ interface WebSocketContextValue {
 
 let globalWs: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
 const listeners = new Map<string, Set<(msg: WsMessage) => void>>();
 let globalConnected = false;
 const statusListeners = new Set<(connected: boolean) => void>();
@@ -50,12 +52,13 @@ function dispatchMessage(msg: WsMessage) {
 }
 
 function connect() {
-  if (globalWs?.readyState === WebSocket.OPEN || globalWs?.readyState === WebSocket.CONNECTING) return;
+  if (globalWs?.readyState === WebSocket.OPEN || globalWs?.readyState === WebSocket.CONNECTING || globalWs?.readyState === WebSocket.CLOSING) return;
 
   const ws = new WebSocket(buildWsUrl());
   globalWs = ws;
 
   ws.onopen = () => {
+    reconnectAttempts = 0;
     notifyStatus(true);
   };
 
@@ -73,8 +76,13 @@ function connect() {
   ws.onclose = () => {
     notifyStatus(false);
     globalWs = null;
-    // Auto-reconnect after 3s (same as ExpertChatDrawer)
-    reconnectTimer = setTimeout(connect, 3000);
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      console.warn('WebSocket: max reconnect attempts reached');
+      return;
+    }
+    reconnectAttempts++;
+    const delay = Math.min(3000 * Math.pow(2, reconnectAttempts - 1), 30000);
+    reconnectTimer = setTimeout(connect, delay);
   };
 }
 
@@ -110,6 +118,12 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     connect();
     return () => {
       statusListeners.delete(setConnected);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      disconnect();
     };
   }, []);
 

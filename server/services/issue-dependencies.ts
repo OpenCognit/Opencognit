@@ -1,147 +1,151 @@
-// Issue Dependencies — Blocking-Graph für Task-Orchestrierung
-// Tasks können andere Tasks blockieren. Blockierte Tasks werden nicht ausgeführt.
+// Issue Dependencies — blocking graph for task orchestration.
+// Tasks can block other tasks. Blocked tasks are not executed.
 
 import { db } from '../db/client.js';
 import { issueRelations, tasks } from '../db/schema.js';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { v4 as uuid } from 'uuid';
 
 /**
- * Erstellt eine Blocking-Beziehung: sourceId blockiert zielId.
- * zielId kann erst bearbeitet werden wenn sourceId 'done' ist.
+ * Creates a blocking relation: sourceId blocks targetId.
+ * targetId can only be worked on once sourceId is 'done'.
  */
-export function erstelleAbhaengigkeit(
+export function addBlocker(
   sourceId: string,
-  zielId: string,
-  erstelltVon?: string
+  targetId: string,
+  createdBy?: string
 ): { success: boolean; error?: string } {
-  // Prüfe ob beide Aufgaben existieren
-  const quell = db.select().from(tasks).where(eq(tasks.id, sourceId)).get();
-  const ziel = db.select().from(tasks).where(eq(tasks.id, zielId)).get();
-  if (!quell) return { success: false, error: `Aufgabe ${sourceId} nicht gefunden` };
-  if (!ziel) return { success: false, error: `Aufgabe ${zielId} nicht gefunden` };
+  const source = db.select().from(tasks).where(eq(tasks.id, sourceId)).get();
+  const target = db.select().from(tasks).where(eq(tasks.id, targetId)).get();
+  if (!source) return { success: false, error: `Task ${sourceId} not found` };
+  if (!target) return { success: false, error: `Task ${targetId} not found` };
 
-  // Zirkuläre Abhängigkeit prüfen
-  if (hatAbhaengigkeitAuf(zielId, sourceId)) {
-    return { success: false, error: 'Zirkuläre Abhängigkeit erkannt' };
+  if (hasDependencyOn(targetId, sourceId)) {
+    return { success: false, error: 'Circular dependency detected' };
   }
 
-  // Bereits vorhanden?
-  const existierend = db.select().from(issueRelations)
-    .where(and(eq(issueRelations.sourceId, sourceId), eq(issueRelations.targetId, zielId)))
+  const existing = db.select().from(issueRelations)
+    .where(and(eq(issueRelations.sourceId, sourceId), eq(issueRelations.targetId, targetId)))
     .get();
-  if (existierend) return { success: true }; // Idempotent
+  if (existing) return { success: true }; // idempotent
 
   db.insert(issueRelations).values({
     id: uuid(),
     sourceId,
-    targetId: zielId,
+    targetId,
     type: 'blocks',
-    createdBy: erstelltVon || null,
+    createdBy: createdBy || null,
     createdAt: new Date().toISOString(),
   }).run();
 
-  // Ziel-Aufgabe als 'blocked' markieren wenn der Blocker nicht done ist
-  if (quell.status !== 'done') {
+  // Mark target as 'blocked' if the blocker isn't done yet.
+  if (source.status !== 'done') {
     db.update(tasks).set({ status: 'blocked', updatedAt: new Date().toISOString() })
-      .where(eq(tasks.id, zielId)).run();
+      .where(eq(tasks.id, targetId)).run();
   }
 
   return { success: true };
 }
 
-/**
- * Entfernt eine Blocking-Beziehung.
- */
-export function entferneAbhaengigkeit(sourceId: string, zielId: string): void {
+/** Removes a blocking relation. */
+export function removeBlocker(sourceId: string, targetId: string): void {
   db.delete(issueRelations)
-    .where(and(eq(issueRelations.sourceId, sourceId), eq(issueRelations.targetId, zielId)))
+    .where(and(eq(issueRelations.sourceId, sourceId), eq(issueRelations.targetId, targetId)))
     .run();
 
-  // Prüfe ob das Ziel noch andere Blocker hat
-  pruefeUndEntblocke(zielId);
+  // Re-check whether the target still has any other blockers.
+  unblockDependents(sourceId);
 }
 
-/**
- * Gibt alle Blocker für eine Aufgabe zurück.
- */
-export function getBlocker(aufgabeId: string): Array<{ id: string; titel: string; status: string }> {
+/** Returns all blockers for a task. */
+export function getBlockers(taskId: string): Array<{ id: string; title: string; status: string }> {
   const relations = db.select().from(issueRelations)
-    .where(eq(issueRelations.targetId, aufgabeId))
+    .where(eq(issueRelations.targetId, taskId))
     .all();
 
+  if (relations.length === 0) return [];
+
+  const sourceIds = relations.map(r => r.sourceId);
+  const taskRows = db.select({ id: tasks.id, title: tasks.title, status: tasks.status })
+    .from(tasks)
+    .where(inArray(tasks.id, sourceIds))
+    .all();
+  const taskMap = new Map(taskRows.map(t => [t.id, t]));
+
   return relations.map(r => {
-    const task = db.select().from(tasks).where(eq(tasks.id, r.sourceId)).get();
-    return { id: r.sourceId, titel: task?.title || '?', status: task?.status || '?' };
+    const task = taskMap.get(r.sourceId);
+    return { id: r.sourceId, title: task?.title || '?', status: task?.status || '?' };
   });
 }
 
-/**
- * Gibt alle Tasks zurück die von dieser Aufgabe blockiert werden.
- */
-export function getBlockiert(aufgabeId: string): Array<{ id: string; titel: string; status: string }> {
+/** Returns all tasks that are blocked by this task. */
+export function getBlocked(taskId: string): Array<{ id: string; title: string; status: string }> {
   const relations = db.select().from(issueRelations)
-    .where(eq(issueRelations.sourceId, aufgabeId))
+    .where(eq(issueRelations.sourceId, taskId))
     .all();
 
+  if (relations.length === 0) return [];
+
+  const targetIds = relations.map(r => r.targetId).filter(Boolean);
+  const taskRows = db.select({ id: tasks.id, title: tasks.title, status: tasks.status })
+    .from(tasks)
+    .where(inArray(tasks.id, targetIds))
+    .all();
+  const taskMap = new Map(taskRows.map(t => [t.id, t]));
+
   return relations.map(r => {
-    const task = db.select().from(tasks).where(eq(tasks.id, r.goalId)).get();
-    return { id: r.goalId, titel: task?.title || '?', status: task?.status || '?' };
+    const task = taskMap.get(r.targetId);
+    return { id: r.targetId, title: task?.title || '?', status: task?.status || '?' };
   });
 }
 
-/**
- * Prüft ob eine Aufgabe (transitiv) von einer anderen abhängt.
- * Wird für Zirkuläre-Abhängigkeits-Check genutzt.
- */
-function hatAbhaengigkeitAuf(vonId: string, aufId: string, besucht = new Set<string>()): boolean {
-  if (vonId === aufId) return true;
-  if (besucht.has(vonId)) return false;
-  besucht.add(vonId);
+/** Checks transitively whether `fromId` depends on `toId`. Used to detect cycles. */
+function hasDependencyOn(fromId: string, toId: string, visited = new Set<string>()): boolean {
+  if (fromId === toId) return true;
+  if (visited.has(fromId)) return false;
+  visited.add(fromId);
 
-  const blocker = db.select().from(issueRelations)
-    .where(eq(issueRelations.targetId, vonId))
+  const blockers = db.select().from(issueRelations)
+    .where(eq(issueRelations.targetId, fromId))
     .all();
 
-  for (const rel of blocker) {
-    if (hatAbhaengigkeitAuf(rel.sourceId, aufId, besucht)) return true;
+  for (const rel of blockers) {
+    if (hasDependencyOn(rel.sourceId, toId, visited)) return true;
   }
   return false;
 }
 
 /**
- * Prüft ob eine blockierte Aufgabe entblockt werden kann (alle Blocker done).
- * Wird aufgerufen wenn ein Task auf 'done' gesetzt wird.
+ * When a task transitions to 'done', unblocks any dependents whose blockers are all done.
+ * Returns the list of task ids that were unblocked.
  */
-export function pruefeUndEntblocke(aufgabeId: string): string[] {
-  const entblockt: string[] = [];
+export function unblockDependents(taskId: string): string[] {
+  const unblocked: string[] = [];
 
-  // Finde alle Tasks die von dieser Aufgabe blockiert werden
-  const blockiert = db.select().from(issueRelations)
-    .where(eq(issueRelations.sourceId, aufgabeId))
+  const dependents = db.select().from(issueRelations)
+    .where(eq(issueRelations.sourceId, taskId))
     .all();
 
-  for (const rel of blockiert) {
-    // Prüfe ob ALLE Blocker des Ziels done sind
-    const alleBlocker = db.select().from(issueRelations)
-      .where(eq(issueRelations.targetId, rel.goalId))
+  for (const rel of dependents) {
+    const allBlockers = db.select().from(issueRelations)
+      .where(eq(issueRelations.targetId, rel.targetId))
       .all();
 
-    const alleErledigt = alleBlocker.every(b => {
+    const allDone = allBlockers.every(b => {
       const task = db.select().from(tasks).where(eq(tasks.id, b.sourceId)).get();
       return task?.status === 'done';
     });
 
-    if (alleErledigt) {
-      const ziel = db.select().from(tasks).where(eq(tasks.id, rel.goalId)).get();
-      if (ziel?.status === 'blocked') {
+    if (allDone) {
+      const target = db.select().from(tasks).where(eq(tasks.id, rel.targetId)).get();
+      if (target?.status === 'blocked') {
         db.update(tasks).set({ status: 'todo', updatedAt: new Date().toISOString() })
-          .where(eq(tasks.id, rel.goalId)).run();
-        entblockt.push(rel.goalId);
-        console.log(`🔓 Task "${ziel.title}" entblockt (alle Dependencies erledigt)`);
+          .where(eq(tasks.id, rel.targetId)).run();
+        unblocked.push(rel.targetId);
+        console.log(`🔓 Task "${target.title}" unblocked (all dependencies done)`);
       }
     }
   }
 
-  return entblockt;
+  return unblocked;
 }

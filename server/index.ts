@@ -524,7 +524,10 @@ export function requireCompanyAccess(allowedRoles?: string[]) {
       req.params.unternehmenId ||
       req.params.companyId ||
       req.params.id ||
-      (req.body as any)?.companyId;
+      (req.body as any)?.companyId ||
+      (req.query.unternehmenId as string | undefined) ||
+      (req.query.companyId as string | undefined) ||
+      (req.headers['x-company-id'] as string | undefined);
 
     if (!companyId) {
       // Some endpoints don't have a company context (e.g. /api/plugin-registry)
@@ -549,8 +552,9 @@ export function requireCompanyAccess(allowedRoles?: string[]) {
       return res.status(403).json({ error: 'Insufficient permissions.' });
     }
 
-    // Attach membership to request for downstream use
+    // Attach membership + resolved companyId to request for downstream use
     (req as any).companyMembership = membership;
+    (req as any).companyId = companyId;
     next();
   };
 }
@@ -764,7 +768,7 @@ app.get('/api/companies/:id/workspace/check', requireCompanyAccess(), (req, res)
 });
 
 // Filesystem directory browser — lists subdirectories of a given path
-app.get('/api/fs/dirs', (req: any, res) => {
+app.get('/api/fs/dirs', authMiddleware, (req: any, res) => {
   const requested = (req.query.path as string) || '';
   const home = process.env.HOME || process.env.USERPROFILE || '/home';
   const current = requested ? path.resolve(requested) : home;
@@ -793,7 +797,7 @@ app.get('/api/fs/dirs', (req: any, res) => {
 });
 
 // Create a directory (used by FolderPickerModal)
-app.post('/api/fs/mkdir', (req: any, res) => {
+app.post('/api/fs/mkdir', authMiddleware, (req: any, res) => {
   const { path: dirPath } = req.body as { path?: string };
   if (!dirPath || !path.isAbsolute(dirPath)) return res.status(400).json({ error: 'Absolute path required' });
   // Block creating inside project source tree
@@ -1093,83 +1097,83 @@ app.delete('/api/agents/:id', requireResourceAccess("agent"), (req, res) => {
   if (!agent) return res.status(404).json({ error: 'Not found' });
 
   try {
-    // 1. Identify all execution runs for this agent to clear potential cross-references
+    // 1. Identify all execution runs for this agent (outside transaction)
     const runIds = db.select({ id: workCycles.id })
       .from(workCycles)
       .where(eq(workCycles.agentId, agentId))
       .all()
       .map(r => r.id);
 
-    // 2. Clear references to these runs in all possible tables (FK cleanup)
-    if (runIds.length > 0) {
-      db.update(workCycles).set({ retryOfRunId: null }).where(inArray(workCycles.retryOfRunId, runIds)).run();
-      db.update(agentWakeupRequests).set({ runId: null }).where(inArray(agentWakeupRequests.runId, runIds)).run();
-      db.update(workProducts).set({ runId: null }).where(inArray(workProducts.runId, runIds)).run();
-      db.update(tasks).set({ executionRunId: null }).where(inArray(tasks.executionRunId, runIds)).run();
-    }
+    // 2–5. All deletions in a single atomic transaction
+    db.transaction((tx) => {
+      // Clear references to these runs in all possible tables (FK cleanup)
+      if (runIds.length > 0) {
+        tx.update(workCycles).set({ retryOfRunId: null }).where(inArray(workCycles.retryOfRunId, runIds)).run();
+        tx.update(agentWakeupRequests).set({ runId: null }).where(inArray(agentWakeupRequests.runId, runIds)).run();
+        tx.update(workProducts).set({ runId: null }).where(inArray(workProducts.runId, runIds)).run();
+        tx.update(tasks).set({ executionRunId: null }).where(inArray(tasks.executionRunId, runIds)).run();
+      }
 
-    // 3. Nullify direct agent references (Keep records but remove connection)
-    db.update(comments).set({ authorAgentId: null }).where(eq(comments.authorAgentId, agentId)).run();
-    db.update(agents).set({ reportsTo: null }).where(eq(agents.reportsTo, agentId)).run();
-    db.update(agents).set({ advisorId: null }).where(eq(agents.advisorId, agentId)).run();
-    db.update(agents).set({ reportsTo: null }).where(eq(agents.reportsTo, agentId)).run();
-    db.update(goals).set({ ownerAgentId: null }).where(eq(goals.ownerAgentId, agentId)).run();
-    db.update(routines).set({ assignedTo: null }).where(eq(routines.assignedTo, agentId)).run();
-    db.update(projects).set({ ownerAgentId: null }).where(eq(projects.ownerAgentId, agentId)).run();
-    db.update(comments).set({ authorAgentId: null }).where(eq(comments.authorAgentId, agentId)).run();
-    db.update(issueRelations).set({ createdBy: null }).where(eq(issueRelations.createdBy, agentId)).run();
-    db.delete(workProducts).where(eq(workProducts.agentId, agentId)).run();
-    db.update(tasks).set({ assignedTo: null }).where(eq(tasks.assignedTo, agentId)).run();
-    // Delete agent meetings where this agent is the organizer (veranstalterExpertId is NOT NULL)
-    db.delete(agentMeetings).where(eq(agentMeetings.organizerAgentId, agentId)).run();
+      // Nullify direct agent references (Keep records but remove connection)
+      tx.update(comments).set({ authorAgentId: null }).where(eq(comments.authorAgentId, agentId)).run();
+      tx.update(agents).set({ reportsTo: null }).where(eq(agents.reportsTo, agentId)).run();
+      tx.update(agents).set({ advisorId: null }).where(eq(agents.advisorId, agentId)).run();
+      tx.update(goals).set({ ownerAgentId: null }).where(eq(goals.ownerAgentId, agentId)).run();
+      tx.update(routines).set({ assignedTo: null }).where(eq(routines.assignedTo, agentId)).run();
+      tx.update(projects).set({ ownerAgentId: null }).where(eq(projects.ownerAgentId, agentId)).run();
+      tx.update(issueRelations).set({ createdBy: null }).where(eq(issueRelations.createdBy, agentId)).run();
+      tx.delete(workProducts).where(eq(workProducts.agentId, agentId)).run();
+      tx.update(tasks).set({ assignedTo: null }).where(eq(tasks.assignedTo, agentId)).run();
+      tx.delete(agentMeetings).where(eq(agentMeetings.organizerAgentId, agentId)).run();
 
-    // 4. Delete agent-owned coupled data
-    db.delete(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, agentId)).run();
-    db.delete(agentTrustScores).where(eq(agentTrustScores.subjectAgentId, agentId)).run();
-    db.delete(agentVotes).where(eq(agentVotes.agentId, agentId)).run();
-    db.delete(agentCapabilities).where(eq(agentCapabilities.agentId, agentId)).run();
-    db.delete(contractNetBids).where(eq(contractNetBids.bidderAgentId, agentId)).run();
-    db.delete(traceEvents).where(eq(traceEvents.agentId, agentId)).run();
-    db.delete(workCycles).where(eq(workCycles.agentId, agentId)).run();
-    db.delete(chatMessages).where(eq(chatMessages.agentId, agentId)).run();
-    db.delete(costEntries).where(eq(costEntries.agentId, agentId)).run();
-    db.delete(agentSkills).where(eq(agentSkills.agentId, agentId)).run();
-    db.delete(agentPermissions).where(eq(agentPermissions.agentId, agentId)).run();
-    db.update(approvals).set({ requestedBy: null }).where(eq(approvals.requestedBy, agentId)).run();
+      // Delete agent-owned coupled data
+      tx.delete(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, agentId)).run();
+      tx.delete(agentTrustScores).where(eq(agentTrustScores.subjectAgentId, agentId)).run();
+      tx.delete(agentVotes).where(eq(agentVotes.agentId, agentId)).run();
+      tx.delete(agentCapabilities).where(eq(agentCapabilities.agentId, agentId)).run();
+      tx.delete(contractNetBids).where(eq(contractNetBids.bidderAgentId, agentId)).run();
+      tx.delete(traceEvents).where(eq(traceEvents.agentId, agentId)).run();
+      tx.delete(workCycles).where(eq(workCycles.agentId, agentId)).run();
+      tx.delete(chatMessages).where(eq(chatMessages.agentId, agentId)).run();
+      tx.delete(costEntries).where(eq(costEntries.agentId, agentId)).run();
+      tx.delete(agentSkills).where(eq(agentSkills.agentId, agentId)).run();
+      tx.delete(agentPermissions).where(eq(agentPermissions.agentId, agentId)).run();
+      tx.update(approvals).set({ requestedBy: null }).where(eq(approvals.requestedBy, agentId)).run();
 
-    // 4b. Memory data (palace_wings → palace_drawers + palace_diary, palace_summaries)
-    const wings = db.select({ id: palaceWings.id }).from(palaceWings).where(eq(palaceWings.agentId, agentId)).all();
-    if (wings.length > 0) {
-      const wingIds = wings.map(w => w.id);
-      db.delete(palaceDrawers).where(inArray(palaceDrawers.wingId, wingIds)).run();
-      db.delete(palaceDiary).where(inArray(palaceDiary.wingId, wingIds)).run();
-      db.delete(palaceWings).where(eq(palaceWings.agentId, agentId)).run();
-    }
-    db.delete(palaceSummaries).where(eq(palaceSummaries.agentId, agentId)).run();
+      // Memory data (palace_wings → palace_drawers + palace_diary, palace_summaries)
+      const wings = tx.select({ id: palaceWings.id }).from(palaceWings).where(eq(palaceWings.agentId, agentId)).all();
+      if (wings.length > 0) {
+        const wingIds = wings.map(w => w.id);
+        tx.delete(palaceDrawers).where(inArray(palaceDrawers.wingId, wingIds)).run();
+        tx.delete(palaceDiary).where(inArray(palaceDiary.wingId, wingIds)).run();
+        tx.delete(palaceWings).where(eq(palaceWings.agentId, agentId)).run();
+      }
+      tx.delete(palaceSummaries).where(eq(palaceSummaries.agentId, agentId)).run();
 
-    // 4c. Execution workspaces (expertId nullable — just nullify)
-    db.update(executionWorkspaces).set({ agentId: null }).where(eq(executionWorkspaces.agentId, agentId)).run();
+      // Execution workspaces (expertId nullable — just nullify)
+      tx.update(executionWorkspaces).set({ agentId: null }).where(eq(executionWorkspaces.agentId, agentId)).run();
 
-    // 4d. Knowledge graph — remove all triples that mention this agent by name
-    db.delete(palaceKg)
-      .where(and(
-        eq(palaceKg.companyId, agent.companyId),
-        or(eq(palaceKg.subject, agent.name), eq(palaceKg.object, agent.name))
-      ))
-      .run();
+      // Knowledge graph — remove all triples that mention this agent by name
+      tx.delete(palaceKg)
+        .where(and(
+          eq(palaceKg.companyId, agent.companyId),
+          or(eq(palaceKg.subject, agent.name), eq(palaceKg.object, agent.name))
+        ))
+        .run();
 
-    // 4e. Archiv, CEO decision log, config history
-    db.delete(workCyclesArchive).where(eq(workCyclesArchive.agentId, agentId)).run();
-    db.delete(ceoDecisionLog).where(eq(ceoDecisionLog.agentId, agentId)).run();
-    db.delete(agentConfigHistory).where(eq(agentConfigHistory.agentId, agentId)).run();
+      // Archiv, CEO decision log, config history
+      tx.delete(workCyclesArchive).where(eq(workCyclesArchive.agentId, agentId)).run();
+      tx.delete(ceoDecisionLog).where(eq(ceoDecisionLog.agentId, agentId)).run();
+      tx.delete(agentConfigHistory).where(eq(agentConfigHistory.agentId, agentId)).run();
 
-    // Count unassigned tasks (from this agent's former assignments) for CEO briefing
+      // Finally delete the agent
+      tx.delete(agents).where(eq(agents.id, agentId)).run();
+    });
+
+    // Count unassigned tasks (outside transaction, after agent is deleted)
     const freedTaskCount = db.select({ count: count() }).from(tasks)
       .where(and(eq(tasks.companyId, agent.companyId), isNull(tasks.assignedTo)))
       .get()?.count ?? 0;
-
-    // 5. Finally delete the agent
-    db.delete(agents).where(eq(agents.id, agentId)).run();
 
     // 6. Notify the CEO (orchestrator) about the dismissal
     try {
@@ -1354,10 +1358,10 @@ app.patch('/api/tasks/:id', requireResourceAccess("task"), (req, res) => {
 
   // Wenn Task auf 'done' → blockierte Tasks automatisch entblocken + notify
   if (updates.status === 'done' && existing.status !== 'done') {
-    import('./services/issue-dependencies.js').then(({ pruefeUndEntblocke }) => {
-      const entblockt = pruefeUndEntblocke(req.params.id as string);
-      if (entblockt.length > 0) {
-        broadcastUpdate('tasks_unblocked', { taskIds: entblockt, unternehmenId: existing.companyId });
+    import('./services/issue-dependencies.js').then(({ unblockDependents }) => {
+      const unblocked = unblockDependents(req.params.id as string);
+      if (unblocked.length > 0) {
+        broadcastUpdate('tasks_unblocked', { taskIds: unblocked, unternehmenId: existing.companyId });
       }
     }).catch(() => {});
     // Broadcast task_completed event for real-time notifications
@@ -1761,8 +1765,8 @@ app.get('/api/tasks/:id/workspace/file', requireResourceAccess("task"), (req, re
 // =============================================
 // COMPANY WORKDIR FILE READ (for chat [FILE] cards)
 // =============================================
-app.get('/api/files/read', (req, res) => {
-  const unternehmenId = (req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
+app.get('/api/files/read', authMiddleware, requireCompanyAccess(), (req, res) => {
+  const unternehmenId = req.companyId as string;
   const relPath = (req.query.path as string || '').trim();
   if (!unternehmenId) return res.status(400).json({ error: 'Missing x-company-id header' });
   if (!relPath) return res.status(400).json({ error: 'path query required' });
@@ -3745,7 +3749,7 @@ app.delete('/api/companies/:id/members/:userId', authMiddleware, requireCompanyA
 });
 
 // DELETE /api/system/factory-reset — alles löschen (außer Benutzer-Account bleibt, aber Unternehmen + alles weg)
-app.delete('/api/system/factory-reset', authMiddleware, (req, res) => {
+app.delete('/api/system/factory-reset', authMiddleware, requireCompanyAccess(['owner', 'admin']), (req, res) => {
   const execAll = (sql: string) => { try { sqlite?.prepare(sql).run(); } catch { /* ignore */ } };
   // Delete leaf tables first (FK order)
   execAll(`DELETE FROM ceo_decision_log`);
@@ -4244,6 +4248,29 @@ app.post(['/api/agents/:id/chat/stream', '/api/experten/:id/chat/stream'], authM
   const unternehmenId = ((req as any).resolvedCompanyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
   const { nachricht, image } = req.body; // image: { data: string (base64), mimeType: string }
   if (!unternehmenId || !nachricht) return res.status(400).json({ error: 'Missing parameters' });
+
+  // Validate image upload
+  if (image) {
+    const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
+    const ALLOWED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+
+    if (!ALLOWED_MIME_TYPES.includes(image.mimeType)) {
+      emit('error', { message: `Invalid image type: ${image.mimeType}. Allowed: ${ALLOWED_MIME_TYPES.join(', ')}` });
+      return res.end();
+    }
+
+    // Base64 data length check (~1.4x binary size)
+    if (typeof image.data === 'string' && image.data.length > MAX_IMAGE_SIZE * 1.4) {
+      emit('error', { message: 'Image too large (max 5MB)' });
+      return res.end();
+    }
+
+    // Basic base64 validation
+    if (typeof image.data !== 'string' || !/^[A-Za-z0-9+/]*={0,2}$/.test(image.data.replace(/\s/g, ''))) {
+      emit('error', { message: 'Invalid image data format' });
+      return res.end();
+    }
+  }
 
   // SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
@@ -5780,6 +5807,15 @@ app.get('/api/projects/:id/whiteboard', authMiddleware, requireResourceAccess("p
   res.json(state);
 });
 
+function sanitizeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 app.put('/api/projects/:id/whiteboard', authMiddleware, requireResourceAccess("project"), requireResourceAccess("project"), (req, res) => {
   const { inhalt, expertId } = req.body;
   if (!inhalt?.trim()) return res.status(400).json({ error: 'inhalt required' });
@@ -5789,7 +5825,8 @@ app.put('/api/projects/:id/whiteboard', authMiddleware, requireResourceAccess("p
   if (!projekt) return res.status(404).json({ error: 'Project not found' });
 
   const existing = projekt.whiteboardState ? JSON.parse(projekt.whiteboardState) : { eintraege: [] };
-  const neuerEintrag = { id: uuid(), von: expertId ?? 'board', inhalt, erstelltAm: now() };
+  const sanitizedInhalt = sanitizeHtml(inhalt.trim());
+  const neuerEintrag = { id: uuid(), von: expertId ?? 'board', inhalt: sanitizedInhalt, erstelltAm: now() };
   existing.eintraege = [...(existing.eintraege ?? []), neuerEintrag];
   existing.updatedAt = now();
 
@@ -6380,24 +6417,24 @@ app.get('/api/companies/:id/budget-incidents', authMiddleware, requireCompanyAcc
 // ISSUE DEPENDENCIES
 // =============================================
 
-import { erstelleAbhaengigkeit, entferneAbhaengigkeit, getBlocker, getBlockiert } from './services/issue-dependencies.js';
+import { addBlocker, removeBlocker, getBlockers, getBlocked } from './services/issue-dependencies.js';
 
-app.get('/api/tasks/:id/blocker', authMiddleware, requireResourceAccess("task"), requireResourceAccess("task"), (req, res) => {
-  res.json(getBlocker(req.params.id as string));
+app.get('/api/tasks/:id/blockers', authMiddleware, requireResourceAccess("task"), (req, res) => {
+  res.json(getBlockers(req.params.id as string));
 });
 
-app.get('/api/tasks/:id/blockiert', authMiddleware, requireResourceAccess("task"), requireResourceAccess("task"), (req, res) => {
-  res.json(getBlockiert(req.params.id as string));
+app.get('/api/tasks/:id/blocked', authMiddleware, requireResourceAccess("task"), (req, res) => {
+  res.json(getBlocked(req.params.id as string));
 });
 
-app.post('/api/tasks/:id/blocker', authMiddleware, requireResourceAccess("task"), requireResourceAccess("task"), (req, res) => {
+app.post('/api/tasks/:id/blockers', authMiddleware, requireResourceAccess("task"), (req, res) => {
   const { blockerId } = req.body;
-  const result = erstelleAbhaengigkeit(blockerId, req.params.id as string, 'board');
+  const result = addBlocker(blockerId, req.params.id as string, 'board');
   res.json(result);
 });
 
-app.delete('/api/tasks/:id/blocker/:blockerId', authMiddleware, requireResourceAccess("task"), requireResourceAccess("task"), (req, res) => {
-  entferneAbhaengigkeit(req.params.blockerId as string, req.params.id as string);
+app.delete('/api/tasks/:id/blockers/:blockerId', authMiddleware, requireResourceAccess("task"), (req, res) => {
+  removeBlocker(req.params.blockerId as string, req.params.id as string);
   res.json({ ok: true });
 });
 
@@ -7728,7 +7765,7 @@ app.put('/api/system/cli-paths/:tool', authMiddleware, async (req, res) => {
 // =============================================
 
 // Alle verfügbaren Plugins auflisten
-app.get('/api/plugins', async (_req, res) => {
+app.get('/api/plugins', authMiddleware, requireCompanyAccess(['owner', 'admin']), async (_req, res) => {
   try {
     const plugins = await pluginManager.listPlugins();
     res.json(plugins);
@@ -7739,7 +7776,7 @@ app.get('/api/plugins', async (_req, res) => {
 });
 
 // Plugin-Details abrufen
-app.get('/api/plugins/:id', async (req, res) => {
+app.get('/api/plugins/:id', authMiddleware, requireCompanyAccess(['owner', 'admin']), async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -7780,7 +7817,7 @@ app.get('/api/plugins/:id', async (req, res) => {
 });
 
 // Plugin aktivieren
-app.post('/api/plugins/:id/enable', async (req, res) => {
+app.post('/api/plugins/:id/enable', authMiddleware, requireCompanyAccess(['owner', 'admin']), async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -7793,7 +7830,7 @@ app.post('/api/plugins/:id/enable', async (req, res) => {
 });
 
 // Plugin deaktivieren
-app.post('/api/plugins/:id/disable', async (req, res) => {
+app.post('/api/plugins/:id/disable', authMiddleware, requireCompanyAccess(['owner', 'admin']), async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -7806,7 +7843,7 @@ app.post('/api/plugins/:id/disable', async (req, res) => {
 });
 
 // Plugin installieren
-app.post('/api/plugins/install', async (req, res) => {
+app.post('/api/plugins/install', authMiddleware, requireCompanyAccess(['owner', 'admin']), async (req, res) => {
   const { source, location, version, force } = req.body;
 
   if (!source || !location) {
@@ -7985,8 +8022,8 @@ async function processAllPendingWakeups() {
  * Returns (or creates) the connection token for a company.
  * Admins use this token to share with OpenClaw users.
  */
-app.get('/api/openclaw/token', (req: any, res: any) => {
-  const unternehmenId = req.query.unternehmenId as string;
+app.get('/api/openclaw/token', authMiddleware, requireCompanyAccess(), (req: any, res: any) => {
+  const unternehmenId = req.companyId as string;
   if (!unternehmenId) return res.status(400).json({ error: 'unternehmenId required' });
 
   let row = db.select().from(openclawTokens)
@@ -8012,8 +8049,8 @@ app.get('/api/openclaw/token', (req: any, res: any) => {
  * POST /api/openclaw/token/regenerate
  * Regenerates the connection token (invalidates old one).
  */
-app.post('/api/openclaw/token/regenerate', (req: any, res: any) => {
-  const { unternehmenId } = req.body;
+app.post('/api/openclaw/token/regenerate', authMiddleware, requireCompanyAccess(), (req: any, res: any) => {
+  const unternehmenId = req.companyId as string;
   if (!unternehmenId) return res.status(400).json({ error: 'unternehmenId required' });
 
   const newToken = uuid();
@@ -8121,8 +8158,8 @@ app.post('/api/openclaw/join', (req: any, res: any) => {
  * GET /api/openclaw/agents?unternehmenId=...
  * Lists all OpenClaw agents for a company.
  */
-app.get('/api/openclaw/agents', (req: any, res: any) => {
-  const unternehmenId = req.query.unternehmenId as string;
+app.get('/api/openclaw/agents', authMiddleware, requireCompanyAccess(), (req: any, res: any) => {
+  const unternehmenId = req.companyId as string;
   if (!unternehmenId) return res.status(400).json({ error: 'unternehmenId required' });
 
   const agentRows = db.select().from(agents)
@@ -8425,6 +8462,12 @@ start().catch(console.error);
 app.post('/api/webhooks/telegram/:unternehmenId', async (req, res) => {
   const { unternehmenId } = req.params;
   const { message } = req.body;
+
+  // Validate company exists before processing
+  const company = db.select({ id: companies.id }).from(companies).where(eq(companies.id, unternehmenId)).get();
+  if (!company) {
+    return res.status(404).json({ error: 'Company not found' });
+  }
 
   if (message) {
     await messagingService.handleInboundMessage(unternehmenId, message, '');
