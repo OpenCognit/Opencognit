@@ -41,7 +41,9 @@ export async function processChatActions(
   replyText: string,
 ): Promise<ChatActionResult> {
   // ─── Zod Schema for Chat Actions ───────────────────────────────────────────
-  const chatActionSchema = z.array(z.discriminatedUnion('type', [
+  // Per-action union (not wrapped in array). We validate each action
+  // individually so one malformed entry doesn't disable validation for the rest.
+  const chatActionSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('create_task'), title: z.string().min(1).max(200), description: z.string().max(5000).optional(), priority: z.string().optional(), assignTo: z.string().optional(), goalId: z.string().optional(), projectId: z.string().optional() }),
     z.object({ type: z.literal('assign_task'), taskId: z.string().min(1), assignTo: z.string().min(1) }),
     z.object({ type: z.literal('mark_done'), taskId: z.string().min(1) }),
@@ -52,7 +54,7 @@ export async function processChatActions(
     z.object({ type: z.literal('call_meeting'), thema: z.string().min(1).max(200), participantIds: z.array(z.string()).optional(), agenda: z.string().optional() }),
     z.object({ type: z.literal('create_project'), name: z.string().min(1).max(200), description: z.string().max(5000).optional(), type: z.string().optional(), priority: z.string().optional(), goalId: z.string().optional(), color: z.string().optional(), tasks: z.array(z.any()).optional() }),
     z.object({ type: z.literal('create_routine'), title: z.string().min(1).max(200), description: z.string().optional(), cronExpression: z.string().min(1), timezone: z.string().optional(), assignToSelf: z.boolean().optional(), priority: z.string().optional() }),
-  ]));
+  ]);
   // ─────────────────────────────────────────────────────────────────────────────
 
   // Extract JSON blocks from [ACTION]{...}[/ACTION]
@@ -86,14 +88,24 @@ export async function processChatActions(
     } catch { /* invalid JSON */ }
   }
 
-  // Validate actions with Zod
-  let actions: any[] = [];
-  const validationResult = chatActionSchema.safeParse(rawActions);
-  if (validationResult.success) {
-    actions = validationResult.data;
-  } else {
-    console.warn(`  ⚠️ Chat Actions Zod-Validierung fehlgeschlagen: ${validationResult.error.errors.map(e => e.message).join(', ')}`);
-    actions = rawActions.filter((a: any) => typeof a?.type === 'string');
+  // Validate each action individually. Invalid entries are dropped (with logging)
+  // and don't disable validation for the rest of the batch.
+  const actions: any[] = [];
+  const rejectedActions: Array<{ raw: any; reason: string }> = [];
+  for (const candidate of rawActions) {
+    const result = chatActionSchema.safeParse(candidate);
+    if (result.success) {
+      actions.push(result.data);
+    } else {
+      const reason = result.error.errors.map(e => `${e.path.join('.') || '?'}: ${e.message}`).join('; ');
+      rejectedActions.push({ raw: candidate, reason });
+    }
+  }
+  if (rejectedActions.length > 0) {
+    console.warn(`  ⚠️ ${rejectedActions.length}/${rawActions.length} Chat-Actions verworfen wegen Validierungsfehler:`);
+    for (const r of rejectedActions) {
+      console.warn(`     · type=${r.raw?.type ?? '<none>'}: ${r.reason}`);
+    }
   }
 
   const createdTaskIds: string[] = [];
