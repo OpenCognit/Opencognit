@@ -2,7 +2,7 @@
 // Implements a 5-field cron parser and fires due triggers every 30 seconds
 
 import { db } from '../db/client.js';
-import { routineTrigger, routines, agentWakeupRequests, agents, routineRuns, companies } from '../db/schema.js';
+import { routineTrigger, routines, agentWakeupRequests, agents, routineRuns, companies, settings } from '../db/schema.js';
 import { eq, and, lt, sql, isNull } from 'drizzle-orm';
 import { wakeupService } from './wakeup.js';
 import { heartbeatService } from './heartbeat.js';
@@ -179,21 +179,40 @@ class CronServiceImpl implements CronService {
       }
     }, 60 * 60 * 1000); // every hour
 
-    // Reset monthly budgets on the 1st of each month (check every 30 min)
-    this.budgetResetIntervalId = setInterval(() => {
+    // Reset monthly budgets once per calendar month — restart-safe.
+    // Persist the last reset's YYYY-MM in `settings` and run if current month differs.
+    // This survives downtime: a server that was offline through the start of the
+    // month still triggers the reset on next startup.
+    const tryBudgetReset = () => {
       try {
         const now = new Date();
-        if (now.getDate() === 1 && now.getHours() === 0 && now.getMinutes() < 30) {
-          console.log('💰 Resetting monthly budgets for all agents...');
-          db.update(agents)
-            .set({ monthlySpendCent: 0, updatedAt: new Date().toISOString() })
-            .where(sql`${agents.monthlyBudgetCent} > 0`).run();
-          console.log('💰 Monthly budgets reset complete');
+        const currentYM = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+        const KEY = 'last_budget_reset_ym';
+
+        const row = db.select().from(settings)
+          .where(and(eq(settings.key, KEY), eq(settings.companyId, ''))).get() as any;
+        if (row?.value === currentYM) return; // already reset this month
+
+        console.log(`💰 Resetting monthly budgets for all agents (${currentYM}, last: ${row?.value || 'never'})...`);
+        db.update(agents)
+          .set({ monthlySpendCent: 0, updatedAt: new Date().toISOString() })
+          .where(sql`${agents.monthlyBudgetCent} > 0`).run();
+
+        const nowIso = new Date().toISOString();
+        if (row) {
+          db.update(settings).set({ value: currentYM, updatedAt: nowIso })
+            .where(and(eq(settings.key, KEY), eq(settings.companyId, ''))).run();
+        } else {
+          db.insert(settings).values({ key: KEY, companyId: '', value: currentYM, updatedAt: nowIso }).run();
         }
+        console.log('💰 Monthly budgets reset complete');
       } catch (e: any) {
         console.warn('⚠️ Cron: Budget reset fehlgeschlagen:', e.message);
       }
-    }, 30 * 60 * 1000); // check every 30 minutes
+    };
+
+    tryBudgetReset(); // run once on startup to catch missed months
+    this.budgetResetIntervalId = setInterval(tryBudgetReset, 30 * 60 * 1000); // re-check every 30 min
   }
 
   /**
