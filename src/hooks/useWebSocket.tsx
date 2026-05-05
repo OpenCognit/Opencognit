@@ -86,7 +86,11 @@ function connect() {
   };
 }
 
-function disconnect() {
+/** Tear down the connection and reset reconnect state.
+ *  Exposed for explicit logout/teardown flows — NOT called on Provider unmount,
+ *  because the Provider may legitimately remount (HMR, route guards) while the
+ *  app continues to need the socket. The singleton outlives any single React tree. */
+export function disconnectWebSocket() {
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
@@ -100,6 +104,7 @@ function disconnect() {
       ws.close();
     }
   }
+  reconnectAttempts = 0;
   notifyStatus(false);
 }
 
@@ -113,17 +118,16 @@ const WebSocketContext = createContext<WebSocketContextValue>({
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const [connected, setConnected] = useState(globalConnected);
 
+  // The WebSocket itself is a module-level singleton — it survives Provider
+  // remounts (HMR, route changes that briefly unmount the tree, StrictMode's
+  // double-invoke). The Provider only manages the per-instance status
+  // subscription so React state stays in sync with the singleton.
   useEffect(() => {
     statusListeners.add(setConnected);
+    setConnected(globalConnected);
     connect();
     return () => {
       statusListeners.delete(setConnected);
-    };
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      disconnect();
     };
   }, []);
 
