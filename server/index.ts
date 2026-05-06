@@ -9,7 +9,7 @@ import bcrypt from 'bcryptjs';
 import { toNodeHandler, fromNodeHeaders } from 'better-auth/node';
 import { auth as betterAuth } from './auth.js';
 import { db, initializeDatabase, sqlite } from './db/client.js';
-import { companies, agents, tasks, comments, approvals, activityLog, costEntries, workCycles, workCyclesArchive, goals, settings, chatMessages, users, user, routines, routineTrigger, routineRuns, workProducts, projects, agentPermissions, traceEvents, skillsLibrary, agentSkills, agentWakeupRequests, palaceWings, palaceDrawers, palaceDiary, palaceKg, palaceSummaries, budgetPolicies, budgetIncidents, executionWorkspaces, issueRelations, agentMeetings, openclawTokens, agentConfigHistory, ceoDecisionLog, agentTrustScores, agentVotes, agentCapabilities, contractNetBids, companyMemberships } from './db/schema.js';
+import { companies, agents, tasks, comments, approvals, activityLog, costEntries, workCycles, workCyclesArchive, goals, settings, chatMessages, users, user, routines, routineTrigger, routineRuns, workProducts, projects, agentPermissions, traceEvents, skillsLibrary, agentSkills, agentWakeupRequests, palaceWings, palaceDrawers, palaceDiary, palaceKg, palaceSummaries, budgetPolicies, budgetIncidents, executionWorkspaces, issueRelations, agentMeetings, openclawTokens, agentConfigHistory, ceoDecisionLog, agentTrustScores, agentVotes, agentCapabilities, contractNetBids, companyMemberships, learnedSkills } from './db/schema.js';
 import { getWorkspaceInfo, readWorkspaceFile } from './services/workspace.js';
 import { encryptSetting, decryptSetting } from './utils/crypto.js';
 import { eq, desc, asc, and, sql, count, sum, inArray, isNotNull, isNull, or } from 'drizzle-orm';
@@ -6435,6 +6435,73 @@ app.post('/api/tasks/:id/blockers', authMiddleware, requireResourceAccess("task"
 
 app.delete('/api/tasks/:id/blockers/:blockerId', authMiddleware, requireResourceAccess("task"), (req, res) => {
   removeBlocker(req.params.blockerId as string, req.params.id as string);
+  res.json({ ok: true });
+});
+
+// =============================================
+// LEARNED SKILLS (auto-extracted reusable patterns)
+// =============================================
+
+app.get('/api/companies/:unternehmenId/learned-skills', authMiddleware, requireCompanyAccess(), (req, res) => {
+  const companyId = req.params.unternehmenId as string;
+  const includeDisabled = req.query.includeDisabled === '1';
+  const rows = db.select().from(learnedSkills)
+    .where(includeDisabled
+      ? eq(learnedSkills.companyId, companyId)
+      : and(eq(learnedSkills.companyId, companyId), eq(learnedSkills.isDisabled, false)))
+    .orderBy(desc(learnedSkills.isPinned), desc(learnedSkills.useCount), desc(learnedSkills.createdAt))
+    .all();
+
+  // Enrich with source agent name
+  const agentIds = Array.from(new Set(rows.map(r => r.sourceAgentId).filter(Boolean))) as string[];
+  const agentRows = agentIds.length > 0
+    ? db.select({ id: agents.id, name: agents.name })
+        .from(agents).where(inArray(agents.id, agentIds)).all()
+    : [];
+  const agentNameById = new Map(agentRows.map(a => [a.id, a.name]));
+
+  res.json(rows.map(r => ({
+    ...r,
+    keywords: (() => { try { return JSON.parse(r.keywords || '[]'); } catch { return []; } })(),
+    sourceAgentName: r.sourceAgentId ? agentNameById.get(r.sourceAgentId) || null : null,
+  })));
+});
+
+app.patch('/api/learned-skills/:id', authMiddleware, (req, res) => {
+  const id = req.params.id as string;
+  const existing = db.select().from(learnedSkills).where(eq(learnedSkills.id, id)).get();
+  if (!existing) return res.status(404).json({ error: 'Skill not found' });
+
+  // Authorize via company membership
+  const userId = (req as any).users?.userId;
+  const membership = db.select().from(companyMemberships)
+    .where(and(eq(companyMemberships.userId, userId), eq(companyMemberships.companyId, existing.companyId)))
+    .get();
+  if (!membership) return res.status(403).json({ error: 'No access' });
+
+  const { title, pattern, recipe, isPinned, isDisabled } = req.body || {};
+  const patch: Record<string, any> = { updatedAt: new Date().toISOString() };
+  if (typeof title === 'string' && title.length > 0 && title.length <= 200) patch.title = title;
+  if (typeof pattern === 'string' && pattern.length > 0 && pattern.length <= 1000) patch.pattern = pattern;
+  if (typeof recipe === 'string' && recipe.length > 0 && recipe.length <= 8000) patch.recipe = recipe;
+  if (typeof isPinned === 'boolean') patch.isPinned = isPinned;
+  if (typeof isDisabled === 'boolean') patch.isDisabled = isDisabled;
+
+  db.update(learnedSkills).set(patch).where(eq(learnedSkills.id, id)).run();
+  const updated = db.select().from(learnedSkills).where(eq(learnedSkills.id, id)).get();
+  res.json(updated);
+});
+
+app.delete('/api/learned-skills/:id', authMiddleware, (req, res) => {
+  const id = req.params.id as string;
+  const existing = db.select().from(learnedSkills).where(eq(learnedSkills.id, id)).get();
+  if (!existing) return res.status(404).json({ error: 'Skill not found' });
+  const userId = (req as any).users?.userId;
+  const membership = db.select().from(companyMemberships)
+    .where(and(eq(companyMemberships.userId, userId), eq(companyMemberships.companyId, existing.companyId)))
+    .get();
+  if (!membership) return res.status(403).json({ error: 'No access' });
+  db.delete(learnedSkills).where(eq(learnedSkills.id, id)).run();
   res.json({ ok: true });
 });
 

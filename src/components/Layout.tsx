@@ -85,6 +85,7 @@ function MobileNav() {
               { to: '/meetings', label: 'Meetings' },
               { to: '/routines', label: 'Routines' },
               { to: '/skill-library', label: 'Skill Library' },
+              { to: '/learned-skills', label: 'Learned Skills' },
               { to: '/org-chart', label: 'Org Chart' },
               { to: '/costs', label: 'Costs' },
               { to: '/approvals', label: 'Approvals' },

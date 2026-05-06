@@ -6,6 +6,7 @@ import { agents, tasks, goals, projects, issueRelations, comments, palaceKg, cha
 import { eq, and, inArray, desc, asc, isNull, sql } from 'drizzle-orm';
 import type { AdapterContext, AdapterTask, CompanyGoal } from '../../adapters/types.js';
 import { loadRelevantMemory } from '../memory-auto.js';
+import { findRelevantLearnedSkills, formatLearnedSkillsForPrompt, markLearnedSkillsUsed } from '../learned-skills.js';
 
 export interface BuildContextParams {
   taskFull: any;
@@ -41,6 +42,26 @@ export async function buildAdapterContext(params: BuildContextParams): Promise<A
     .split(/\W+/)
     .filter(w => w.length > 4);
   const memoryContext = loadRelevantMemory(agentId, taskKeywords) || null;
+
+  // ─── Learned Skills (auto-extracted recipes from previous successful runs) ──
+  // Inject up to 3 most-relevant patterns into the agent's context so capabilities
+  // compound across the team — Hermes-style skill reuse, but cross-agent.
+  let learnedSkillsBlock = '';
+  try {
+    const relevant = findRelevantLearnedSkills({
+      companyId,
+      taskTitle: taskFull.title,
+      taskDescription: taskFull.description || null,
+      limit: 3,
+    });
+    if (relevant.length > 0) {
+      learnedSkillsBlock = formatLearnedSkillsForPrompt(relevant, false);
+      markLearnedSkillsUsed(relevant.map(s => s.id));
+      console.log(`  🧠 ${relevant.length} learned skill(s) injected for task ${taskFull.id}`);
+    }
+  } catch (e: any) {
+    console.warn(`[learned-skills] retrieval failed: ${e?.message}`);
+  }
 
   // ─── Letzte Chat-Nachrichten laden (Board ↔ Agent) ──────────────────
   // Damit der Agent weiß was im direkten Chat besprochen wurde und
@@ -219,6 +240,7 @@ export async function buildAdapterContext(params: BuildContextParams): Promise<A
         } catch { return {}; }
       })(),
       ...(memoryContext ? { memory: memoryContext } : {}),
+      ...(learnedSkillsBlock ? { learnedSkills: learnedSkillsBlock } : {}),
       ...(letzteEntscheidung ? { letzteEntscheidung } : {}),
       ...(boardKommunikation ? { boardKommunikation } : {}),
       ...(blockerOutputs ? { vorgaengerOutputs: blockerOutputs } : {}),

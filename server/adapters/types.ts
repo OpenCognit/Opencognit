@@ -78,6 +78,8 @@ export interface AdapterContext {
     lastDecision?: string;
     /** Letzte Chat-Nachrichten zwischen Board und diesem Agent (Kontinuität zwischen Chat und autonomer Ausführung) */
     boardCommunication?: string;
+    /** Auto-extracted reusable patterns from previous successful tasks (Hermes-style skill compounding, cross-agent) */
+    learnedSkills?: string;
   };
   /**
    * Rich situational context assembled specifically for OpenClaw agents.

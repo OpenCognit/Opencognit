@@ -43,6 +43,7 @@ const Plugins      = lazy(() => import('./pages/Plugins').then(m => ({ default: 
 const WorkerNodes  = lazy(() => import('./pages/WorkerNodes').then(m => ({ default: m.WorkerNodes })));
 const Chat         = lazy(() => import('./pages/Chat').then(m => ({ default: m.Chat })));
 const Memory       = lazy(() => import('./pages/Memory').then(m => ({ default: m.Memory })));
+const LearnedSkills = lazy(() => import('./pages/LearnedSkills').then(m => ({ default: m.LearnedSkills })));
 
 function PageLoader() {
   return (
@@ -116,6 +117,7 @@ function ProtectedRoutes() {
           <Route path="/workers" element={<Page><WorkerNodes /></Page>} />
           <Route path="/chat" element={<Page><Chat /></Page>} />
           <Route path="/memory" element={<Page><Memory /></Page>} />
+          <Route path="/learned-skills" element={<Page><LearnedSkills /></Page>} />
           <Route path="/settings" element={<Page><Settings /></Page>} />
           {/* Legacy German routes — redirect to English */}
           <Route path="/unternehmen" element={<Navigate to="/companies" replace />} />

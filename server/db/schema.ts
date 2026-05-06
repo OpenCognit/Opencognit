@@ -343,6 +343,33 @@ export const taskCheckpoints = sqliteTable('task_checkpoints', {
   idxCompany: index('checkpoint_company_idx').on(t.companyId),
 }));
 
+// ===== Learned Skills (auto-extracted from successful work cycles) =====
+// Distinct from skillsLibrary (manually curated, broad categories).
+// Learned skills are concrete recipes derived from a specific successful task,
+// shared company-wide so other agents can reuse the pattern.
+export const learnedSkills = sqliteTable('learned_skills', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  sourceAgentId: text('source_agent_id').references(() => agents.id, { onDelete: 'set null' }),
+  sourceTaskId: text('source_task_id').references(() => tasks.id, { onDelete: 'set null' }),
+  sourceRunId: text('source_run_id').references(() => workCycles.id, { onDelete: 'set null' }),
+  title: text('title').notNull(),                  // short label, e.g. "Stripe webhook handler"
+  pattern: text('pattern').notNull(),              // when this applies, e.g. "tasks involving stripe webhook signature verification"
+  recipe: text('recipe').notNull(),                // the actual reusable steps/output template
+  keywords: text('keywords'),                      // JSON array, used for retrieval matching
+  confidence: integer('confidence').notNull().default(50), // 0-100
+  useCount: integer('use_count').notNull().default(0),
+  lastUsedAt: text('last_used_at'),
+  isPinned: integer('is_pinned', { mode: 'boolean' }).notNull().default(false),
+  isDisabled: integer('is_disabled', { mode: 'boolean' }).notNull().default(false),
+  extractedBy: text('extracted_by', { enum: ['heuristic', 'llm'] }).notNull().default('heuristic'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (t) => ({
+  idxCompany: index('learned_skills_company_idx').on(t.companyId),
+  idxKeywordSearch: index('learned_skills_keywords_idx').on(t.companyId, t.isDisabled),
+}));
+
 // ===== Ziele =====
 export const goals = sqliteTable('ziele', {
   id: text('id').primaryKey(),
@@ -855,6 +882,7 @@ export const allTables = {
   agentTrustScores,
   workCyclesArchive,
   taskCheckpoints,
+  learnedSkills,
   memoryConflicts,
   user,
   session,

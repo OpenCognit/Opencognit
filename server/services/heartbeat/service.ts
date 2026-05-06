@@ -1270,6 +1270,21 @@ WICHTIG: Verknüpfe jeden neuen Task mit einem Ziel via "targetId". Aktualisiere
             trace(agentId, companyId, 'info', `🔓 ${unblocked.length} task(s) unblocked`, unblocked.join(', '), runId);
           }
 
+          // Auto-extract a learned skill from this successful run (fire-and-forget).
+          // We never block task completion on this — learning is a side-effect.
+          import('../learned-skills.js').then(async ({ extractAndStoreLearnedSkill }) => {
+            try {
+              const r = await extractAndStoreLearnedSkill({ runId, taskId: task.id, agentId, companyId });
+              if (r.created) {
+                trace(agentId, companyId, 'info', `🧠 Learned skill extracted`, `id=${r.skillId}`, runId);
+              } else if (r.updated) {
+                trace(agentId, companyId, 'info', `🧠 Existing learned skill reinforced`, `id=${r.skillId}`, runId);
+              }
+            } catch (e: any) {
+              console.warn(`[learned-skills] extract failed:`, e?.message);
+            }
+          }).catch(() => {});
+
           // Auto-update goal progress
           const completedTask = await db.select({ targetId: tasks.goalId })
             .from(tasks).where(eq(tasks.id, task.id)).get();
