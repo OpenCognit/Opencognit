@@ -4,7 +4,7 @@ import {
   Send, ChevronDown, User, Loader2, AlertCircle,
   Brain, ChevronRight, Paperclip, X, ImageIcon,
   Plus, History, Trash2, Sparkles, FileText, Copy,
-  Activity
+  Activity, Users, ListChecks, Target, Wallet, HelpCircle, AlertTriangle, Cpu
 } from 'lucide-react';
 import { useCompany } from '../hooks/useCompany';
 import { useI18n } from '../i18n';
@@ -126,6 +126,88 @@ interface ChatSession {
 interface Cmd {
   icon: React.ReactNode; label: string; desc: string; prefix: string;
 }
+
+// ── Slash commands ──────────────────────────────────────────────────────────
+// Each command expands into a prompt template. The CEO has tool-use, so the
+// templates ask for live data instead of bundling it client-side. This keeps
+// the data fresh and lets the LLM decide *how* to format the answer.
+interface SlashCmd {
+  cmd: string;
+  icon: React.ReactNode;
+  label: { de: string; en: string };
+  desc: { de: string; en: string };
+  prompt: { de: string; en: string };
+}
+
+const SLASH_COMMANDS: SlashCmd[] = [
+  {
+    cmd: '/status',
+    icon: <Activity size={13} />,
+    label: { de: 'Status-Snapshot', en: 'Status snapshot' },
+    desc: { de: 'Aktueller Überblick: Agents, Tasks, Blocker', en: 'Current overview: agents, tasks, blockers' },
+    prompt: {
+      de: 'Gib mir einen prägnanten aktuellen Status-Überblick: aktive/idle Agents, offene und blockierte Tasks, kritische Punkte. Nutze deine Tools wenn nötig.',
+      en: 'Give me a concise current status overview: active/idle agents, open and blocked tasks, critical issues. Use your tools if needed.',
+    },
+  },
+  {
+    cmd: '/agents',
+    icon: <Users size={13} />,
+    label: { de: 'Agenten-Liste', en: 'List agents' },
+    desc: { de: 'Alle Agenten mit Rolle und Status', en: 'All agents with role and status' },
+    prompt: {
+      de: 'Liste alle Agenten dieses Unternehmens auf — mit Name, Rolle, Status und der aktuellen Aufgabe falls vorhanden.',
+      en: 'List all agents in this company — with name, role, status, and their current task if any.',
+    },
+  },
+  {
+    cmd: '/tasks',
+    icon: <ListChecks size={13} />,
+    label: { de: 'Offene Tasks', en: 'Open tasks' },
+    desc: { de: 'Aktive Tasks priorisiert nach Dringlichkeit', en: 'Active tasks prioritized by urgency' },
+    prompt: {
+      de: 'Zeig mir die offenen Tasks (todo, in_progress, blocked, in_review) sortiert nach Priorität. Hebe Blocker und überfällige Items hervor.',
+      en: 'Show me the open tasks (todo, in_progress, blocked, in_review) sorted by priority. Highlight blockers and overdue items.',
+    },
+  },
+  {
+    cmd: '/blockers',
+    icon: <AlertTriangle size={13} />,
+    label: { de: 'Blocker', en: 'Blockers' },
+    desc: { de: 'Was hängt aktuell und warum', en: 'What\'s currently stuck and why' },
+    prompt: {
+      de: 'Was sind aktuell unsere kritischsten Blocker? Welche Tasks hängen wovon ab, was muss als nächstes entschieden werden?',
+      en: 'What are our most critical blockers right now? Which tasks depend on what, and what needs to be decided next?',
+    },
+  },
+  {
+    cmd: '/goals',
+    icon: <Target size={13} />,
+    label: { de: 'Unternehmensziele', en: 'Company goals' },
+    desc: { de: 'Ziele und Fortschritt', en: 'Goals and progress' },
+    prompt: {
+      de: 'Was sind unsere Unternehmensziele und wie ist der aktuelle Fortschritt? Welche Tasks tragen darauf ein?',
+      en: 'What are our company goals and what\'s the current progress? Which tasks contribute to them?',
+    },
+  },
+  {
+    cmd: '/budget',
+    icon: <Wallet size={13} />,
+    label: { de: 'Budget-Status', en: 'Budget status' },
+    desc: { de: 'Token-Verbrauch und Kosten', en: 'Token usage and costs' },
+    prompt: {
+      de: 'Wie steht es um die Token-Budgets der Agenten? Wer ist nahe am Limit, wo könnten wir Kosten reduzieren?',
+      en: 'How are the agent token budgets looking? Who\'s close to the limit, where could we reduce costs?',
+    },
+  },
+  {
+    cmd: '/help',
+    icon: <HelpCircle size={13} />,
+    label: { de: 'Slash-Befehle', en: 'Slash commands' },
+    desc: { de: 'Liste aller verfügbaren Befehle', en: 'List of available commands' },
+    prompt: { de: '__HELP__', en: '__HELP__' },
+  },
+];
 
 interface CEOStep {
   id: string;
@@ -278,6 +360,11 @@ export function Chat() {
   const [streaming, setStreaming] = useState(false);
   const [streamError, setStreamError] = useState(false);
   const [sessionStats, setSessionStats] = useState<SessionStats>({ messages: 0, inputTokens: 0, outputTokens: 0, costCents: 0 });
+  const [slashIdx, setSlashIdx] = useState(0);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [modelInput, setModelInput] = useState('');
+  const [modelSaving, setModelSaving] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [loadingAgents, setLoadingAgents] = useState(true);
@@ -598,7 +685,135 @@ export function Chat() {
     }
   }, [input, pendingImage, streaming, selectedAgent, aktivesUnternehmen, currentSession, persistSession]);
 
+  // ── Model switcher: per-provider suggestions + save handler ────────────────
+  const modelSuggestions = useMemo<string[]>(() => {
+    const ct = selectedAgent?.connectionType || '';
+    if (ct === 'anthropic' || ct === 'claude') {
+      return ['claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'];
+    }
+    if (ct === 'openrouter') {
+      return ['anthropic/claude-opus-4-7', 'anthropic/claude-sonnet-4-6', 'openai/gpt-5', 'google/gemini-2.5-pro', 'meta-llama/llama-3.1-70b-instruct'];
+    }
+    if (ct === 'openai') {
+      return ['gpt-5', 'gpt-5-mini', 'gpt-4o', 'gpt-4o-mini'];
+    }
+    if (ct === 'moonshot') {
+      return ['moonshot-v1-32k', 'moonshot-v1-128k', 'kimi-k2'];
+    }
+    if (ct === 'ollama') {
+      return ['llama3.1:8b', 'llama3.1:70b', 'qwen2.5-coder', 'mistral'];
+    }
+    return [];
+  }, [selectedAgent?.connectionType]);
+
+  // Open menu → seed input with current model
+  useEffect(() => {
+    if (modelMenuOpen) {
+      setModelInput(selectedAgent?.model || '');
+      setModelError(null);
+    }
+  }, [modelMenuOpen, selectedAgent?.model]);
+
+  const saveModel = useCallback(async (newModel: string) => {
+    if (!selectedAgent || !newModel.trim() || newModel.trim() === selectedAgent.model) {
+      setModelMenuOpen(false);
+      return;
+    }
+    setModelSaving(true);
+    setModelError(null);
+    try {
+      // Read current connectionConfig to merge model into it (don't drop other fields)
+      const cfgRes = await fetch(`/api/experten/${selectedAgent.id}`, {
+        credentials: 'include',
+        headers: authHeaders({ 'x-unternehmen-id': aktivesUnternehmen?.id || '' }),
+      });
+      let existingCfg: Record<string, any> = {};
+      if (cfgRes.ok) {
+        const a = await cfgRes.json();
+        try { existingCfg = JSON.parse(a.verbindungsConfig || a.connectionConfig || '{}'); } catch {}
+      }
+      const merged = { ...existingCfg, model: newModel.trim() };
+      const res = await fetch(`/api/agents/${selectedAgent.id}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: authHeaders({ 'Content-Type': 'application/json', 'x-unternehmen-id': aktivesUnternehmen?.id || '' }),
+        body: JSON.stringify({ verbindungsConfig: merged }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || `HTTP ${res.status}`);
+      }
+      setSelectedAgent(a => a ? { ...a, model: newModel.trim() } : a);
+      setModelMenuOpen(false);
+    } catch (e: any) {
+      setModelError(e?.message || 'Fehler beim Speichern');
+    } finally {
+      setModelSaving(false);
+    }
+  }, [selectedAgent, aktivesUnternehmen]);
+
+  // ── Slash-command filter + apply ───────────────────────────────────────────
+  const slashMatches = useMemo<SlashCmd[]>(() => {
+    const t = input.trimStart();
+    if (!t.startsWith('/')) return [];
+    const q = t.slice(1).split(/\s/, 1)[0]?.toLowerCase() || '';
+    if (!q) return SLASH_COMMANDS;
+    return SLASH_COMMANDS.filter(c => c.cmd.slice(1).startsWith(q));
+  }, [input]);
+  const slashOpen = slashMatches.length > 0;
+
+  // Reset highlighted index when the menu re-opens or filter changes
+  useEffect(() => { setSlashIdx(0); }, [slashOpen, slashMatches.length]);
+
+  const applySlashCommand = useCallback((c: SlashCmd) => {
+    const lang = de ? 'de' : 'en';
+    if (c.prompt.de === '__HELP__') {
+      // Special: dump available commands inline as a system message
+      const list = SLASH_COMMANDS
+        .filter(x => x.prompt.de !== '__HELP__')
+        .map(x => `${x.cmd}  —  ${x.label[lang]}`)
+        .join('\n');
+      const helpMsg: Message = {
+        id: `help-${Date.now()}`,
+        role: 'system',
+        text: (de ? 'Verfügbare Slash-Befehle:\n' : 'Available slash commands:\n') + list,
+        time: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, helpMsg]);
+      setInput('');
+    } else {
+      setInput(c.prompt[lang]);
+    }
+    setTimeout(() => {
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        el.style.height = 'auto';
+        el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+        el.setSelectionRange(el.value.length, el.value.length);
+      }
+    }, 0);
+  }, [de]);
+
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Slash-menu navigation takes priority when open
+    if (slashOpen) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSlashIdx(i => Math.min(i + 1, slashMatches.length - 1)); return; }
+      if (e.key === 'ArrowUp')   { e.preventDefault(); setSlashIdx(i => Math.max(i - 1, 0)); return; }
+      if (e.key === 'Escape')    { e.preventDefault(); setInput(''); return; }
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        const pick = slashMatches[slashIdx];
+        if (pick) applySlashCommand(pick);
+        return;
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const pick = slashMatches[slashIdx];
+        if (pick) applySlashCommand(pick);
+        return;
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   };
 
@@ -643,30 +858,129 @@ export function Chat() {
                 <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{selectedAgent.name}</span>
                 <span style={{ fontSize: 7, fontWeight: 800, padding: '2px 6px', color: C.gold, background: C.goldDim, border: `1px solid ${C.goldGlow}`, letterSpacing: '0.08em', ...round(4) }}>CEO</span>
               </div>
-              {/* Model + provider pill — visible at a glance which LLM is connected */}
-              <div
-                title={de
-                  ? `Verbunden mit ${selectedAgent.connectionType || 'unknown'} · Modell ${selectedAgent.model || 'default'}`
-                  : `Connected to ${selectedAgent.connectionType || 'unknown'} · Model ${selectedAgent.model || 'default'}`}
-                style={{ ...flex('row'), gap: 6, alignItems: 'center', padding: '3px 8px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}`, ...round(4) }}
-              >
-                <motion.div
+              {/* Model + provider pill — clickable to switch models */}
+              <div style={{ position: 'relative' }}>
+                <button
+                  onClick={() => setModelMenuOpen(o => !o)}
+                  title={de
+                    ? `Verbunden mit ${selectedAgent.connectionType || 'unknown'} · Modell ${selectedAgent.model || 'default'} · Klicken zum Wechseln`
+                    : `Connected to ${selectedAgent.connectionType || 'unknown'} · Model ${selectedAgent.model || 'default'} · Click to switch`}
                   style={{
-                    width: 6, height: 6, borderRadius: 9999,
-                    background: streamError ? '#ef4444' : streaming ? C.gold : C.success,
-                    boxShadow: streaming ? `0 0 6px ${C.gold}` : 'none',
+                    ...flex('row'), gap: 6, alignItems: 'center', padding: '3px 8px',
+                    background: modelMenuOpen ? C.goldDim : 'rgba(255,255,255,0.03)',
+                    border: `1px solid ${modelMenuOpen ? C.goldGlow : C.border}`,
+                    cursor: 'pointer', transition: 'all 0.15s',
+                    ...round(4),
                   }}
-                  animate={streaming ? { opacity: [0.4, 1, 0.4] } : { opacity: 1 }}
-                  transition={streaming ? { duration: 1.2, repeat: Infinity } : { duration: 0 }}
-                />
-                {selectedAgent.connectionType && (
-                  <span style={{ fontSize: 9, color: C.textMuted, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    {selectedAgent.connectionType}
-                  </span>
-                )}
-                {selectedAgent.model && (
-                  <span style={{ fontSize: 10, color: C.text, fontFamily: 'var(--font-mono)' }}>{selectedAgent.model}</span>
-                )}
+                >
+                  <motion.div
+                    style={{
+                      width: 6, height: 6, borderRadius: 9999,
+                      background: streamError ? '#ef4444' : streaming ? C.gold : C.success,
+                      boxShadow: streaming ? `0 0 6px ${C.gold}` : 'none',
+                    }}
+                    animate={streaming ? { opacity: [0.4, 1, 0.4] } : { opacity: 1 }}
+                    transition={streaming ? { duration: 1.2, repeat: Infinity } : { duration: 0 }}
+                  />
+                  {selectedAgent.connectionType && (
+                    <span style={{ fontSize: 9, color: C.textMuted, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      {selectedAgent.connectionType}
+                    </span>
+                  )}
+                  {selectedAgent.model && (
+                    <span style={{ fontSize: 10, color: C.text, fontFamily: 'var(--font-mono)' }}>{selectedAgent.model}</span>
+                  )}
+                  <ChevronDown size={11} style={{ color: C.textDim, opacity: 0.6, transition: 'transform 0.15s', transform: modelMenuOpen ? 'rotate(180deg)' : 'rotate(0)' }} />
+                </button>
+                <AnimatePresence>
+                  {modelMenuOpen && (
+                    <>
+                      {/* Click-outside catcher */}
+                      <div onClick={() => setModelMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
+                      <motion.div
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        transition={{ duration: 0.12 }}
+                        style={{
+                          position: 'absolute', top: 'calc(100% + 6px)', left: 0, minWidth: 320,
+                          background: 'rgba(15, 15, 18, 0.96)',
+                          border: `1px solid ${C.border}`,
+                          boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
+                          backdropFilter: 'blur(20px)',
+                          ...round(8),
+                          zIndex: 31,
+                          padding: 12,
+                        }}
+                      >
+                        <div style={{ fontSize: 9, color: C.textDim, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+                          {de ? 'Modell wechseln' : 'Switch model'} · {selectedAgent.connectionType?.toUpperCase()}
+                        </div>
+                        <input
+                          autoFocus
+                          value={modelInput}
+                          onChange={e => setModelInput(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') { e.preventDefault(); saveModel(modelInput); }
+                            if (e.key === 'Escape') { e.preventDefault(); setModelMenuOpen(false); }
+                          }}
+                          placeholder={de ? 'Modell-ID eingeben…' : 'Enter model id…'}
+                          style={{ width: '100%', padding: '7px 10px', background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, color: C.text, fontFamily: 'var(--font-mono)', fontSize: 11, outline: 'none', boxSizing: 'border-box', ...round(5) }}
+                        />
+                        {modelSuggestions.length > 0 && (
+                          <div style={{ marginTop: 10 }}>
+                            <div style={{ fontSize: 9, color: C.textDim, fontFamily: 'var(--font-mono)', marginBottom: 4 }}>
+                              {de ? 'Vorschläge' : 'Suggestions'}
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                              {modelSuggestions.map(m => (
+                                <button
+                                  key={m}
+                                  onClick={() => saveModel(m)}
+                                  disabled={modelSaving}
+                                  style={{
+                                    textAlign: 'left', padding: '5px 8px',
+                                    background: m === selectedAgent.model ? C.goldDim : 'transparent',
+                                    border: 'none', cursor: 'pointer',
+                                    color: m === selectedAgent.model ? C.gold : C.textMuted,
+                                    fontFamily: 'var(--font-mono)', fontSize: 11,
+                                    ...round(4),
+                                    transition: 'background 0.1s',
+                                  }}
+                                  onMouseEnter={e => { if (m !== selectedAgent.model) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.04)'; }}
+                                  onMouseLeave={e => { if (m !== selectedAgent.model) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+                                >
+                                  {m === selectedAgent.model && '✓ '}{m}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {modelError && (
+                          <div style={{ marginTop: 8, padding: '6px 8px', fontSize: 11, color: '#ef4444', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', ...round(4) }}>
+                            {modelError}
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', gap: 6, marginTop: 10, justifyContent: 'flex-end' }}>
+                          <button
+                            onClick={() => setModelMenuOpen(false)}
+                            disabled={modelSaving}
+                            style={{ padding: '5px 10px', background: 'transparent', border: `1px solid ${C.border}`, color: C.textMuted, cursor: 'pointer', fontSize: 10, fontFamily: 'var(--font-mono)', ...round(4) }}
+                          >
+                            {de ? 'Abbrechen' : 'Cancel'}
+                          </button>
+                          <button
+                            onClick={() => saveModel(modelInput)}
+                            disabled={modelSaving || !modelInput.trim() || modelInput.trim() === selectedAgent.model}
+                            style={{ padding: '5px 10px', background: C.gold, border: 'none', color: '#0a0a0f', cursor: modelSaving ? 'wait' : 'pointer', fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 700, opacity: (modelSaving || !modelInput.trim() || modelInput.trim() === selectedAgent.model) ? 0.5 : 1, ...round(4) }}
+                          >
+                            {modelSaving ? '…' : (de ? 'Speichern' : 'Save')}
+                          </button>
+                        </div>
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
               </div>
             </>
           ) : (
@@ -974,7 +1288,55 @@ export function Chat() {
           </div>
 
           {/* Input — stays fixed at bottom, never scrolls */}
-          <div style={{ flexShrink: 0, padding: '10px 24px 24px', background: 'rgba(10,10,10,0.85)', backdropFilter: 'blur(24px)', borderTop: `1px solid ${C.border}` }}>
+          <div style={{ flexShrink: 0, padding: '10px 24px 24px', background: 'rgba(10,10,10,0.85)', backdropFilter: 'blur(24px)', borderTop: `1px solid ${C.border}`, position: 'relative' }}>
+            {/* Slash-command popover — anchored above the input */}
+            <AnimatePresence>
+              {slashOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 6 }}
+                  transition={{ duration: 0.12 }}
+                  style={{
+                    position: 'absolute', left: 24, right: 24, bottom: 'calc(100% - 4px)',
+                    background: 'rgba(15, 15, 18, 0.96)',
+                    border: `1px solid ${C.border}`,
+                    boxShadow: '0 -4px 24px rgba(0,0,0,0.4)',
+                    backdropFilter: 'blur(20px)',
+                    ...round(12),
+                    overflow: 'hidden',
+                    maxHeight: 320,
+                    overflowY: 'auto',
+                    zIndex: 20,
+                  }}
+                  onMouseDown={e => e.preventDefault()}
+                >
+                  <div style={{ padding: '8px 12px', fontSize: 9, color: C.textDim, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em', borderBottom: `1px solid ${C.border}` }}>
+                    {de ? 'Slash-Befehle' : 'Slash commands'} · ↑↓ · Enter · Esc
+                  </div>
+                  {slashMatches.map((c, i) => (
+                    <button
+                      key={c.cmd}
+                      onClick={() => applySlashCommand(c)}
+                      onMouseEnter={() => setSlashIdx(i)}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '8px 12px',
+                        background: i === slashIdx ? C.goldDim : 'transparent',
+                        border: 'none', textAlign: 'left', cursor: 'pointer',
+                        borderLeft: i === slashIdx ? `2px solid ${C.gold}` : '2px solid transparent',
+                        color: i === slashIdx ? C.text : C.textMuted,
+                      }}
+                    >
+                      <span style={{ color: i === slashIdx ? C.gold : C.textDim, display: 'inline-flex' }}>{c.icon}</span>
+                      <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', minWidth: 80, color: i === slashIdx ? C.gold : C.textMuted }}>{c.cmd}</span>
+                      <span style={{ fontSize: 12, fontWeight: 500 }}>{c.label[de ? 'de' : 'en']}</span>
+                      <span style={{ fontSize: 11, color: C.textDim, marginLeft: 'auto', opacity: 0.7 }}>{c.desc[de ? 'de' : 'en']}</span>
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
             <motion.div style={{ position: 'relative', background: 'rgba(255,255,255,0.02)', border: `1px solid ${C.border}`, boxShadow: '0 8px 32px rgba(0,0,0,0.4)', backdropFilter: 'blur(40px)', ...round(18) }} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
               <div style={{ padding: '18px 20px 10px' }}>
                 <textarea
