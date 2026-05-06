@@ -4249,6 +4249,17 @@ app.post(['/api/agents/:id/chat/stream', '/api/experten/:id/chat/stream'], authM
   const { nachricht, image } = req.body; // image: { data: string (base64), mimeType: string }
   if (!unternehmenId || !nachricht) return res.status(400).json({ error: 'Missing parameters' });
 
+  // SSE headers (set before any emit() so error paths can stream)
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const emit = (type: string, payload: Record<string, unknown>) => {
+    try { res.write(`data: ${JSON.stringify({ type, ...payload })}\n\n`); } catch {}
+  };
+
   // Validate image upload
   if (image) {
     const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -4271,17 +4282,6 @@ app.post(['/api/agents/:id/chat/stream', '/api/experten/:id/chat/stream'], authM
       return res.end();
     }
   }
-
-  // SSE headers
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
-  res.flushHeaders();
-
-  const emit = (type: string, payload: Record<string, unknown>) => {
-    try { res.write(`data: ${JSON.stringify({ type, ...payload })}\n\n`); } catch {}
-  };
 
   // Load expert + company (same as /chat/direct)
   const expert = db.select().from(agents).where(eq(agents.id, expertId as string)).get();
