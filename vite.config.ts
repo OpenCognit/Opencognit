@@ -36,12 +36,14 @@ export default defineConfig({
   server: {
     port: parseInt(process.env.VITE_FRONTEND_PORT || '3200'),
     proxy: {
+      // Backend port: prefer VITE_BACKEND_PORT, fall back to PORT (the var the backend itself uses).
+      // This means a single PORT=... in .env keeps frontend and backend in sync.
       '/api': {
-        target: `http://localhost:${process.env.VITE_BACKEND_PORT || '3201'}`,
+        target: `http://localhost:${process.env.VITE_BACKEND_PORT || process.env.PORT || '3201'}`,
         changeOrigin: true,
       },
       '/ws': {
-        target: `ws://localhost:${process.env.VITE_BACKEND_PORT || '3201'}`,
+        target: `ws://localhost:${process.env.VITE_BACKEND_PORT || process.env.PORT || '3201'}`,
         ws: true,
       },
     },

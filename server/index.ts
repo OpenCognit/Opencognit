@@ -1807,11 +1807,15 @@ app.get('/api/files/read', authMiddleware, requireCompanyAccess(), (req, res) =>
 // =============================================
 app.get('/api/companies/:unternehmenId/approvals', requireCompanyAccess(), (req, res) => {
   const result = db.select().from(approvals).where(eq(approvals.companyId, req.params.unternehmenId)).orderBy(desc(approvals.createdAt)).all();
-  // Parse payload JSON
-  res.json(result.map((g: any) => ({
-    ...g,
-    payload: g.payload ? JSON.parse(g.payload) : null,
-  })));
+  // Parse payload JSON — tolerate malformed legacy rows so one bad row doesn't 500 the whole endpoint
+  res.json(result.map((g: any) => {
+    let parsedPayload: any = null;
+    if (g.payload) {
+      try { parsedPayload = JSON.parse(g.payload); }
+      catch { parsedPayload = { _raw: g.payload, _parseError: true }; }
+    }
+    return { ...g, payload: parsedPayload };
+  }));
 });
 
 app.post('/api/approvals/:id/approve', requireResourceAccess("approval"), async (req, res) => {
