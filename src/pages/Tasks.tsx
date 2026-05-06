@@ -1,7 +1,8 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { useWebSocketEvent } from '../hooks/useWebSocket';
 import { useLocation } from 'react-router-dom';
-import { Plus, LayoutGrid, List, GanttChartSquare, Loader2, Sparkles, Zap, Lock, Search, X as XIcon, Trash2, CheckSquare2, Square, UserCheck, ArrowRight, Download } from 'lucide-react';
+import { Plus, LayoutGrid, List, GanttChartSquare, Loader2, Sparkles, Zap, Lock, Search, X as XIcon, Trash2, CheckSquare2, Square, UserCheck, ArrowRight, Download, Network } from 'lucide-react';
+const TaskDependencyGraph = lazy(() => import('../components/TaskDependencyGraph').then(m => ({ default: m.TaskDependencyGraph })));
 import { PageHelp } from '../components/PageHelp';
 import { StatusBadge } from '../components/StatusBadge';
 import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
@@ -20,7 +21,7 @@ import { GlassCard } from '../components/GlassCard';
 export function Tasks() {
   const i18n = useI18n();
   const location = useLocation();
-  const [ansicht, setAnsicht] = useState<'kanban' | 'liste' | 'timeline'>('kanban');
+  const [ansicht, setAnsicht] = useState<'kanban' | 'liste' | 'timeline' | 'graph'>('kanban');
   const [showNeueAufgabeModal, setShowNeueAufgabeModal] = useState(false);
   const [showWorkflowModal, setShowWorkflowModal] = useState(false);
   const [selectedAufgabeId, setSelectedAufgabeId] = useState<string | null>(null);
@@ -81,6 +82,7 @@ export function Tasks() {
       if (e.key === '1') { e.preventDefault(); setAnsicht('kanban'); }
       if (e.key === '2') { e.preventDefault(); setAnsicht('liste'); }
       if (e.key === '3') { e.preventDefault(); setAnsicht('timeline'); }
+      if (e.key === '4') { e.preventDefault(); setAnsicht('graph'); }
       if (e.key === '/') { e.preventDefault(); document.querySelector<HTMLInputElement>('input[placeholder*="such"]')?.focus(); }
     };
     document.addEventListener('keydown', handler);
@@ -346,6 +348,24 @@ export function Tasks() {
                   }}
                 >
                   <GanttChartSquare size={14} /> Timeline
+                </button>
+                <button
+                  onClick={() => setAnsicht('graph')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    padding: '0.5rem 0.875rem',
+                    backgroundColor: ansicht === 'graph' ? 'rgba(197, 160, 89, 0.1)' : 'transparent',
+                    border: 'none',
+                    color: ansicht === 'graph' ? '#c5a059' : '#71717a',
+                    fontWeight: 500,
+                    fontSize: '0.8125rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  <Network size={14} /> Graph
                 </button>
               </div>
               <button
@@ -912,7 +932,7 @@ export function Tasks() {
                 </tbody>
               </table>
             </GlassCard>
-          ) : (
+          ) : ansicht === 'timeline' ? (
             /* Timeline / Gantt View */
             <TimelineView
               aufgaben={filteredAufgaben}
@@ -921,6 +941,11 @@ export function Tasks() {
               onSelect={id => setSelectedAufgabeId(id)}
               i18n={i18n.t}
             />
+          ) : (
+            /* Dependency Graph (DAG) View */
+            <Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400, color: '#71717a' }}><Loader2 size={20} style={{ animation: 'spin 1s linear infinite', marginRight: 10 }} /> Graph wird geladen...</div>}>
+              <TaskDependencyGraph onTaskClick={(id) => setSelectedAufgabeId(id)} />
+            </Suspense>
           )}
 
 

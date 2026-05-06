@@ -6438,6 +6438,39 @@ app.delete('/api/tasks/:id/blockers/:blockerId', authMiddleware, requireResource
   res.json({ ok: true });
 });
 
+// All tasks in a company plus their blocking relations — for the dependency-graph UI.
+app.get('/api/companies/:unternehmenId/tasks/graph', authMiddleware, requireCompanyAccess(), (req, res) => {
+  const companyId = req.params.unternehmenId as string;
+
+  const taskRows = db.select({
+    id: tasks.id,
+    title: tasks.title,
+    status: tasks.status,
+    priority: tasks.priority,
+    assignedTo: tasks.assignedTo,
+    projectId: tasks.projectId,
+  }).from(tasks).where(eq(tasks.companyId, companyId)).all();
+
+  const agentRows = db.select({ id: agents.id, name: agents.name })
+    .from(agents).where(eq(agents.companyId, companyId)).all();
+  const agentNameById = new Map(agentRows.map(a => [a.id, a.name]));
+
+  const taskIds = taskRows.map(t => t.id);
+  const relationRows = taskIds.length > 0
+    ? db.select().from(issueRelations).where(
+        and(inArray(issueRelations.sourceId, taskIds), inArray(issueRelations.targetId, taskIds)),
+      ).all()
+    : [];
+
+  res.json({
+    tasks: taskRows.map(t => ({
+      ...t,
+      assignedToName: t.assignedTo ? agentNameById.get(t.assignedTo) || null : null,
+    })),
+    relations: relationRows.map(r => ({ sourceId: r.sourceId, targetId: r.targetId, type: r.type })),
+  });
+});
+
 // =============================================
 // CLIPMART (Template-Import / Aqua-Hiring)
 // =============================================
