@@ -109,6 +109,14 @@ interface Message {
   text: string; thinking?: string;
   images?: string[]; streaming?: boolean; time: string;
   plan?: PlanTask[];
+  tokens?: { input: number; output: number; costCents: number; model?: string };
+}
+
+interface SessionStats {
+  messages: number;
+  inputTokens: number;
+  outputTokens: number;
+  costCents: number;
 }
 
 interface ChatSession {
@@ -268,6 +276,8 @@ export function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
+  const [streamError, setStreamError] = useState(false);
+  const [sessionStats, setSessionStats] = useState<SessionStats>({ messages: 0, inputTokens: 0, outputTokens: 0, costCents: 0 });
   const [, startTransition] = useTransition();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [loadingAgents, setLoadingAgents] = useState(true);
@@ -347,6 +357,7 @@ export function Chat() {
     setSessions(agentSessions);
     const fresh = newSession();
     setCurrentSession(fresh);
+    setSessionStats({ messages: 0, inputTokens: 0, outputTokens: 0, costCents: 0 });
 
     const welcomeMsg: Message = { id: 'welcome', role: 'system', text: de ? `Du chattest mit ${selectedAgent.name}` : `Chatting with ${selectedAgent.name}`, time: new Date().toISOString() };
     setMessages([welcomeMsg]);
@@ -416,6 +427,7 @@ export function Chat() {
     }
     const fresh = newSession();
     setCurrentSession(fresh);
+    setSessionStats({ messages: 0, inputTokens: 0, outputTokens: 0, costCents: 0 });
     setMessages([{ id: 'welcome', role: 'system', text: de ? `Du chattest mit ${selectedAgent.name}` : `Chatting with ${selectedAgent.name}`, time: new Date().toISOString() }]);
     setInput(''); setPendingImage(null);
     setTimeout(() => inputRef.current?.focus(), 50);
@@ -424,6 +436,17 @@ export function Chat() {
   const loadSession = useCallback((session: ChatSession) => {
     abortRef.current?.abort(); setStreaming(false);
     setCurrentSession(session); setMessages(session.messages);
+    // Recompute session stats from persisted message tokens
+    const stats = session.messages.reduce<SessionStats>((acc, m) => {
+      if (m.tokens) {
+        acc.inputTokens += m.tokens.input;
+        acc.outputTokens += m.tokens.output;
+        acc.costCents += m.tokens.costCents;
+      }
+      if (m.role === 'agent') acc.messages += 1;
+      return acc;
+    }, { messages: 0, inputTokens: 0, outputTokens: 0, costCents: 0 });
+    setSessionStats(stats);
   }, []);
 
   const deleteSession = useCallback((id: string) => {
@@ -533,16 +556,35 @@ export function Chat() {
             } else if (ev.type === 'done') {
               const final = ev.reply ?? '';
               const { cleanedText, plan } = extractPlan(final || '');
+              const inputTok = Number(ev.inputTokens) || 0;
+              const outputTok = Number(ev.outputTokens) || 0;
+              const costC = Number(ev.costCents) || 0;
+              const modelStr = (ev.model as string | undefined) || selectedAgent.model;
+              const tokens = (inputTok + outputTok > 0 || costC > 0)
+                ? { input: inputTok, output: outputTok, costCents: costC, model: modelStr }
+                : undefined;
               setMessages(prev => {
-                const next = prev.filter(m => m.id !== thinkingMsgId).map(m => m.id === agentMsgId ? { ...m, text: cleanedText || m.text, plan, streaming: false } : m);
+                const next = prev.filter(m => m.id !== thinkingMsgId).map(m => m.id === agentMsgId ? { ...m, text: cleanedText || m.text, plan, streaming: false, tokens } : m);
                 persistSession(next, currentSession, selectedAgent.id);
                 return next;
               });
+              if (tokens) {
+                setSessionStats(s => ({
+                  messages: s.messages + 1,
+                  inputTokens: s.inputTokens + inputTok,
+                  outputTokens: s.outputTokens + outputTok,
+                  costCents: s.costCents + costC,
+                }));
+              } else {
+                setSessionStats(s => ({ ...s, messages: s.messages + 1 }));
+              }
             } else if (ev.type === 'error') {
               const errMsg = ev.error === 'no_api_key'
                 ? '⚠️ No API key configured.'
                 : `❌ ${(ev.message || ev.error || 'Error generating reply').toString().slice(0, 300)}`;
               setMessages(prev => prev.filter(m => m.id !== thinkingMsgId).map(m => m.id === agentMsgId ? { ...m, text: errMsg, streaming: false } : m));
+              setStreamError(true);
+              setTimeout(() => setStreamError(false), 4000);
             }
           } catch { /* bad SSE */ }
         }
@@ -601,9 +643,31 @@ export function Chat() {
                 <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{selectedAgent.name}</span>
                 <span style={{ fontSize: 7, fontWeight: 800, padding: '2px 6px', color: C.gold, background: C.goldDim, border: `1px solid ${C.goldGlow}`, letterSpacing: '0.08em', ...round(4) }}>CEO</span>
               </div>
-              {selectedAgent.model && (
-                <span style={{ fontSize: 10, color: C.textMuted, fontFamily: 'var(--font-mono)' }}>{selectedAgent.model}</span>
-              )}
+              {/* Model + provider pill — visible at a glance which LLM is connected */}
+              <div
+                title={de
+                  ? `Verbunden mit ${selectedAgent.connectionType || 'unknown'} · Modell ${selectedAgent.model || 'default'}`
+                  : `Connected to ${selectedAgent.connectionType || 'unknown'} · Model ${selectedAgent.model || 'default'}`}
+                style={{ ...flex('row'), gap: 6, alignItems: 'center', padding: '3px 8px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}`, ...round(4) }}
+              >
+                <motion.div
+                  style={{
+                    width: 6, height: 6, borderRadius: 9999,
+                    background: streamError ? '#ef4444' : streaming ? C.gold : C.success,
+                    boxShadow: streaming ? `0 0 6px ${C.gold}` : 'none',
+                  }}
+                  animate={streaming ? { opacity: [0.4, 1, 0.4] } : { opacity: 1 }}
+                  transition={streaming ? { duration: 1.2, repeat: Infinity } : { duration: 0 }}
+                />
+                {selectedAgent.connectionType && (
+                  <span style={{ fontSize: 9, color: C.textMuted, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    {selectedAgent.connectionType}
+                  </span>
+                )}
+                {selectedAgent.model && (
+                  <span style={{ fontSize: 10, color: C.text, fontFamily: 'var(--font-mono)' }}>{selectedAgent.model}</span>
+                )}
+              </div>
             </>
           ) : (
             <span style={{ fontSize: 12, color: C.textMuted, fontFamily: 'var(--font-mono)' }}>
@@ -612,8 +676,30 @@ export function Chat() {
           )}
         </div>
         <div style={{ ...flex('row'), gap: 12, alignItems: 'center' }}>
+          {/* Live session token + cost counter */}
+          {selectedAgent && (sessionStats.inputTokens > 0 || sessionStats.outputTokens > 0) && (
+            <div
+              title={de
+                ? `Aktuelle Session — ${sessionStats.messages} Antwort(en), ${sessionStats.inputTokens.toLocaleString()} Input + ${sessionStats.outputTokens.toLocaleString()} Output Tokens`
+                : `Current session — ${sessionStats.messages} reply(s), ${sessionStats.inputTokens.toLocaleString()} input + ${sessionStats.outputTokens.toLocaleString()} output tokens`}
+              style={{ ...flex('row'), gap: 6, alignItems: 'center', fontSize: 10, color: C.textMuted, fontFamily: 'var(--font-mono)' }}
+            >
+              <span style={{ color: C.text }}>
+                {sessionStats.inputTokens + sessionStats.outputTokens >= 1000
+                  ? `${((sessionStats.inputTokens + sessionStats.outputTokens) / 1000).toFixed(1)}k`
+                  : (sessionStats.inputTokens + sessionStats.outputTokens)} tok
+              </span>
+              <span style={{ opacity: 0.4 }}>·</span>
+              <span style={{ color: C.gold }}>
+                {(sessionStats.costCents / 100).toFixed(sessionStats.costCents >= 100 ? 2 : 4)}€
+              </span>
+            </div>
+          )}
           {selectedAgent && (
-            <span style={{ fontSize: 10, color: C.textMuted, fontFamily: 'var(--font-mono)' }}>
+            <span
+              title={de ? 'Monats-Budget' : 'Monthly budget'}
+              style={{ fontSize: 10, color: C.textMuted, fontFamily: 'var(--font-mono)', opacity: 0.6 }}
+            >
               {(selectedAgent.monthlySpendCent ?? 0) / 100}€ / {(selectedAgent.monthlyBudgetCent ?? 0) / 100}€
             </span>
           )}
@@ -840,6 +926,19 @@ export function Chat() {
                     )}
                     <div style={{ ...flex('row'), alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: 10, color: C.textDim, fontFamily: 'var(--font-mono)' }}>{fmtTime(msg.time)}</span>
+                      {!isUser && msg.tokens && (msg.tokens.input + msg.tokens.output > 0) && (
+                        <span
+                          title={de
+                            ? `${msg.tokens.input} input + ${msg.tokens.output} output${msg.tokens.model ? ` · ${msg.tokens.model}` : ''}`
+                            : `${msg.tokens.input} in + ${msg.tokens.output} out${msg.tokens.model ? ` · ${msg.tokens.model}` : ''}`}
+                          style={{ fontSize: 9, color: C.textDim, fontFamily: 'var(--font-mono)', opacity: 0.6 }}
+                        >
+                          {(msg.tokens.input + msg.tokens.output) >= 1000
+                            ? `${((msg.tokens.input + msg.tokens.output) / 1000).toFixed(1)}k tok`
+                            : `${msg.tokens.input + msg.tokens.output} tok`}
+                          {msg.tokens.costCents > 0 && ` · ${(msg.tokens.costCents / 100).toFixed(msg.tokens.costCents >= 100 ? 2 : 4)}€`}
+                        </span>
+                      )}
                       {msg.id !== 'welcome' && (
                         <button
                           onClick={async () => {
