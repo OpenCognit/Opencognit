@@ -839,7 +839,16 @@ app.get('/api/companies/:unternehmenId/agents', requireCompanyAccess(), (req, re
     .limit(limit)
     .offset(offset)
     .all();
-  res.json(rows.map((a: any) => ({
+  res.json(rows.map(mapAgentToFrontend));
+});
+
+// Frontend (Experte type in src/api/client.ts) expects German-keyed agent objects.
+// Used by both list, single-GET, and PATCH responses so the shape is consistent —
+// otherwise editing settings (which calls PATCH and writes the response back into
+// `expert` state) silently breaks downstream code that reads `expert.unternehmenId`,
+// `expert.verbindungsTyp` etc.
+function mapAgentToFrontend(a: any) {
+  return {
     id: a.id,
     unternehmenId: a.companyId,
     name: a.name,
@@ -867,8 +876,8 @@ app.get('/api/companies/:unternehmenId/agents', requireCompanyAccess(), (req, re
     nachrichtenCount: a.messageCount,
     erstelltAm: a.createdAt,
     aktualisiertAm: a.updatedAt,
-  })));
-});
+  };
+}
 
 function checkFreeModel(verbindungsConfig: any): string | null {
   try {
@@ -920,13 +929,13 @@ app.post('/api/companies/:unternehmenId/agents', requireCompanyAccess(), (req, r
   const agent = db.select().from(agents).where(eq(agents.id, id)).get();
   logAktivitaet(unternehmenId, 'board', 'board', 'Board', `hat „${name}" als Experten eingestellt`, 'agents', id);
   broadcastUpdate('expert_created', { unternehmenId, id, name, rolle });
-  res.status(201).json(agent);
+  res.status(201).json(mapAgentToFrontend(agent));
 });
 
 app.get('/api/agents/:id', requireResourceAccess("agent"), (req, res) => {
   const agent = db.select().from(agents).where(eq(agents.id, req.params.id as string)).get();
   if (!agent) return res.status(404).json({ error: 'Agent not found' });
-  res.json(agent);
+  res.json(mapAgentToFrontend(agent));
 });
 
 // GET /api/agents/:id/token — returns the HMAC-derived API key for this agent
@@ -963,7 +972,7 @@ app.patch('/api/agents/:id', requireResourceAccess("agent"), (req, res) => {
 
   db.update(agents).set(updates).where(eq(agents.id, req.params.id as string)).run();
   const agent = db.select().from(agents).where(eq(agents.id, req.params.id as string)).get();
-  res.json(agent);
+  res.json(mapAgentToFrontend(agent));
 });
 
 // Alias: ExpertChatDrawer uses /api/agents/:id for PATCH (e.g. soul editor)
@@ -1018,7 +1027,7 @@ app.patch('/api/agents/:id', requireResourceAccess("agent"), (req, res) => {
   }
 
   const agent = db.select().from(agents).where(eq(agents.id, req.params.id as string)).get();
-  res.json(agent);
+  res.json(mapAgentToFrontend(agent));
 });
 
 // GET /api/agents/:id/config-history — last N snapshots (default 20)
