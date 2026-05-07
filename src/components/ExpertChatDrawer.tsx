@@ -2053,20 +2053,61 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
                             {ollamaModels.length > 0 && <div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>{ollamaModels.length} {de ? 'lokale Modelle gefunden' : 'local models found'}</div>}
                           </div>
                         ) : vt === 'claude-code' ? (
-                          <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '8px 12px', borderRadius: 0, background: 'rgba(197,160,89,0.07)', border: '1px solid rgba(197,160,89,0.15)' }}>
-                            ⚡ {de ? 'Nutzt dein Claude Pro/Max-Abo — kein API Key nötig' : 'Uses your Claude Pro/Max plan — no API key needed'}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '8px 12px', borderRadius: 0, background: 'rgba(197,160,89,0.07)', border: '1px solid rgba(197,160,89,0.15)' }}>
+                              ⚡ {de ? 'Nutzt dein Claude Pro/Max-Abo — kein API Key nötig' : 'Uses your Claude Pro/Max plan — no API key needed'}
+                            </div>
+                            <input
+                              className="input"
+                              value={editForm.modell}
+                              onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))}
+                              placeholder={de ? 'Modell (optional, z.B. claude-opus-4-7)' : 'Model (optional, e.g. claude-opus-4-7)'}
+                              style={{ padding: '8px 12px', borderRadius: 0, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'var(--color-text-primary)', fontSize: 13, fontFamily: 'var(--font-mono, ui-monospace, monospace)', outline: 'none' }}
+                            />
+                            <div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>
+                              {de
+                                ? 'Leer lassen = CLI nutzt den Default deines Abos. Häufig: claude-opus-4-7 (Max), claude-sonnet-4-6 (Pro), claude-haiku-4-5-20251001 (schnell).'
+                                : 'Empty = CLI uses your subscription default. Common: claude-opus-4-7 (Max), claude-sonnet-4-6 (Pro), claude-haiku-4-5-20251001 (fast).'}
+                            </div>
                           </div>
                         ) : vt === 'codex-cli' ? (
-                          <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '8px 12px', borderRadius: 0, background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.15)' }}>
-                            🐍 {de ? 'Nutzt OpenAI Codex CLI — kein API Key nötig' : 'Uses OpenAI Codex CLI — no API key needed'}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '8px 12px', borderRadius: 0, background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.15)' }}>
+                              🐍 {de ? 'Nutzt OpenAI Codex CLI — kein API Key nötig' : 'Uses OpenAI Codex CLI — no API key needed'}
+                            </div>
+                            <input
+                              className="input"
+                              value={editForm.modell}
+                              onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))}
+                              placeholder={de ? 'Modell (optional)' : 'Model (optional)'}
+                              style={{ padding: '8px 12px', borderRadius: 0, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'var(--color-text-primary)', fontSize: 13, fontFamily: 'var(--font-mono, ui-monospace, monospace)', outline: 'none' }}
+                            />
                           </div>
                         ) : vt === 'gemini-cli' ? (
-                          <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '8px 12px', borderRadius: 0, background: 'rgba(59,130,246,0.07)', border: '1px solid rgba(59,130,246,0.15)' }}>
-                            💎 {de ? 'Nutzt Google Gemini CLI — kein API Key nötig' : 'Uses Google Gemini CLI — no API key needed'}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '8px 12px', borderRadius: 0, background: 'rgba(59,130,246,0.07)', border: '1px solid rgba(59,130,246,0.15)' }}>
+                              💎 {de ? 'Nutzt Google Gemini CLI — kein API Key nötig' : 'Uses Google Gemini CLI — no API key needed'}
+                            </div>
+                            <input
+                              className="input"
+                              value={editForm.modell}
+                              onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))}
+                              placeholder={de ? 'Modell (optional, z.B. gemini-2.5-pro)' : 'Model (optional, e.g. gemini-2.5-pro)'}
+                              style={{ padding: '8px 12px', borderRadius: 0, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'var(--color-text-primary)', fontSize: 13, fontFamily: 'var(--font-mono, ui-monospace, monospace)', outline: 'none' }}
+                            />
                           </div>
                         ) : vt === 'kimi-cli' ? (
-                          <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '8px 12px', borderRadius: 0, background: 'rgba(139,92,246,0.07)', border: '1px solid rgba(139,92,246,0.15)' }}>
-                            🌙 {de ? 'Nutzt Moonshot Kimi CLI — kein API Key nötig' : 'Uses Moonshot Kimi CLI — no API key needed'}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '8px 12px', borderRadius: 0, background: 'rgba(139,92,246,0.07)', border: '1px solid rgba(139,92,246,0.15)' }}>
+                              🌙 {de ? 'Nutzt Moonshot Kimi CLI — kein API Key nötig' : 'Uses Moonshot Kimi CLI — no API key needed'}
+                            </div>
+                            <input
+                              className="input"
+                              value={editForm.modell}
+                              onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))}
+                              placeholder={de ? 'Modell (optional, z.B. kimi-k2)' : 'Model (optional, e.g. kimi-k2)'}
+                              style={{ padding: '8px 12px', borderRadius: 0, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'var(--color-text-primary)', fontSize: 13, fontFamily: 'var(--font-mono, ui-monospace, monospace)', outline: 'none' }}
+                            />
                           </div>
                         ) : vt === 'anthropic' ? (
                           <select value={editForm.modell} onChange={e => setEditForm(f => ({ ...f, modell: e.target.value }))} style={{ width: '100%', padding: '8px 12px', borderRadius: 0, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'var(--color-text-primary)', fontSize: 14, cursor: 'pointer' }}>
