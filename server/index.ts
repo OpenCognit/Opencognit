@@ -46,6 +46,7 @@ import webhooksRouter from './routes/webhooks.js';
 import semanticMemoryRouter from './routes/semantic-memory.js';
 import skillsRouter from './routes/skills.js';
 import routinesRouter from './routes/routines.js';
+import projectsRouter from './routes/projects.js';
 import { logAktivitaet } from './services/activity-log.js';
 import {
   authMiddleware,
@@ -350,6 +351,7 @@ app.use('/api/semantic-memory', semanticMemoryRouter);
 // endpoints span multiple URL prefixes that don't share a clean base path.
 app.use('/', skillsRouter);
 app.use('/', routinesRouter);
+app.use('/', projectsRouter);
 
 // ── Global API Rate Limiter (all /api routes) ───────────────────────────────
 // Protects against DoS, brute-force, and accidental request floods.
@@ -1840,102 +1842,9 @@ app.post('/api/companies/:unternehmenId/costEntries', requireCompanyAccess(), (r
 });
 
 // =============================================
-// PROJEKTE
+// PROJEKTE — moved to ./routes/projects.ts
+// (whiteboard endpoints stay here for now — they need broadcastUpdate)
 // =============================================
-app.get('/api/companies/:unternehmenId/projects', requireCompanyAccess(), (req, res) => {
-  const result = db.select().from(projects)
-    .where(eq(projects.companyId, req.params.unternehmenId))
-    .orderBy(desc(projects.createdAt))
-    .all();
-  res.json(result);
-});
-
-app.post('/api/companies/:unternehmenId/projects', requireCompanyAccess(), (req, res) => {
-  const { name, beschreibung, prioritaet, zielId, eigentuemerId, farbe, deadline, workDir } = req.body;
-  if (!name) return res.status(400).json({ error: 'Name required' });
-
-  const unternehmenId = req.params.unternehmenId;
-  const id = uuid();
-  db.insert(projects).values({
-    id, companyId: unternehmenId, name,
-    description: beschreibung || null,
-    priority: prioritaet || 'medium',
-    goalId: zielId || null,
-    ownerAgentId: eigentuemerId || null,
-    color: farbe || '#23CDCB',
-    deadline: deadline || null,
-    workDir: workDir?.trim() || null,
-    progress: 0,
-    createdAt: now(),
-    updatedAt: now(),
-  }).run();
-
-  const projekt = db.select().from(projects).where(eq(projects.id, id)).get();
-  logAktivitaet(unternehmenId, 'board', 'board', 'Board', `hat Projekt „${name}" erstellt`, 'projekt', id);
-  res.status(201).json(projekt);
-});
-
-app.get('/api/projects/:id', requireResourceAccess("project"), (req, res) => {
-  const projekt = db.select().from(projects).where(eq(projects.id, req.params.id as string)).get();
-  if (!projekt) return res.status(404).json({ error: 'Project not found' });
-
-  // Aufgaben für dieses Projekt
-  const projectTasks = db.select().from(tasks)
-    .where(eq(tasks.projectId, req.params.id as string))
-    .orderBy(desc(tasks.createdAt))
-    .all();
-
-  res.json({ ...projekt, tasks: projectTasks });
-});
-
-app.patch('/api/projects/:id', requireResourceAccess("project"), (req, res) => {
-  const existing = db.select().from(projects).where(eq(projects.id, req.params.id as string)).get();
-  if (!existing) return res.status(404).json({ error: 'Project not found' });
-
-  const updates: any = { updatedAt: now() };
-  const allowed = ['name', 'beschreibung', 'status', 'prioritaet', 'zielId', 'eigentuemerId', 'farbe', 'deadline', 'fortschritt', 'workDir'];
-  const keyMap: Record<string, string> = {
-    beschreibung: 'description', prioritaet: 'priority', zielId: 'goalId',
-    eigentuemerId: 'ownerAgentId', farbe: 'color', fortschritt: 'progress',
-  };
-  for (const key of allowed) {
-    if (req.body[key] !== undefined) {
-      updates[keyMap[key] || key] = req.body[key];
-    }
-  }
-
-  db.update(projects).set(updates).where(eq(projects.id, req.params.id as string)).run();
-  res.json(db.select().from(projects).where(eq(projects.id, req.params.id as string)).get());
-});
-
-app.delete('/api/projects/:id', requireResourceAccess("project"), (req, res) => {
-  const existing = db.select().from(projects).where(eq(projects.id, req.params.id as string)).get();
-  if (!existing) return res.status(404).json({ error: 'Project not found' });
-
-  // Tasks des Projekts: projektId auf null setzen (Tasks nicht löschen)
-  db.update(tasks).set({ projectId: null, updatedAt: now() })
-    .where(eq(tasks.projectId, req.params.id as string)).run();
-
-  db.delete(projects).where(eq(projects.id, req.params.id as string)).run();
-  logAktivitaet(existing.companyId, 'board', 'board', 'Board', `hat Projekt „${existing.name}" gelöscht`, 'projekt', req.params.id as string);
-  res.json({ success: true });
-});
-
-// Fortschritt automatisch berechnen (% done Tasks)
-app.post('/api/projects/:id/fortschritt-aktualisieren', requireResourceAccess("project"), (req, res) => {
-  const projekt = db.select().from(projects).where(eq(projects.id, req.params.id as string)).get();
-  if (!projekt) return res.status(404).json({ error: 'Project not found' });
-
-  const projectTasks = db.select().from(tasks).where(eq(tasks.projectId, req.params.id as string)).all();
-  const total = projectTasks.length;
-  const done = projectTasks.filter((t: any) => t.status === 'done').length;
-  const fortschritt = total > 0 ? Math.round((done / total) * 100) : 0;
-
-  db.update(projects).set({ progress: fortschritt, updatedAt: now() })
-    .where(eq(projects.id, req.params.id as string)).run();
-
-  res.json({ fortschritt, done, total });
-});
 
 // =============================================
 // AGENT PERMISSIONS
