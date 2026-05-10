@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { memoryEmbeddings } from '../db/schema.js';
 import { eq, and, sql } from 'drizzle-orm';
 import { storeSemanticMemory, searchSemanticMemory } from '../services/semantic-memory.js';
-import { authMiddleware } from '../index.js';
+import { authMiddleware } from '../middleware/auth.js';
 
 const router = Router();
 
