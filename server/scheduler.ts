@@ -11,7 +11,8 @@ import { nodeManager } from './services/nodeManager.js';
 import { mcpClient } from './services/mcpClient.js';
 import { nachZyklusVerarbeitung } from './services/learning-loop.js';
 import { spawnBackgroundReview, sollteReviewen, komprimiereKontext, ladeSummary, sollteKomprimieren, sessionSearch } from './services/background-review.js';
-import { loadRelevantMemory, autoSaveInsights, saveMeetingResult } from './services/memory-auto.js';
+import { autoSaveInsights, saveMeetingResult } from './services/memory-auto.js';
+import { memoryService } from './services/memory/index.js';
 import { heartbeatService } from './services/heartbeat.js';
 import { findRelevantSkills, embeddingsAvailable } from './services/skill-embeddings.js';
 
@@ -677,16 +678,14 @@ Das System speichert diese automatisch und stellt sie dir bei zukünftigen Tasks
       teamContext += `\n\n${existingSummary}`;
     }
 
-    // --- MEMORY AUTO-LOAD (relevante Erinnerungen injizieren) ---
-    const taskKeywords = tasksStrings
-      .concat(chatContext)
-      .join(' ')
-      .split(/\W+/)
-      .filter(w => w.length > 4)
-      .slice(0, 15);
-    const memoryContext = loadRelevantMemory(agentId, taskKeywords);
-    if (memoryContext) {
-      teamContext += memoryContext;
+    // --- MEMORY AUTO-LOAD (palace + learned skills via unified service) ---
+    const _memRecall = await memoryService.recall({
+      agentId, companyId,
+      query: tasksStrings.concat(chatContext).join(' '),
+      limits: { learnedSkills: 3 },
+    });
+    if (_memRecall.contextMarkdown) {
+      teamContext += _memRecall.contextMarkdown;
     }
 
     // Determine UI language for this company → agents respond accordingly

@@ -5,8 +5,7 @@ import { db } from '../../db/client.js';
 import { agents, tasks, goals, projects, issueRelations, comments, palaceKg, chatMessages, ceoDecisionLog } from '../../db/schema.js';
 import { eq, and, inArray, desc, asc, isNull, sql } from 'drizzle-orm';
 import type { AdapterContext, AdapterTask, CompanyGoal } from '../../adapters/types.js';
-import { loadRelevantMemory } from '../memory-auto.js';
-import { findRelevantLearnedSkills, formatLearnedSkillsForPrompt, markLearnedSkillsUsed } from '../learned-skills.js';
+import { memoryService } from '../memory/index.js';
 
 export interface BuildContextParams {
   taskFull: any;
@@ -35,32 +34,19 @@ export async function buildAdapterContext(params: BuildContextParams): Promise<A
     priority: taskFull.priority,
   };
 
-  // ─── Memory Kontext laden (nativ) ───────────────────────────────
-  const taskKeywords = [taskFull.title, taskFull.description || '']
-    .join(' ')
-    .toLowerCase()
-    .split(/\W+/)
-    .filter(w => w.length > 4);
-  const memoryContext = loadRelevantMemory(agentId, taskKeywords) || null;
-
-  // ─── Learned Skills (auto-extracted recipes from previous successful runs) ──
-  // Inject up to 3 most-relevant patterns into the agent's context so capabilities
-  // compound across the team — Hermes-style skill reuse, but cross-agent.
-  let learnedSkillsBlock = '';
-  try {
-    const relevant = findRelevantLearnedSkills({
-      companyId,
-      taskTitle: taskFull.title,
-      taskDescription: taskFull.description || null,
-      limit: 3,
-    });
-    if (relevant.length > 0) {
-      learnedSkillsBlock = formatLearnedSkillsForPrompt(relevant, false);
-      markLearnedSkillsUsed(relevant.map(s => s.id));
-      console.log(`  🧠 ${relevant.length} learned skill(s) injected for task ${taskFull.id}`);
-    }
-  } catch (e: any) {
-    console.warn(`[learned-skills] retrieval failed: ${e?.message}`);
+  // ─── Unified memory recall — palace memory + learned skills ──────────────
+  // One call, auto-routed. The MemoryService internally hits palace_* for the
+  // agent's personal store and learnedSkills for cross-agent reusable recipes.
+  const recallQuery = `${taskFull.title} ${taskFull.description || ''}`;
+  const recall = await memoryService.recall({
+    agentId,
+    companyId,
+    query: recallQuery,
+    limits: { learnedSkills: 3 },
+  });
+  const memoryContext = recall.contextMarkdown || null;
+  if (recall.sources.learnedSkills > 0) {
+    console.log(`  🧠 ${recall.sources.learnedSkills} learned skill(s) injected for task ${taskFull.id}`);
   }
 
   // ─── Letzte Chat-Nachrichten laden (Board ↔ Agent) ──────────────────
@@ -240,7 +226,6 @@ export async function buildAdapterContext(params: BuildContextParams): Promise<A
         } catch { return {}; }
       })(),
       ...(memoryContext ? { memory: memoryContext } : {}),
-      ...(learnedSkillsBlock ? { learnedSkills: learnedSkillsBlock } : {}),
       ...(letzteEntscheidung ? { letzteEntscheidung } : {}),
       ...(boardKommunikation ? { boardKommunikation } : {}),
       ...(blockerOutputs ? { vorgaengerOutputs: blockerOutputs } : {}),

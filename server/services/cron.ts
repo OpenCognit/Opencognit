@@ -166,16 +166,18 @@ class CronServiceImpl implements CronService {
       }
     }, 30000);
 
-    // Run Memory consolidation every hour for all companies
+    // Hourly memory consolidation across all companies (unified API).
+    // memoryService.improve() routes to the consolidation backend; future
+    // PRs will add cross-agent learned-skill dedup behind the same call.
     this.consolidationIntervalId = setInterval(async () => {
       try {
-        const { consolidateAll } = await import('./memory-consolidation.js');
+        const { memoryService } = await import('./memory/index.js');
         const companiesRows = db.select({ id: companies.id }).from(companies).all();
         for (const c of companiesRows) {
-          await consolidateAll(c.id);
+          await memoryService.improve({ companyId: c.id });
         }
       } catch (e: any) {
-        console.warn('⚠️ Cron: Memory consolidation fehlgeschlagen:', e.message);
+        console.warn('⚠️ Cron: Memory consolidation failed:', e.message);
       }
     }, 60 * 60 * 1000); // every hour
 

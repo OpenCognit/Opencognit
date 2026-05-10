@@ -23,7 +23,8 @@ import { ensureWorkspace } from '../execution-workspaces.js';
 import { isSafeWorkdir } from '../../adapters/workspace-guard.js';
 import { v4 as uuid } from 'uuid';
 import { messagingService } from '../messaging.js';
-import { loadRelevantMemory, autoSaveInsights } from '../memory-auto.js';
+import { autoSaveInsights } from '../memory-auto.js';
+import { memoryService } from '../memory/index.js';
 import { decryptSetting } from '../../utils/crypto.js';
 import { routeModel } from '../model-router.js';
 import { recordLearning } from '../agent-performance.js';
@@ -648,13 +649,13 @@ class HeartbeatServiceImpl implements HeartbeatService {
         priority: taskFull.priority,
       };
 
-      // ─── Memory Kontext laden (nativ) ───────────────────────────────
-      const taskKeywords = [taskFull.title, taskFull.description || '']
-        .join(' ')
-        .toLowerCase()
-        .split(/\W+/)
-        .filter(w => w.length > 4);
-      const memoryContext = loadRelevantMemory(agentId, taskKeywords) || null;
+      // ─── Unified memory recall (palace + learned skills) ─────────────
+      const _memRecall = await memoryService.recall({
+        agentId, companyId,
+        query: `${taskFull.title} ${taskFull.description || ''}`,
+        limits: { learnedSkills: 3 },
+      });
+      const memoryContext = _memRecall.contextMarkdown || null;
       // ────────────────────────────────────────────────────────────────────
 
       // ─── Letzte Chat-Nachrichten laden (Board ↔ Agent) ──────────────────
