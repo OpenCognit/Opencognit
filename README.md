@@ -13,7 +13,7 @@ The AI agent orchestration OS — CEO orchestrator, persistent memory, real exec
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)](https://www.typescriptlang.org)
 [![GitHub Stars](https://img.shields.io/github/stars/OpenCognit/opencognit?style=social)](https://github.com/OpenCognit/opencognit/stargazers)
 
-[🚀 Get OpenCognit Pro](https://opencognit.cloud) · [📖 Docs](https://opencognit.cloud/docs) · [💬 Discord](https://discord.gg/opencognit)
+[🚀 Get OpenCognit Pro](https://opencognit.cloud) · [📖 Docs](https://opencognit.cloud/docs) 
 
 [![Star History Chart](https://api.star-history.com/svg?repos=OpenCognit/opencognit&type=Date)](https://star-history.com/#OpenCognit/opencognit&Date)
 
@@ -173,9 +173,8 @@ To keep building OpenCognit into a **production-grade product**, we need a susta
 
 ## Community
 
-- 💬 [Discord](https://discord.gg/opencognit)
 - 🐦 [X / Twitter](https://x.com/opencognit)
-- 📧 [contact@opencognit.cloud](mailto:contact@opencognit.cloud)
+  
 
 ---
 
