@@ -853,6 +853,119 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-EQP-3+4+5: Fuel, Maintenance + Intelligence Agent =====
+export const fuelStores = sqliteTable('fuel_stores', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('projekt_id'),
+  name: text('name').notNull(),
+  location: text('location').notNull(),
+  fuelType: text('fuel_type').notNull().default('diesel'),
+  currentStock: real('current_stock').notNull().default(0),
+  capacity: real('capacity'),
+  minLevel: real('min_level'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const fuelIssues = sqliteTable('fuel_issues', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  fuelStoreId: text('fuel_store_id').notNull(),
+  equipmentId: text('equipment_id').notNull(),
+  operatorId: text('operator_id'),
+  workPackId: text('work_pack_id'),
+  date: text('datum').notNull(),
+  quantity: real('menge').notNull(),
+  meterBefore: real('meter_before'),
+  expectedConsumption: real('expected_consumption'),
+  issuedBy: text('issued_by').notNull(),
+  receivedBy: text('received_by').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const fuelReconciliations = sqliteTable('fuel_reconciliations', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  fuelStoreId: text('fuel_store_id').notNull(),
+  date: text('datum').notNull(),
+  openingStock: real('opening_stock').notNull(),
+  received: real('received').notNull().default(0),
+  issued: real('issued').notNull().default(0),
+  expectedClosing: real('expected_closing').notNull(),
+  actualClosing: real('actual_closing').notNull(),
+  variance: real('variance').notNull(),
+  explanation: text('explanation'),
+  reconciledBy: text('reconciled_by').notNull(),
+  status: text('status').notNull().default('pending'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const equipmentMaintenanceSchedules = sqliteTable('equipment_maintenance_schedules', {
+  id: text('id').primaryKey(),
+  equipmentId: text('equipment_id').notNull(),
+  serviceType: text('service_type').notNull().default('routine'),
+  intervalHours: integer('interval_hours'),
+  intervalDays: integer('interval_days'),
+  lastServiceAt: text('last_service_am'),
+  nextServiceAt: text('next_service_am'),
+  lastServiceMeter: real('last_service_meter'),
+  nextServiceMeter: real('next_service_meter'),
+  status: text('status').notNull().default('active'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const equipmentMaintenanceRecords = sqliteTable('equipment_maintenance_records', {
+  id: text('id').primaryKey(),
+  equipmentId: text('equipment_id').notNull(),
+  scheduleId: text('schedule_id'),
+  serviceType: text('service_type').notNull(),
+  date: text('datum').notNull(),
+  meterAt: real('meter_am'),
+  description: text('beschreibung'),
+  partsUsed: text('parts_used'),
+  costKes: real('cost_kes').default(0),
+  servicedBy: text('serviced_by').notNull(),
+  nextServiceRecommendation: text('next_service_recommendation'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const equipmentBreakdowns = sqliteTable('equipment_breakdowns', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  equipmentId: text('equipment_id').notNull(),
+  projectId: text('projekt_id'),
+  operatorId: text('operator_id'),
+  reportedBy: text('reported_by').notNull(),
+  reportedAt: text('reported_am').notNull(),
+  faultDescription: text('fault_description').notNull(),
+  severity: text('severity').notNull().default('medium'),
+  equipmentStopped: integer('equipment_stopped').notNull().default(1),
+  repairAction: text('repair_action'),
+  partsUsed: text('parts_used'),
+  costKes: real('cost_kes').default(0),
+  downtimeHours: real('downtime_hours'),
+  returnedToServiceAt: text('returned_to_service_am'),
+  returnedBy: text('returned_by'),
+  status: text('status').notNull().default('reported'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const equipmentReviews = sqliteTable('equipment_reviews', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  recommendationId: text('recommendation_id'),
+  breakdownId: text('breakdown_id'),
+  reviewedBy: text('reviewed_by').notNull(),
+  role: text('rolle').notNull().default('plant_manager'),
+  decision: text('decision').notNull().default('pending'),
+  comments: text('comments'),
+  reviewedAt: text('reviewed_am'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +1020,13 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  fuelStores,
+  fuelIssues,
+  fuelReconciliations,
+  equipmentMaintenanceSchedules,
+  equipmentMaintenanceRecords,
+  equipmentBreakdowns,
+  equipmentReviews,
   session,
   account,
   verification,
