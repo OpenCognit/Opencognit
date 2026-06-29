@@ -853,6 +853,100 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-TDR-1: Tender Opportunity Register =====
+export const tenderOpportunities = sqliteTable('tender_opportunities', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  title: text('title').notNull(),
+  clientId: text('client_id'),
+  clientName: text('client_name'),
+  source: text('source').notNull().default('portal'),
+  sourceUrl: text('source_url'),
+  description: text('description'),
+  projectLocation: text('project_location'),
+  estimatedValue: real('estimated_value'),
+  currency: text('currency').default('KES'),
+  deadlineAt: text('deadline_am').notNull(),
+  prequalificationRequired: integer('prequalification_required').default(0),
+  bondRequired: integer('bond_required').default(0),
+  status: text('status').notNull().default('new'),
+  assignedTo: text('assigned_to'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const tenderRecords = sqliteTable('tender_records', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  opportunityId: text('opportunity_id').notNull(),
+  tenderNumber: text('tender_number'),
+  employerName: text('employer_name').notNull(),
+  employerAddress: text('employer_address'),
+  projectName: text('project_name').notNull(),
+  projectLocation: text('project_location'),
+  deadlineAt: text('deadline_am').notNull(),
+  submissionType: text('submission_type').notNull().default('physical'),
+  bidBondAmount: real('bid_bond_amount'),
+  bidBondRequired: integer('bid_bond_required').default(0),
+  ncaClassification: text('nca_classification'),
+  status: text('status').notNull().default('registered'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const tenderBidNoBidReviews = sqliteTable('tender_bid_no_bid_reviews', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  opportunityId: text('opportunity_id'),
+  tenderId: text('tender_id'),
+  reviewedBy: text('reviewed_by').notNull(),
+  role: text('rolle').notNull().default('bid_manager'),
+  clientQuality: text('client_quality'),
+  projectLocationScore: text('project_location_score'),
+  contractSize: real('contract_size'),
+  marginPotential: text('margin_potential'),
+  cashflowRisk: text('cashflow_risk'),
+  securityRisk: text('security_risk'),
+  technicalCapability: text('technical_capability'),
+  resourceAvailability: text('resource_availability'),
+  bondRequirement: text('bond_requirement'),
+  paymentTerms: text('payment_terms'),
+  competitionLevel: text('competition_level'),
+  strategicValue: text('strategic_value'),
+  pastClientBehaviour: text('past_client_behaviour'),
+  overallScore: integer('overall_score'),
+  decision: text('decision').notNull().default('pending'),
+  decisionReason: text('decision_reason'),
+  approvedBy: text('approved_by'),
+  approvedAt: text('approved_am'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const tenderTeamAssignments = sqliteTable('tender_team_assignments', {
+  id: text('id').primaryKey(),
+  tenderId: text('tender_id').notNull(),
+  userId: text('user_id').notNull(),
+  role: text('rolle').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const tenderAgentRecommendations = sqliteTable('tender_agent_recommendations', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  agentId: text('agent_id'),
+  tenderId: text('tender_id'),
+  opportunityId: text('opportunity_id'),
+  issue: text('issue').notNull(),
+  riskLevel: text('risk_level').notNull().default('medium'),
+  evidence: text('evidence'),
+  recommendedAction: text('recommended_action').notNull(),
+  owner: text('owner'),
+  status: text('status').notNull().default('pending_review'),
+  detectedAt: text('detected_am').notNull(),
+  reviewedAt: text('reviewed_am'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +1001,11 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  tenderOpportunities,
+  tenderRecords,
+  tenderBidNoBidReviews,
+  tenderTeamAssignments,
+  tenderAgentRecommendations,
   session,
   account,
   verification,
