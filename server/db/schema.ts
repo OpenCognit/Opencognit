@@ -853,6 +853,51 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-PRO-2: RFQ + Vendor Invitation =====
+export const rfqs = sqliteTable('rfqs', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  prId: text('pr_id').notNull(),
+  rfqNumber: text('rfq_number'),
+  title: text('title').notNull(),
+  description: text('description'),
+  deliveryLocation: text('delivery_location').notNull(),
+  requiredDate: text('required_date').notNull(),
+  quotationDeadline: text('quotation_deadline').notNull(),
+  paymentTerms: text('payment_terms'),
+  specification: text('specification'),
+  status: text('status').notNull().default('draft'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const rfqItems = sqliteTable('rfq_items', {
+  id: text('id').primaryKey(),
+  rfqId: text('rfq_id').notNull(),
+  prItemId: text('pr_item_id'),
+  itemName: text('item_name').notNull(),
+  itemType: text('item_type').notNull().default('material'),
+  quantity: real('quantity').notNull(),
+  unit: text('unit').notNull().default('No.'),
+  specification: text('specification'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const rfqVendorInvites = sqliteTable('rfq_vendor_invites', {
+  id: text('id').primaryKey(),
+  rfqId: text('rfq_id').notNull(),
+  vendorId: text('vendor_id').notNull(),
+  invitedBy: text('invited_by').notNull(),
+  invitedAt: text('invited_am').notNull(),
+  responseStatus: text('response_status').notNull().default('pending'),
+  declinedReason: text('declined_reason'),
+  respondedAt: text('responded_am'),
+  bidIntent: text('bid_intent'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +952,9 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  rfqs,
+  rfqItems,
+  rfqVendorInvites,
   session,
   account,
   verification,
