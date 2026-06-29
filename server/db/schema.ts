@@ -853,6 +853,76 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-STO-2: Material Request + Issue Workflow =====
+export const materialRequests = sqliteTable('material_requests', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('projekt_id'),
+  workPackId: text('work_pack_id'),
+  requestedBy: text('requested_by').notNull(),
+  requestedFor: text('requested_for'),
+  date: text('datum').notNull(),
+  status: text('status').notNull().default('draft'),
+  approvedBy: text('approved_by'),
+  approvedAt: text('approved_am'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const materialRequestItems = sqliteTable('material_request_items', {
+  id: text('id').primaryKey(),
+  requestId: text('request_id').notNull(),
+  materialId: text('material_id'),
+  materialName: text('material_name').notNull(),
+  unit: text('einheit').notNull(),
+  requestedQty: real('requested_qty').notNull(),
+  approvedQty: real('approved_qty'),
+  issuedQty: real('issued_qty').notNull().default(0),
+  boqItemId: text('boq_item_id'),
+  activityId: text('activity_id'),
+  status: text('status').notNull().default('pending'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const materialIssueNotes = sqliteTable('material_issue_notes', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  requestId: text('request_id'),
+  workPackId: text('work_pack_id'),
+  storeLocationId: text('store_location_id').notNull(),
+  issuedTo: text('issued_to').notNull(),
+  issuedBy: text('issued_by').notNull(),
+  date: text('datum').notNull(),
+  status: text('status').notNull().default('issued'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const materialIssueItems = sqliteTable('material_issue_items', {
+  id: text('id').primaryKey(),
+  issueNoteId: text('issue_note_id').notNull(),
+  requestItemId: text('request_item_id'),
+  stockItemId: text('stock_item_id').notNull(),
+  materialName: text('material_name').notNull(),
+  unit: text('einheit').notNull(),
+  quantity: real('menge').notNull(),
+  boqItemId: text('boq_item_id'),
+  activityId: text('activity_id'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const stockReservations = sqliteTable('stock_reservations', {
+  id: text('id').primaryKey(),
+  stockItemId: text('stock_item_id').notNull(),
+  requestItemId: text('request_item_id'),
+  workPackId: text('work_pack_id'),
+  quantity: real('menge').notNull(),
+  status: text('status').notNull().default('active'),
+  reservedAt: text('reserved_am').notNull(),
+  releasedAt: text('released_am'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +977,11 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  materialRequests,
+  materialRequestItems,
+  materialIssueNotes,
+  materialIssueItems,
+  stockReservations,
   session,
   account,
   verification,
