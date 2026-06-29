@@ -853,6 +853,64 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-SRCH-1: Universal Search Index Foundation =====
+export const searchIndexRecords = sqliteTable('search_index_records', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('projekt_id'),
+  sourceModule: text('source_module').notNull(),
+  sourceRecordId: text('source_record_id').notNull(),
+  recordType: text('record_type').notNull(),
+  title: text('title').notNull(),
+  searchText: text('search_text').notNull(),
+  status: text('status'),
+  ownerUserId: text('owner_user_id'),
+  visibilityScope: text('visibility_scope').notNull().default('tenant'),
+  linkedRecordCount: integer('linked_record_count').notNull().default(0),
+  evidenceCount: integer('evidence_count').notNull().default(0),
+  lastIndexedAt: text('last_indexed_am').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const searchIndexTerms = sqliteTable('search_index_terms', {
+  id: text('id').primaryKey(),
+  recordId: text('record_id').notNull(),
+  term: text('term').notNull(),
+  frequency: integer('frequency').notNull().default(1),
+});
+
+export const searchIndexLinks = sqliteTable('search_index_links', {
+  id: text('id').primaryKey(),
+  recordId: text('record_id').notNull(),
+  linkedRecordId: text('linked_record_id').notNull(),
+  linkType: text('link_type').notNull(),
+  description: text('beschreibung'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const searchSavedQueries = sqliteTable('search_saved_queries', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  companyId: text('unternehmen_id').notNull(),
+  name: text('name').notNull(),
+  queryText: text('query_text').notNull(),
+  filtersJson: text('filters_json'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const searchRecentItems = sqliteTable('search_recent_items', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  companyId: text('unternehmen_id').notNull(),
+  sourceModule: text('source_module').notNull(),
+  sourceRecordId: text('source_record_id').notNull(),
+  recordType: text('record_type').notNull(),
+  title: text('title').notNull(),
+  accessedAt: text('accessed_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +965,11 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  searchIndexRecords,
+  searchIndexTerms,
+  searchIndexLinks,
+  searchSavedQueries,
+  searchRecentItems,
   session,
   account,
   verification,
