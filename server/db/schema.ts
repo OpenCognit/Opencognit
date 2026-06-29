@@ -853,6 +853,128 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-AP-1: Vendor Invoice Register + Match Backbone =====
+export const deliveryNotes = sqliteTable('delivery_notes', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  poId: text('po_id').notNull(),
+  vendorId: text('vendor_id').notNull(),
+  deliveryNoteNumber: text('delivery_note_number'),
+  deliveryDate: text('delivery_date').notNull(),
+  deliveryType: text('delivery_type').notNull().default('materials'),
+  transportRef: text('transport_ref'),
+  driverName: text('driver_name'),
+  vehicleNumber: text('vehicle_number'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const goodsReceiptNotes = sqliteTable('goods_receipt_notes', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  deliveryNoteId: text('delivery_note_id').notNull(),
+  poId: text('po_id').notNull(),
+  vendorId: text('vendor_id').notNull(),
+  grnNumber: text('grn_number'),
+  receivedDate: text('received_date').notNull(),
+  receivedBy: text('received_by').notNull(),
+  qaStatus: text('qa_status').default('pending'),
+  qaReviewedBy: text('qa_reviewed_by'),
+  qaReviewedAt: text('qa_reviewed_am'),
+  status: text('status').notNull().default('received'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const goodsReceiptItems = sqliteTable('goods_receipt_items', {
+  id: text('id').primaryKey(),
+  grnId: text('grn_id').notNull(),
+  poItemId: text('po_item_id').notNull(),
+  itemName: text('item_name').notNull(),
+  quantityOrdered: real('quantity_ordered').notNull(),
+  quantityDelivered: real('quantity_delivered').notNull(),
+  quantityAccepted: real('quantity_accepted').notNull().default(0),
+  quantityRejected: real('quantity_rejected').notNull().default(0),
+  rejectionReason: text('rejection_reason'),
+  unit: text('unit').notNull().default('No.'),
+  unitPricePo: real('unit_price_po'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const vendorInvoices = sqliteTable('vendor_invoices', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  vendorId: text('vendor_id').notNull(),
+  poId: text('po_id'),
+  grnId: text('grn_id'),
+  invoiceNumber: text('invoice_number').notNull(),
+  invoiceDate: text('invoice_date').notNull(),
+  paymentDueDate: text('payment_due_date'),
+  subtotal: real('subtotal').notNull().default(0),
+  taxAmount: real('tax_amount').notNull().default(0),
+  totalAmount: real('total_amount').notNull().default(0),
+  currency: text('currency').default('KES'),
+  paymentTerms: text('payment_terms'),
+  status: text('status').notNull().default('received'),
+  holdReason: text('hold_reason'),
+  duplicateCheck: integer('duplicate_check').default(0),
+  matchedAt: text('matched_am'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const vendorInvoiceItems = sqliteTable('vendor_invoice_items', {
+  id: text('id').primaryKey(),
+  invoiceId: text('invoice_id').notNull(),
+  poItemId: text('po_item_id'),
+  grnItemId: text('grn_item_id'),
+  itemName: text('item_name').notNull(),
+  quantity: real('quantity').notNull(),
+  unitPrice: real('unit_price').notNull(),
+  lineTotal: real('line_total').notNull().default(0),
+  taxRate: real('tax_rate').default(0),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const invoiceMatchResults = sqliteTable('invoice_match_results', {
+  id: text('id').primaryKey(),
+  invoiceId: text('invoice_id').notNull(),
+  invoiceItemId: text('invoice_item_id'),
+  poQuantity: real('po_quantity'),
+  grnAccepted: real('grn_accepted'),
+  invoiceQuantity: real('invoice_quantity'),
+  poRate: real('po_rate'),
+  invoiceRate: real('invoice_rate'),
+  matchStatus: text('match_status').notNull().default('pending'),
+  varianceType: text('variance_type'),
+  payableAmount: real('payable_amount').default(0),
+  notes: text('notes'),
+  matchedBy: text('matched_by'),
+  matchedAt: text('matched_am'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const apAgentRecommendations = sqliteTable('ap_agent_recommendations', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  agentId: text('agent_id'),
+  invoiceId: text('invoice_id'),
+  poId: text('po_id'),
+  vendorId: text('vendor_id'),
+  issue: text('issue').notNull(),
+  riskLevel: text('risk_level').notNull().default('medium'),
+  evidence: text('evidence'),
+  recommendedAction: text('recommended_action').notNull(),
+  owner: text('owner'),
+  status: text('status').notNull().default('pending_review'),
+  detectedAt: text('detected_am').notNull(),
+  reviewedAt: text('reviewed_am'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +1029,13 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  deliveryNotes,
+  goodsReceiptNotes,
+  goodsReceiptItems,
+  vendorInvoices,
+  vendorInvoiceItems,
+  invoiceMatchResults,
+  apAgentRecommendations,
   session,
   account,
   verification,
