@@ -853,6 +853,71 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-IAM-2: Approval Authority Matrix =====
+export const approvalThresholds = sqliteTable('approval_thresholds', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  roleId: text('role_id').notNull(),
+  module: text('module').notNull(),
+  action: text('action').notNull(),
+  maxAmount: real('max_amount'),
+  currency: text('currency').notNull().default('KES'),
+  description: text('beschreibung'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const approvalWorkflows = sqliteTable('approval_workflows', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  name: text('name').notNull(),
+  module: text('module').notNull(),
+  description: text('beschreibung'),
+  isActive: integer('ist_aktiv').notNull().default(1),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const approvalWorkflowSteps = sqliteTable('approval_workflow_steps', {
+  id: text('id').primaryKey(),
+  workflowId: text('workflow_id').notNull(),
+  stepOrder: integer('step_order').notNull(),
+  roleId: text('role_id').notNull(),
+  maxAmount: real('max_amount'),
+  autoEscalateHours: integer('auto_escalate_hours'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const approvalRequests = sqliteTable('approval_requests', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  companyId: text('unternehmen_id').notNull(),
+  workflowId: text('workflow_id').notNull(),
+  sourceModule: text('source_module').notNull(),
+  sourceRecordId: text('source_record_id').notNull(),
+  sourceRecordType: text('source_record_type').notNull(),
+  amount: real('amount'),
+  currency: text('currency').notNull().default('KES'),
+  currentStep: integer('current_step').notNull().default(1),
+  status: text('status').notNull().default('in_progress'),
+  requestedBy: text('requested_by').notNull(),
+  requestedAt: text('requested_am').notNull(),
+  completedAt: text('abgeschlossen_am'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const approvalStepResults = sqliteTable('approval_step_results', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  requestId: integer('request_id').notNull(),
+  stepOrder: integer('step_order').notNull(),
+  roleId: text('role_id').notNull(),
+  reviewerId: text('reviewer_id'),
+  decision: text('decision').notNull(),
+  comment: text('kommentar'),
+  decidedAt: text('decided_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -869,6 +934,11 @@ export const allTables = {
   agentMessages,
   agentMeetings,
   approvals,
+  approvalThresholds,
+  approvalWorkflows,
+  approvalWorkflowSteps,
+  approvalRequests,
+  approvalStepResults,
   costEntries,
   activityLog,
   workCycles,
