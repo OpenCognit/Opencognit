@@ -853,6 +853,57 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-HSE-5: HSE Agent + Stop-Work =====
+export const hseStopWorkOrders = sqliteTable('hse_stop_work_orders', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('projekt_id'),
+  workPackId: text('work_pack_id'),
+  activityId: text('aktivitaet_id'),
+  reason: text('reason').notNull(),
+  severity: text('severity').notNull().default('high'),
+  issuedBy: text('issued_by').notNull(),
+  issuedAt: text('issued_am').notNull(),
+  resolvedAt: text('resolved_am'),
+  resolvedBy: text('resolved_by'),
+  resolution: text('resolution'),
+  status: text('status').notNull().default('active'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const hseInspections = sqliteTable('hse_inspections', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('projekt_id'),
+  inspectionType: text('inspection_type').notNull().default('routine'),
+  location: text('location').notNull(),
+  activityId: text('aktivitaet_id'),
+  workPackId: text('work_pack_id'),
+  inspector: text('inspector').notNull(),
+  date: text('datum').notNull(),
+  findings: text('findings'),
+  rating: text('rating').default('satisfactory'),
+  status: text('status').notNull().default('completed'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const hseReviews = sqliteTable('hse_reviews', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  incidentId: text('incident_id'),
+  permitId: text('permit_id'),
+  stopWorkId: text('stop_work_id'),
+  reviewedBy: text('reviewed_by').notNull(),
+  role: text('rolle').notNull().default('hse_officer'),
+  decision: text('decision').notNull().default('pending'),
+  comments: text('comments'),
+  recommendedActions: text('recommended_actions'),
+  reviewedAt: text('reviewed_am'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +958,9 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  hseStopWorkOrders,
+  hseInspections,
+  hseReviews,
   session,
   account,
   verification,
