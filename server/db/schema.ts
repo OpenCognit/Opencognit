@@ -853,6 +853,60 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-SRCH-2: Evidence Link Search =====
+export const searchEvidencePacks = sqliteTable('search_evidence_packs', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('projekt_id'),
+  name: text('name').notNull(),
+  purpose: text('purpose').notNull(),
+  createdBy: text('created_by').notNull(),
+  status: text('status').notNull().default('draft'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const searchEvidencePackItems = sqliteTable('search_evidence_pack_items', {
+  id: text('id').primaryKey(),
+  packId: text('pack_id').notNull(),
+  sourceModule: text('source_module').notNull(),
+  sourceRecordId: text('source_record_id').notNull(),
+  recordType: text('record_type').notNull(),
+  title: text('title').notNull(),
+  evidenceType: text('evidence_type').notNull(),
+  addedBy: text('hinzugefuegt_von').notNull(),
+  sortOrder: integer('sort_order').notNull().default(0),
+  addedAt: text('hinzugefuegt_am').notNull(),
+});
+
+export const searchResultClicks = sqliteTable('search_result_clicks', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  companyId: text('unternehmen_id').notNull(),
+  queryText: text('query_text').notNull(),
+  clickedRecordId: text('clicked_record_id').notNull(),
+  position: integer('position').notNull(),
+  clickedAt: text('clicked_am').notNull(),
+});
+
+export const searchAgentRecommendations = sqliteTable('search_agent_recommendations', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  agentId: text('agent_id'),
+  issue: text('issue').notNull(),
+  severity: text('severity').notNull().default('P3'),
+  affectedQuery: text('affected_query'),
+  evidence: text('evidence'),
+  recommendedAction: text('recommended_action'),
+  owner: text('owner'),
+  linkIncidentId: text('link_incident_id'),
+  status: text('status').notNull().default('pending_review'),
+  detectedAt: text('detected_am').notNull(),
+  reviewedAt: text('reviewed_am'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +961,10 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  searchEvidencePacks,
+  searchEvidencePackItems,
+  searchResultClicks,
+  searchAgentRecommendations,
   session,
   account,
   verification,
