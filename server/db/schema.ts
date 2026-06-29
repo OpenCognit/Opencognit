@@ -853,6 +853,59 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-CS-1: Tenant Onboarding Plan =====
+export const tenantOnboardingPlans = sqliteTable('tenant_onboarding_plans', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  status: text('status').notNull().default('not_started'),
+  progressPct: real('progress_pct').notNull().default(0),
+  blocker: text('blocker'),
+  assignedTo: text('assigned_to'),
+  targetCompletionDate: text('target_completion_date'),
+  completedAt: text('abgeschlossen_am'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const tenantOnboardingTasks = sqliteTable('tenant_onboarding_tasks', {
+  id: text('id').primaryKey(),
+  planId: text('plan_id').notNull(),
+  task: text('aufgabe').notNull(),
+  category: text('kategorie').notNull(),
+  status: text('status').notNull().default('pending'),
+  owner: text('owner'),
+  dueDate: text('due_date'),
+  comment: text('kommentar'),
+  completedAt: text('abgeschlossen_am'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const tenantHealthScores = sqliteTable('tenant_health_scores', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  score: integer('score').notNull(),
+  setupScore: integer('setup_score'),
+  adoptionScore: integer('adoption_score'),
+  supportScore: integer('support_score'),
+  riskFlags: text('risk_flags'),
+  snapshotAt: text('snapshot_am').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const tenantUsageSnapshots = sqliteTable('tenant_usage_snapshots', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  activeUsers: integer('active_users'),
+  totalUsers: integer('total_users'),
+  modulesActive: text('modules_active'),
+  workflowsCompleted: integer('workflows_completed'),
+  dailyWorkSubmitted: integer('daily_work_submitted'),
+  approvalsCompleted: integer('approvals_completed'),
+  snapshotAt: text('snapshot_am').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +960,10 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  tenantOnboardingPlans,
+  tenantOnboardingTasks,
+  tenantHealthScores,
+  tenantUsageSnapshots,
   session,
   account,
   verification,
