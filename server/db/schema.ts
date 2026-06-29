@@ -853,6 +853,111 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-VND-1: Vendor Register + Qualification Backbone =====
+export const vendors = sqliteTable('vendors', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  vendorName: text('vendor_name').notNull(),
+  vendorType: text('vendor_type').notNull().default('material_supplier'),
+  registrationNumber: text('registration_number'),
+  taxId: text('tax_id'),
+  contactPerson: text('contact_person'),
+  contactPhone: text('contact_phone'),
+  contactEmail: text('contact_email'),
+  physicalAddress: text('physical_address'),
+  postalAddress: text('postal_address'),
+  website: text('website'),
+  yearEstablished: integer('year_established'),
+  employeeCount: integer('employee_count'),
+  annualTurnover: real('annual_turnover'),
+  bankName: text('bank_name'),
+  bankAccountNumber: text('bank_account_number'),
+  bankBranch: text('bank_branch'),
+  swiftCode: text('swift_code'),
+  currency: text('currency').default('KES'),
+  paymentTerms: text('payment_terms'),
+  creditLimit: real('credit_limit'),
+  insuranceExpiry: text('insurance_expiry'),
+  status: text('status').notNull().default('pending_review'),
+  registeredBy: text('registered_by'),
+  registeredAt: text('registered_am').notNull(),
+  approvedBy: text('approved_by'),
+  approvedAt: text('approved_am'),
+  rejectionReason: text('rejection_reason'),
+  blockedReason: text('blocked_reason'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const vendorContacts = sqliteTable('vendor_contacts', {
+  id: text('id').primaryKey(),
+  vendorId: text('vendor_id').notNull(),
+  contactName: text('contact_name').notNull(),
+  position: text('position'),
+  department: text('department'),
+  phone: text('phone'),
+  email: text('email'),
+  isPrimary: integer('is_primary').notNull().default(0),
+  isActive: integer('is_active').notNull().default(1),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const vendorCategories = sqliteTable('vendor_categories', {
+  id: text('id').primaryKey(),
+  vendorId: text('vendor_id').notNull(),
+  category: text('category').notNull(),
+  subcategory: text('subcategory'),
+  tradeLicense: text('trade_license'),
+  tradeLicenseExpiry: text('trade_license_expiry'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const vendorComplianceDocuments = sqliteTable('vendor_compliance_documents', {
+  id: text('id').primaryKey(),
+  vendorId: text('vendor_id').notNull(),
+  documentType: text('document_type').notNull(),
+  documentRef: text('document_ref'),
+  issuedBy: text('issued_by'),
+  issuedDate: text('issued_date'),
+  expiryDate: text('expiry_date'),
+  filePath: text('file_path'),
+  verificationStatus: text('verification_status').notNull().default('unverified'),
+  verifiedBy: text('verified_by'),
+  verifiedAt: text('verified_am'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const vendorApprovals = sqliteTable('vendor_approvals', {
+  id: text('id').primaryKey(),
+  vendorId: text('vendor_id').notNull(),
+  approvedBy: text('approved_by').notNull(),
+  role: text('rolle').notNull().default('procurement'),
+  decision: text('decision').notNull().default('pending'),
+  comments: text('comments'),
+  approvedAt: text('approved_am').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const vendorAgentRecommendations = sqliteTable('vendor_agent_recommendations', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  agentId: text('agent_id'),
+  vendorId: text('vendor_id').notNull(),
+  issue: text('issue').notNull(),
+  evidence: text('evidence'),
+  riskLevel: text('risk_level').notNull().default('medium'),
+  recommendedAction: text('recommended_action').notNull(),
+  owner: text('owner'),
+  status: text('status').notNull().default('pending_review'),
+  detectedAt: text('detected_am').notNull(),
+  reviewedAt: text('reviewed_am'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +1012,12 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  vendors,
+  vendorContacts,
+  vendorCategories,
+  vendorComplianceDocuments,
+  vendorApprovals,
+  vendorAgentRecommendations,
   session,
   account,
   verification,
