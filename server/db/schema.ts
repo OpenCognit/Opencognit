@@ -853,6 +853,101 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-OPS-1: Platform Health + Incident Register =====
+export const platformHealthChecks = sqliteTable('platform_health_checks', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  checkType: text('check_type').notNull(),
+  status: text('status').notNull(),
+  target: text('target'),
+  latencyMs: integer('latency_ms'),
+  message: text('message'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const platformIncidents = sqliteTable('platform_incidents', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  title: text('title').notNull(),
+  severity: text('severity').notNull(),
+  status: text('status').notNull().default('open'),
+  affectedModule: text('affected_module'),
+  affectedTenantId: text('affected_tenant_id'),
+  affectedProjectId: text('affected_project_id'),
+  releaseId: text('release_id'),
+  owner: text('owner'),
+  detectedBy: text('detected_by'),
+  detectedAt: text('detected_am').notNull(),
+  resolvedAt: text('resolved_am'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const platformIncidentEvents = sqliteTable('platform_incident_events', {
+  id: text('id').primaryKey(),
+  incidentId: text('incident_id').notNull(),
+  eventType: text('event_type').notNull(),
+  actor: text('actor'),
+  comment: text('kommentar'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const platformErrorLogs = sqliteTable('platform_error_logs', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  module: text('module').notNull(),
+  route: text('route'),
+  errorType: text('error_type').notNull(),
+  errorMessage: text('error_message').notNull(),
+  stackTrace: text('stack_trace'),
+  statusCode: integer('status_code'),
+  releaseId: text('release_id'),
+  affectedTenantId: text('affected_tenant_id'),
+  affectedUserId: text('affected_user_id'),
+  occurrenceCount: integer('occurrence_count').notNull().default(1),
+  firstSeenAt: text('first_seen_am').notNull(),
+  lastSeenAt: text('last_seen_am').notNull(),
+  status: text('status').notNull().default('unresolved'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const platformReleaseHealth = sqliteTable('platform_release_health', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  version: text('version').notNull(),
+  commitSha: text('commit_sha').notNull(),
+  deployedAt: text('deployed_am').notNull(),
+  status: text('status').notNull().default('healthy'),
+  errorSpikeDetected: integer('error_spike_detected').notNull().default(0),
+  regressionCount: integer('regression_count').notNull().default(0),
+  rollbackRecommended: integer('rollback_recommended').notNull().default(0),
+  description: text('beschreibung'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const platformObservabilityAlerts = sqliteTable('platform_observability_alerts', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  agentId: text('agent_id'),
+  issue: text('issue').notNull(),
+  severity: text('severity').notNull(),
+  affectedModule: text('affected_module'),
+  affectedTenantId: text('affected_tenant_id'),
+  affectedProjectId: text('affected_project_id'),
+  evidence: text('evidence'),
+  suspectedCause: text('suspected_cause'),
+  recommendedAction: text('recommended_action'),
+  owner: text('owner'),
+  linkIncidentId: text('link_incident_id'),
+  detectedAt: text('detected_am').notNull(),
+  acknowledgedAt: text('acknowledged_am'),
+  resolvedAt: text('resolved_am'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +1002,12 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  platformHealthChecks,
+  platformIncidents,
+  platformIncidentEvents,
+  platformErrorLogs,
+  platformReleaseHealth,
+  platformObservabilityAlerts,
   session,
   account,
   verification,
