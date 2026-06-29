@@ -66,6 +66,7 @@ import workersRouter from './routes/workers.js';
 import { startWebhookDispatcher } from './services/outgoing-webhooks.js';
 import agentsSoulRouter from './routes/agents-soul.js';
 import onboardingRouter from './routes/onboarding.js';
+import artifactsRouter from './routes/artifacts.js';
 import a2aMessagesRouter from './routes/a2a-messages.js';
 import { logAktivitaet } from './services/activity-log.js';
 import {
@@ -363,6 +364,7 @@ app.use('/', workersRouter);
 app.use('/', agentsSoulRouter);
 app.use('/', onboardingRouter);
 app.use('/', a2aMessagesRouter);
+app.use('/api/artifacts', artifactsRouter);
 
 // =============================================
 // UNTERNEHMEN — moved to ./routes/companies.ts

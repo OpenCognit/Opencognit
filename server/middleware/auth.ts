@@ -56,6 +56,8 @@ import {
   skillsLibrary,
   executionWorkspaces,
   workProducts,
+  artifactStore,
+  roles, permissions, rolePermissions, projectUsers, userTenantRoles,
   comments,
   goals,
   costEntries,
@@ -183,7 +185,8 @@ export type ResourceType =
   | 'agent' | 'task' | 'project' | 'approval' | 'routine' | 'trigger'
   | 'meeting' | 'skillsLibrary' | 'workspace' | 'workProduct' | 'comment'
   | 'palaceWing' | 'palaceDrawer' | 'palaceDiary' | 'palaceKgFact'
-  | 'budgetPolicy' | 'budgetIncident' | 'goal' | 'costEntry';
+  | 'budgetPolicy' | 'budgetIncident' | 'goal' | 'costEntry'
+  | 'artifact';
 
 function resolveCompanyIdForResource(type: ResourceType, id: string): string | null {
   switch (type) {
@@ -197,6 +200,7 @@ function resolveCompanyIdForResource(type: ResourceType, id: string): string | n
     case 'skillsLibrary': return db.select({ c: skillsLibrary.companyId }).from(skillsLibrary).where(eq(skillsLibrary.id, id)).get()?.c ?? null;
     case 'workspace':     return db.select({ c: executionWorkspaces.companyId }).from(executionWorkspaces).where(eq(executionWorkspaces.id, id)).get()?.c ?? null;
     case 'workProduct':   return db.select({ c: workProducts.companyId }).from(workProducts).where(eq(workProducts.id, id)).get()?.c ?? null;
+    case 'artifact':      return db.select({ c: artifactStore.companyId }).from(artifactStore).where(eq(artifactStore.id, id)).get()?.c ?? null;
     case 'comment':       return db.select({ c: comments.companyId }).from(comments).where(eq(comments.id, id)).get()?.c ?? null;
     case 'goal':          return db.select({ c: goals.companyId }).from(goals).where(eq(goals.id, id)).get()?.c ?? null;
     case 'costEntry':     return db.select({ c: costEntries.companyId }).from(costEntries).where(eq(costEntries.id, id)).get()?.c ?? null;
@@ -248,6 +252,104 @@ export function requireResourceAccess(
     (req as AuthRequest).companyMembership = membership;
     (req as AuthRequest).resolvedCompanyId = companyId;
     next();
+  };
+}
+
+// ---------------------------------------------------------------------------
+// requirePermission — RBAC permission check (PR-IAM-1)
+// ---------------------------------------------------------------------------
+export function requirePermission(module: string, action: string) {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const authReq = req as AuthRequest;
+    const userId = authReq.users?.userId;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated.' });
+
+    // Backward compat: admin role on user table bypasses all checks
+    const user = db.select({ rolle: users.role }).from(users).where(eq(users.id, userId)).get();
+    if (user?.rolle === 'admin') {
+      console.log(`🔓 admin bypass: user=${userId} module=${module} action=${action}`);
+      return next();
+    }
+
+    // Resolve tenant from request context (companyMembership set by requireResourceAccess or requireCompanyAccess)
+    const companyId = authReq.resolvedCompanyId || authReq.companyMembership?.companyId;
+    if (!companyId) {
+      return res.status(403).json({ error: 'No company context. Use requireCompanyAccess first.' });
+    }
+
+    // Query: user → tenant_roles → roles → role_permissions → permissions
+    const hasPermission = db.select({ id: permissions.id })
+      .from(permissions)
+      .innerJoin(rolePermissions, eq(permissions.id, rolePermissions.permissionId))
+      .innerJoin(roles, eq(rolePermissions.roleId, roles.id))
+      .innerJoin(userTenantRoles, eq(roles.id, userTenantRoles.roleId))
+      .where(
+        and(
+          eq(userTenantRoles.userId, userId),
+          eq(userTenantRoles.companyId, companyId),
+          eq(permissions.module, module),
+          eq(permissions.action, action),
+        )
+      )
+      .get();
+
+    if (hasPermission) return next();
+
+    return res.status(403).json({
+      error: 'Insufficient permissions.',
+      required: { module, action },
+    });
+  };
+}
+
+export function requireProjectPermission(projectIdParam: string, module: string, action: string) {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const authReq = req as AuthRequest;
+    const userId = authReq.users?.userId;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated.' });
+
+    // Admin bypass
+    const user = db.select({ rolle: users.role }).from(users).where(eq(users.id, userId)).get();
+    if (user?.rolle === 'admin') return next();
+
+    const projectId = req.params[projectIdParam] as string;
+    if (!projectId) return res.status(400).json({ error: 'Missing project ID parameter.' });
+
+    // Check project_users assignment
+    const assignment = db.select({ roleId: projectUsers.roleId })
+      .from(projectUsers)
+      .where(
+        and(
+          eq(projectUsers.projectId, projectId),
+          eq(projectUsers.userId, userId),
+          eq(projectUsers.status, 'active'),
+        )
+      )
+      .get();
+
+    if (!assignment) {
+      return res.status(403).json({ error: 'Not assigned to this project.' });
+    }
+
+    // Check that the assigned role has the required permission
+    const hasPermission = db.select({ id: permissions.id })
+      .from(permissions)
+      .innerJoin(rolePermissions, eq(permissions.id, rolePermissions.permissionId))
+      .where(
+        and(
+          eq(rolePermissions.roleId, assignment.roleId),
+          eq(permissions.module, module),
+          eq(permissions.action, action),
+        )
+      )
+      .get();
+
+    if (hasPermission) return next();
+
+    return res.status(403).json({
+      error: 'Insufficient project permissions.',
+      required: { project: projectId, module, action },
+    });
   };
 }
 
