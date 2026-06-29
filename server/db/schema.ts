@@ -853,6 +853,80 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-BILL-1: Subscription Plan + Entitlement Backbone =====
+export const subscriptionPlans = sqliteTable('subscription_plans', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  code: text('code').notNull().unique(),
+  maxUsers: integer('max_users'),
+  maxProjects: integer('max_projects'),
+  storageLimitMb: integer('storage_limit_mb'),
+  aiRequestsPerMonth: integer('ai_requests_per_month'),
+  monthlyPriceKes: real('monthly_price_kes'),
+  supportLevel: text('support_level').default('standard'),
+  isActive: integer('ist_aktiv').notNull().default(1),
+  description: text('beschreibung'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const subscriptionPlanModules = sqliteTable('subscription_plan_modules', {
+  id: text('id').primaryKey(),
+  planId: text('plan_id').notNull(),
+  moduleKey: text('module_key').notNull(),
+  isActive: integer('ist_aktiv').notNull().default(1),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const tenantSubscriptions = sqliteTable('tenant_subscriptions', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  planId: text('plan_id').notNull(),
+  status: text('status').notNull().default('trial'),
+  trialEndsAt: text('trial_ends_am'),
+  currentPeriodStart: text('current_period_start'),
+  currentPeriodEnd: text('current_period_end'),
+  autoRenew: integer('auto_renew').notNull().default(1),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const tenantEntitlements = sqliteTable('tenant_entitlements', {
+  id: text('id').primaryKey(),
+  subscriptionId: text('subscription_id').notNull(),
+  companyId: text('unternehmen_id').notNull(),
+  moduleKey: text('module_key').notNull(),
+  isActive: integer('ist_aktiv').notNull().default(1),
+  limitType: text('limit_type'),
+  limitValue: integer('limit_value'),
+  startDate: text('start_date'),
+  endDate: text('end_date'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const tenantUsageLimits = sqliteTable('tenant_usage_limits', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  limitType: text('limit_type').notNull(),
+  currentValue: integer('current_value').notNull().default(0),
+  maxValue: integer('max_value'),
+  snapshotAt: text('snapshot_am').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const subscriptionEvents = sqliteTable('subscription_events', {
+  id: text('id').primaryKey(),
+  subscriptionId: text('subscription_id').notNull(),
+  companyId: text('unternehmen_id').notNull(),
+  eventType: text('event_type').notNull(),
+  oldValue: text('old_value'),
+  newValue: text('new_value'),
+  actor: text('actor'),
+  comment: text('kommentar'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +981,12 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  subscriptionPlans,
+  subscriptionPlanModules,
+  tenantSubscriptions,
+  tenantEntitlements,
+  tenantUsageLimits,
+  subscriptionEvents,
   session,
   account,
   verification,
