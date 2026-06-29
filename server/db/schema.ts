@@ -853,6 +853,106 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-PAY-2+3+4+5: Overtime, Payroll Batch, Variance + Agent =====
+export const overtimeRequests = sqliteTable('overtime_requests', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  workerId: text('worker_id').notNull(),
+  projektId: text('projekt_id').notNull(),
+  date: text('datum').notNull(),
+  hoursRequested: real('hours_requested').notNull(),
+  reason: text('reason').notNull(),
+  activityId: text('activity_id'),
+  workPackId: text('work_pack_id'),
+  requestedBy: text('requested_by').notNull(),
+  status: text('status').notNull().default('submitted'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const overtimeApprovals = sqliteTable('overtime_approvals', {
+  id: text('id').primaryKey(),
+  overtimeRequestId: text('overtime_request_id').notNull(),
+  approvedBy: text('approved_by').notNull(),
+  role: text('rolle').notNull().default('foreman'),
+  decision: text('decision').notNull().default('approved'),
+  hoursApproved: real('hours_approved').notNull(),
+  comments: text('comments'),
+  approvedAt: text('approved_am').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const labourAllowances = sqliteTable('labour_allowances', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  workerId: text('worker_id'),
+  timesheetId: text('timesheet_id'),
+  allowanceType: text('allowance_type').notNull(),
+  description: text('description'),
+  amount: real('amount').notNull(),
+  date: text('datum').notNull(),
+  approvedBy: text('approved_by'),
+  status: text('status').notNull().default('pending'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const payrollBatches = sqliteTable('payroll_batches', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  periodStart: text('period_start').notNull(),
+  periodEnd: text('period_end').notNull(),
+  status: text('status').notNull().default('draft'),
+  totalWorkers: integer('total_workers').notNull().default(0),
+  totalNormalHours: real('total_normal_hours').notNull().default(0),
+  totalOvertimeHours: real('total_overtime_hours').notNull().default(0),
+  totalAllowances: real('total_allowances').notNull().default(0),
+  totalGross: real('total_gross').notNull().default(0),
+  totalDeductions: real('total_deductions').notNull().default(0),
+  totalNet: real('total_net').notNull().default(0),
+  preparedBy: text('prepared_by'),
+  financeReviewedBy: text('finance_reviewed_by'),
+  financeReviewedAt: text('finance_reviewed_am'),
+  approvedBy: text('approved_by'),
+  approvedAt: text('approved_am'),
+  lockedAt: text('locked_am'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const payrollBatchLines = sqliteTable('payroll_batch_lines', {
+  id: text('id').primaryKey(),
+  payrollBatchId: text('payroll_batch_id').notNull(),
+  timesheetId: text('timesheet_id').notNull(),
+  workerId: text('worker_id').notNull(),
+  projectId: text('project_id').notNull(),
+  normalHours: real('normal_hours').notNull().default(0),
+  overtimeHours: real('overtime_hours').notNull().default(0),
+  rateAmount: real('rate_amount').notNull().default(0),
+  grossPay: real('gross_pay').notNull().default(0),
+  allowances: real('allowances').notNull().default(0),
+  deductions: real('deductions').notNull().default(0),
+  netPay: real('net_pay').notNull().default(0),
+  status: text('status').notNull().default('included'),
+  exceptionId: text('exception_id'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const payrollExceptions = sqliteTable('payroll_exceptions', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  payrollBatchId: text('payroll_batch_id'),
+  timesheetId: text('timesheet_id'),
+  workerId: text('worker_id'),
+  exceptionType: text('exception_type').notNull(),
+  description: text('description').notNull(),
+  severity: text('severity').notNull().default('medium'),
+  resolvedBy: text('resolved_by'),
+  resolvedAt: text('resolved_am'),
+  status: text('status').notNull().default('open'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +1007,12 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  overtimeRequests,
+  overtimeApprovals,
+  labourAllowances,
+  payrollBatches,
+  payrollBatchLines,
+  payrollExceptions,
   session,
   account,
   verification,
