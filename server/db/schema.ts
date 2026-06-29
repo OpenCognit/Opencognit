@@ -853,6 +853,67 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-PRO-1: Purchase Requisition + Budget Check Backbone =====
+export const purchaseRequisitions = sqliteTable('purchase_requisitions', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('project_id').notNull(),
+  prNumber: text('pr_number'),
+  requesterId: text('requester_id').notNull(),
+  requiredDate: text('required_date').notNull(),
+  procurementType: text('procurement_type').notNull().default('material'),
+  priority: text('priority').notNull().default('normal'),
+  status: text('status').notNull().default('draft'),
+  estimatedTotalCost: real('estimated_total_cost').notNull().default(0),
+  costCodeId: text('cost_code_id'),
+  dailyWorkPackId: text('daily_work_pack_id'),
+  reason: text('reason').notNull(),
+  stockCheckResult: text('stock_check_result'),
+  budgetCheckResult: text('budget_check_result'),
+  approvedBy: text('approved_by'),
+  approvedAt: text('approved_am'),
+  rejectedBy: text('rejected_by'),
+  rejectedAt: text('rejected_am'),
+  rejectionReason: text('rejection_reason'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const purchaseRequisitionItems = sqliteTable('purchase_requisition_items', {
+  id: text('id').primaryKey(),
+  prId: text('pr_id').notNull(),
+  itemName: text('item_name').notNull(),
+  itemType: text('item_type').notNull().default('material'),
+  boqItemId: text('boq_item_id'),
+  activityId: text('activity_id'),
+  quantity: real('quantity').notNull(),
+  unit: text('unit').notNull().default('No.'),
+  estimatedUnitCost: real('estimated_unit_cost'),
+  estimatedTotalCost: real('estimated_total_cost').notNull().default(0),
+  specification: text('specification'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const procurementAgentRecommendations = sqliteTable('procurement_agent_recommendations', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  agentId: text('agent_id'),
+  prId: text('pr_id'),
+  poId: text('po_id'),
+  vendorId: text('vendor_id'),
+  issue: text('issue').notNull(),
+  evidence: text('evidence'),
+  riskLevel: text('risk_level').notNull().default('medium'),
+  recommendedAction: text('recommended_action').notNull(),
+  owner: text('owner'),
+  status: text('status').notNull().default('pending_review'),
+  detectedAt: text('detected_am').notNull(),
+  reviewedAt: text('reviewed_am'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +968,9 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  purchaseRequisitions,
+  purchaseRequisitionItems,
+  procurementAgentRecommendations,
   session,
   account,
   verification,
