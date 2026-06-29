@@ -853,6 +853,65 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-HSE-3: Incident + Near-Miss Register =====
+export const hseIncidents = sqliteTable('hse_incidents', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('projekt_id'),
+  incidentType: text('incident_type').notNull().default('near_miss'),
+  severity: text('severity').notNull().default('low'),
+  title: text('titel').notNull(),
+  description: text('beschreibung'),
+  location: text('location').notNull(),
+  activityId: text('aktivitaet_id'),
+  workPackId: text('work_pack_id'),
+  date: text('datum').notNull(),
+  time: text('uhrzeit'),
+  reportedBy: text('reported_by').notNull(),
+  immediateAction: text('immediate_action'),
+  investigationStatus: text('investigation_status').notNull().default('not_started'),
+  photos: text('photos'),
+  status: text('status').notNull().default('reported'),
+  closedAt: text('closed_am'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const hseIncidentInvestigations = sqliteTable('hse_incident_investigations', {
+  id: text('id').primaryKey(),
+  incidentId: text('incident_id').notNull(),
+  assignedTo: text('assigned_to').notNull(),
+  rootCause: text('root_cause'),
+  contributingFactors: text('contributing_factors'),
+  findings: text('findings'),
+  recommendations: text('recommendations'),
+  status: text('status').notNull().default('in_progress'),
+  startedAt: text('started_am'),
+  completedAt: text('completed_am'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const hseObservations = sqliteTable('hse_observations', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('projekt_id'),
+  observationType: text('observation_type').notNull().default('unsafe_condition'),
+  severity: text('severity').notNull().default('low'),
+  description: text('beschreibung').notNull(),
+  location: text('location').notNull(),
+  activityId: text('aktivitaet_id'),
+  workPackId: text('work_pack_id'),
+  reportedBy: text('reported_by'),
+  date: text('datum').notNull(),
+  photoEvidence: text('photo_evidence'),
+  status: text('status').notNull().default('open'),
+  resolvedAt: text('resolved_am'),
+  resolvedBy: text('resolved_by'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +966,9 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  hseIncidents,
+  hseIncidentInvestigations,
+  hseObservations,
   session,
   account,
   verification,
