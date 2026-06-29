@@ -853,6 +853,29 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-SRCH-3: Command Palette =====
+export const searchCommands = sqliteTable('search_commands', {
+  id: text('id').primaryKey(),
+  commandKey: text('command_key').notNull().unique(),
+  label: text('label').notNull(),
+  category: text('category').notNull(),
+  actionType: text('action_type').notNull(),
+  actionTarget: text('action_target').notNull(),
+  description: text('beschreibung'),
+  icon: text('icon'),
+  isActive: integer('ist_aktiv').notNull().default(1),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const searchCommandUsage = sqliteTable('search_command_usage', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  companyId: text('unternehmen_id').notNull(),
+  commandId: text('command_id').notNull(),
+  executedAt: text('executed_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +930,8 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  searchCommands,
+  searchCommandUsage,
   session,
   account,
   verification,
