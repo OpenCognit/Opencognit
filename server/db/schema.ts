@@ -853,6 +853,41 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-EST-4: Productivity + Historical Benchmarks =====
+export const estimateProductivityAssumptions = sqliteTable('estimate_productivity_assumptions', {
+  id: text('id').primaryKey(),
+  boqItemId: text('boq_item_id').notNull(),
+  activityType: text('activity_type').notNull(),
+  unit: text('einheit').notNull().default('m²'),
+  assumedOutputPerDay: real('assumed_output_per_day').notNull(),
+  crewSize: integer('crew_size').notNull().default(1),
+  crewComposition: text('crew_composition'),
+  benchmarkSource: text('benchmark_source'),
+  benchmarkOutput: real('benchmark_output'),
+  variancePct: real('variance_pct'),
+  conditionsFactor: real('conditions_factor').notNull().default(1.0),
+  conditionsNotes: text('conditions_notes'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const estimateHistoricalComparisons = sqliteTable('estimate_historical_comparisons', {
+  id: text('id').primaryKey(),
+  estimateId: text('estimate_id').notNull(),
+  boqItemId: text('boq_item_id'),
+  activityType: text('activity_type').notNull(),
+  currentRate: real('current_rate').notNull(),
+  historicalAvgRate: real('historical_avg_rate').notNull(),
+  historicalMinRate: real('historical_min_rate'),
+  historicalMaxRate: real('historical_max_rate'),
+  variancePct: real('variance_pct').notNull(),
+  sampleCount: integer('sample_count').notNull().default(1),
+  dataSource: text('data_source'),
+  riskLevel: text('risk_level').notNull().default('low'),
+  recommendedAdjustment: text('recommended_adjustment'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +942,8 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  estimateProductivityAssumptions,
+  estimateHistoricalComparisons,
   session,
   account,
   verification,
