@@ -853,6 +853,103 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-PAY-1: Timesheet + Labour Allocation Backbone =====
+export const attendanceRecords = sqliteTable('attendance_records', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  workerId: text('worker_id').notNull(),
+  projectId: text('projekt_id').notNull(),
+  date: text('datum').notNull(),
+  checkIn: text('check_in'),
+  checkOut: text('check_out'),
+  source: text('source').notNull().default('manual'),
+  status: text('status').notNull().default('present'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const timesheets = sqliteTable('timesheets', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  workerId: text('worker_id').notNull(),
+  projectId: text('projekt_id').notNull(),
+  crewId: text('crew_id'),
+  foremanId: text('foreman_id'),
+  date: text('datum').notNull(),
+  totalNormalHours: real('total_normal_hours').notNull().default(0),
+  totalOvertimeHours: real('total_overtime_hours').notNull().default(0),
+  rateType: text('rate_type').notNull().default('hourly'),
+  allowancesTotal: real('allowances_total').default(0),
+  status: text('status').notNull().default('draft'),
+  approvedBy: text('approved_by'),
+  approvedAt: text('approved_am'),
+  rejectionReason: text('rejection_reason'),
+  createdBy: text('erstellt_von').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const timesheetLines = sqliteTable('timesheet_lines', {
+  id: text('id').primaryKey(),
+  timesheetId: text('timesheet_id').notNull(),
+  activityId: text('activity_id'),
+  workPackId: text('work_pack_id'),
+  costCodeId: text('cost_code_id'),
+  boqItemId: text('boq_item_id'),
+  normalHours: real('normal_hours').notNull().default(0),
+  overtimeHours: real('overtime_hours').notNull().default(0),
+  rateAmount: real('rate_amount').notNull().default(0),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const labourCostAllocations = sqliteTable('labour_cost_allocations', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  timesheetLineId: text('timesheet_line_id').notNull(),
+  projectId: text('projekt_id').notNull(),
+  activityId: text('activity_id'),
+  costCodeId: text('cost_code_id'),
+  boqItemId: text('boq_item_id'),
+  labourCost: real('labour_cost').notNull().default(0),
+  date: text('datum').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const payrollAgentRecommendations = sqliteTable('payroll_agent_recommendations', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  agentId: text('agent_id'),
+  issue: text('issue').notNull(),
+  severity: text('severity').notNull().default('medium'),
+  workerId: text('worker_id'),
+  timesheetId: text('timesheet_id'),
+  overtimeRequestId: text('overtime_request_id'),
+  projectId: text('projekt_id'),
+  evidence: text('evidence'),
+  recommendedAction: text('recommended_action'),
+  owner: text('owner'),
+  status: text('status').notNull().default('pending_review'),
+  detectedAt: text('detected_am').notNull(),
+  reviewedAt: text('reviewed_am'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const payrollReviews = sqliteTable('payroll_reviews', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  recommendationId: text('recommendation_id'),
+  timesheetId: text('timesheet_id'),
+  payrollBatchLineId: text('payroll_batch_line_id'),
+  reviewedBy: text('reviewed_by').notNull(),
+  role: text('rolle').notNull().default('foreman'),
+  decision: text('decision').notNull().default('pending'),
+  comments: text('comments'),
+  reviewedAt: text('reviewed_am'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +1004,12 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  attendanceRecords,
+  timesheets,
+  timesheetLines,
+  labourCostAllocations,
+  payrollAgentRecommendations,
+  payrollReviews,
   session,
   account,
   verification,
