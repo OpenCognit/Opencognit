@@ -853,6 +853,59 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-STO-5: Consumption Intelligence Agent =====
+export const stockAgentRecommendations = sqliteTable('stock_agent_recommendations', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('projekt_id'),
+  agentId: text('agent_id'),
+  issue: text('issue').notNull(),
+  severity: text('severity').notNull().default('medium'),
+  stockItemId: text('stock_item_id'),
+  workPackId: text('work_pack_id'),
+  boqItemId: text('boq_item_id'),
+  evidence: text('evidence'),
+  recommendedAction: text('recommended_action'),
+  owner: text('owner'),
+  status: text('status').notNull().default('pending_review'),
+  detectedAt: text('detected_am').notNull(),
+  reviewedAt: text('reviewed_am'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const stockReviews = sqliteTable('stock_reviews', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  recommendationId: text('recommendation_id'),
+  adjustmentId: text('adjustment_id'),
+  wastageId: text('wastage_id'),
+  reviewedBy: text('reviewed_by').notNull(),
+  role: text('rolle').notNull().default('storekeeper'),
+  decision: text('decision').notNull().default('pending'),
+  comments: text('comments'),
+  reviewedAt: text('reviewed_am'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const stockTransferRequests = sqliteTable('stock_transfer_requests', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  fromLocationId: text('from_location_id').notNull(),
+  toLocationId: text('to_location_id').notNull(),
+  stockItemId: text('stock_item_id').notNull(),
+  materialName: text('material_name').notNull(),
+  unit: text('einheit').notNull(),
+  quantity: real('menge').notNull(),
+  reason: text('reason').notNull(),
+  requestedBy: text('requested_by').notNull(),
+  approvedBy: text('approved_by'),
+  approvedAt: text('approved_am'),
+  status: text('status').notNull().default('pending'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +960,9 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  stockAgentRecommendations,
+  stockReviews,
+  stockTransferRequests,
   session,
   account,
   verification,
