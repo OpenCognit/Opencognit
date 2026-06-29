@@ -853,6 +853,60 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-STO-1: Stock Ledger + Store Location Backbone =====
+export const storeLocations = sqliteTable('store_locations', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('projekt_id'),
+  name: text('name').notNull(),
+  locationType: text('location_type').notNull().default('main_store'),
+  description: text('beschreibung'),
+  isActive: integer('ist_aktiv').notNull().default(1),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const stockItems = sqliteTable('stock_items', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('projekt_id'),
+  storeLocationId: text('store_location_id').notNull(),
+  materialId: text('material_id'),
+  materialName: text('material_name').notNull(),
+  unit: text('einheit').notNull(),
+  quantity: real('menge').notNull().default(0),
+  reserved: real('aufgeteilt').notNull().default(0),
+  available: real('verfuegbar').notNull().default(0),
+  minLevel: real('min_level'),
+  reorderLevel: real('reorder_level'),
+  batchNumber: text('batch_number'),
+  expiryDate: text('expiry_date'),
+  condition: text('condition').default('good'),
+  lastStocktakeAt: text('last_stocktake_am'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const stockLedgerTransactions = sqliteTable('stock_ledger_transactions', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  stockItemId: text('stock_item_id').notNull(),
+  transactionType: text('transaction_type').notNull(),
+  quantity: real('menge').notNull(),
+  balanceAfter: real('balance_after').notNull(),
+  referenceId: text('reference_id'),
+  referenceType: text('reference_type'),
+  activityId: text('activity_id'),
+  workPackId: text('work_pack_id'),
+  boqItemId: text('boq_item_id'),
+  userId: text('benutzer_id'),
+  fromLocation: text('from_location'),
+  toLocation: text('to_location'),
+  description: text('beschreibung'),
+  createdBy: text('erstellt_von').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +961,9 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  storeLocations,
+  stockItems,
+  stockLedgerTransactions,
   session,
   account,
   verification,
