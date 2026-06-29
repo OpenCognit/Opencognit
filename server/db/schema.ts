@@ -853,6 +853,51 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-STO-4: Stocktake + Adjustment Approval =====
+export const stocktakeBatches = sqliteTable('stocktake_batches', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('projekt_id'),
+  storeLocationId: text('store_location_id').notNull(),
+  scheduledDate: text('scheduled_date').notNull(),
+  countedBy: text('counted_by').notNull(),
+  verifiedBy: text('verified_by'),
+  status: text('status').notNull().default('scheduled'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const stocktakeLines = sqliteTable('stocktake_lines', {
+  id: text('id').primaryKey(),
+  batchId: text('batch_id').notNull(),
+  stockItemId: text('stock_item_id').notNull(),
+  materialName: text('material_name').notNull(),
+  unit: text('einheit').notNull(),
+  systemQty: real('system_qty').notNull(),
+  countedQty: real('counted_qty').notNull(),
+  varianceQty: real('variance_qty').notNull(),
+  varianceReason: text('variance_reason'),
+  status: text('status').notNull().default('counted'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const stockAdjustmentRequests = sqliteTable('stock_adjustment_requests', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  stocktakeBatchId: text('stocktake_batch_id'),
+  stocktakeLineId: text('stocktake_line_id'),
+  stockItemId: text('stock_item_id').notNull(),
+  adjustmentQty: real('adjustment_qty').notNull(),
+  reason: text('reason').notNull(),
+  reasonCategory: text('reason_category').notNull().default('counting_error'),
+  requestedBy: text('requested_by').notNull(),
+  approvedBy: text('approved_by'),
+  approvedAt: text('approved_am'),
+  status: text('status').notNull().default('pending'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +952,9 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  stocktakeBatches,
+  stocktakeLines,
+  stockAdjustmentRequests,
   session,
   account,
   verification,
