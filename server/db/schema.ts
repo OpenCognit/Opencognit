@@ -853,6 +853,30 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-EST-3: Quote Linkage =====
+export const estimateQuoteLinks = sqliteTable('estimate_quote_links', {
+  id: text('id').primaryKey(),
+  estimateId: text('estimate_id').notNull(),
+  boqItemId: text('boq_item_id'),
+  quoteType: text('quote_type').notNull().default('vendor'),
+  vendorId: text('vendor_id'),
+  subcontractorId: text('subcontractor_id'),
+  quoteRef: text('quote_ref').notNull(),
+  quoteDate: text('quote_date'),
+  expiryDate: text('expiry_date'),
+  amount: real('amount'),
+  currency: text('currency').default('KES'),
+  coversVat: integer('covers_vat').notNull().default(0),
+  coversTransport: integer('covers_transport').notNull().default(0),
+  scopeMatch: text('scope_match').default('full'),
+  exclusions: text('exclusions'),
+  riskFlag: text('risk_flag'),
+  status: text('status').notNull().default('valid'),
+  linkedBy: text('linked_by').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
