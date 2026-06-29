@@ -853,6 +853,30 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-EQP-2: Daily Usage + Utilization Logs =====
+export const equipmentUsageLogs = sqliteTable('equipment_usage_logs', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  equipmentId: text('equipment_id').notNull(),
+  projectId: text('projekt_id'),
+  workPackId: text('work_pack_id'),
+  activityId: text('activity_id'),
+  operatorId: text('operator_id'),
+  date: text('datum').notNull(),
+  startMeter: real('start_meter'),
+  endMeter: real('end_meter'),
+  hoursUsed: real('hours_used').notNull().default(0),
+  idleHours: real('idle_hours').notNull().default(0),
+  fuelUsed: real('fuel_used'),
+  outputQuantity: real('output_quantity'),
+  outputUnit: text('output_unit'),
+  location: text('location'),
+  status: text('status').notNull().default('recorded'),
+  notes: text('notes'),
+  createdBy: text('erstellt_von').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +931,7 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  equipmentUsageLogs,
   session,
   account,
   verification,
