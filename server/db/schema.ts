@@ -853,6 +853,80 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-EQP-1: Equipment Register + Allocation Backbone =====
+export const equipmentCategories = sqliteTable('equipment_categories', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  class: text('class').notNull().default('light_equipment'),
+  typicalRatePerDay: real('typical_rate_per_day'),
+  requiredSafetyCheck: integer('required_safety_check').notNull().default(0),
+  fuelRequired: integer('fuel_required').notNull().default(0),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const equipmentAssets = sqliteTable('equipment_assets', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  categoryId: text('category_id').notNull(),
+  assetCode: text('asset_code').notNull(),
+  make: text('make'),
+  model: text('model'),
+  year: integer('year'),
+  serialNumber: text('serial_number'),
+  ownership: text('ownership').notNull().default('owned'),
+  status: text('status').notNull().default('available'),
+  lastMaintenanceAt: text('last_maintenance_am'),
+  nextMaintenanceAt: text('next_maintenance_am'),
+  meterReading: real('meter_reading').default(0),
+  meterUnit: text('meter_unit').default('hours'),
+  hireRatePerDay: real('hire_rate_per_day'),
+  baseLocation: text('base_location'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const equipmentAllocations = sqliteTable('equipment_allocations', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  equipmentId: text('equipment_id').notNull(),
+  projectId: text('projekt_id').notNull(),
+  workPackId: text('work_pack_id'),
+  allocatedAt: text('allocated_am').notNull(),
+  releasedAt: text('released_am'),
+  status: text('status').notNull().default('active'),
+  createdBy: text('erstellt_von').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const equipmentOperatorAssignments = sqliteTable('equipment_operator_assignments', {
+  id: text('id').primaryKey(),
+  equipmentId: text('equipment_id').notNull(),
+  operatorId: text('operator_id').notNull(),
+  assignedAt: text('assigned_am').notNull(),
+  releasedAt: text('released_am'),
+  status: text('status').notNull().default('active'),
+  createdBy: text('erstellt_von').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const equipmentAgentRecommendations = sqliteTable('equipment_agent_recommendations', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  agentId: text('agent_id'),
+  issue: text('issue').notNull(),
+  severity: text('severity').notNull().default('medium'),
+  equipmentId: text('equipment_id'),
+  projectId: text('projekt_id'),
+  evidence: text('evidence'),
+  recommendedAction: text('recommended_action'),
+  owner: text('owner'),
+  status: text('status').notNull().default('pending_review'),
+  detectedAt: text('detected_am').notNull(),
+  reviewedAt: text('reviewed_am'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +981,11 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  equipmentCategories,
+  equipmentAssets,
+  equipmentAllocations,
+  equipmentOperatorAssignments,
+  equipmentAgentRecommendations,
   session,
   account,
   verification,
