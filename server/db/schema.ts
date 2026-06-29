@@ -853,6 +853,45 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-EST-5: Bid Review + Lock =====
+export const estimateAssumptions = sqliteTable('estimate_assumptions', {
+  id: text('id').primaryKey(),
+  estimateId: text('estimate_id').notNull(),
+  versionId: text('version_id'),
+  category: text('category').notNull().default('general'),
+  description: text('beschreibung').notNull(),
+  riskLevel: text('risk_level').notNull().default('low'),
+  commercialImpact: real('commercial_impact'),
+  approvedBy: text('approved_by'),
+  approvedAt: text('approved_am'),
+  status: text('status').notNull().default('draft'),
+  createdBy: text('erstellt_von').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const estimateReviews = sqliteTable('estimate_reviews', {
+  id: text('id').primaryKey(),
+  estimateId: text('estimate_id').notNull(),
+  versionId: text('version_id').notNull(),
+  reviewedBy: text('reviewed_by').notNull(),
+  role: text('rolle').notNull().default('estimator'),
+  level: integer('level').notNull().default(1),
+  decision: text('decision').notNull().default('pending'),
+  comments: text('comments'),
+  materialOk: integer('material_ok'),
+  labourOk: integer('labour_ok'),
+  equipmentOk: integer('equipment_ok'),
+  subcontractOk: integer('subcontract_ok'),
+  overheadOk: integer('overhead_ok'),
+  marginOk: integer('margin_ok'),
+  riskOk: integer('risk_ok'),
+  assumptionsOk: integer('assumptions_ok'),
+  quotesOk: integer('quotes_ok'),
+  reviewedAt: text('reviewed_am'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +946,8 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  estimateAssumptions,
+  estimateReviews,
   session,
   account,
   verification,
