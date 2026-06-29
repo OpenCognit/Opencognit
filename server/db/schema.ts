@@ -853,6 +853,44 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-HSE-2: Permit-to-Work =====
+export const hsePermits = sqliteTable('hse_permits', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('projekt_id'),
+  permitType: text('permit_type').notNull(),
+  activityId: text('aktivitaet_id'),
+  workPackId: text('work_pack_id'),
+  location: text('location').notNull(),
+  riskLevel: text('risk_level').notNull().default('medium'),
+  description: text('description'),
+  validFrom: text('valid_from').notNull(),
+  validTo: text('valid_to').notNull(),
+  requestedBy: text('requested_by').notNull(),
+  approvedBy: text('approved_by'),
+  approvedAt: text('approved_am'),
+  issuedAt: text('issued_am'),
+  expiredAt: text('expiry_am'),
+  status: text('status').notNull().default('draft'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const hsePermitControls = sqliteTable('hse_permit_controls', {
+  id: text('id').primaryKey(),
+  permitId: text('permit_id').notNull(),
+  controlName: text('control_name').notNull(),
+  controlType: text('control_type').notNull().default('check'),
+  required: integer('required').notNull().default(1),
+  status: text('status').notNull().default('pending'),
+  evidence: text('evidence'),
+  checkedBy: text('checked_by'),
+  checkedAt: text('checked_am'),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +945,8 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  hsePermits,
+  hsePermitControls,
   session,
   account,
   verification,
