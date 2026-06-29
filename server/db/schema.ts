@@ -853,6 +853,119 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-TDR-2+3+4+5: Documents, Compliance, Submission, Outcomes =====
+export const tenderDocuments = sqliteTable('tender_documents', {
+  id: text('id').primaryKey(),
+  tenderId: text('tender_id').notNull(),
+  documentType: text('document_type').notNull(),
+  title: text('title').notNull(),
+  description: text('description'),
+  fileUrl: text('file_url'),
+  version: integer('version').default(1),
+  issuedAt: text('issued_am'),
+  acknowledged: integer('acknowledged').default(0),
+  acknowledgedBy: text('acknowledged_by'),
+  acknowledgedAt: text('acknowledged_am'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const tenderAddenda = sqliteTable('tender_addenda', {
+  id: text('id').primaryKey(),
+  tenderId: text('tender_id').notNull(),
+  addendumNumber: integer('addendum_number').notNull(),
+  title: text('title').notNull(),
+  issuedAt: text('issued_am').notNull(),
+  description: text('description'),
+  affectedDocuments: text('affected_documents'),
+  pricingImpact: integer('pricing_impact').default(0),
+  programmeImpact: integer('programme_impact').default(0),
+  technicalImpact: integer('technical_impact').default(0),
+  acknowledged: integer('acknowledged').default(0),
+  acknowledgedBy: text('acknowledged_by'),
+  acknowledgedAt: text('acknowledged_am'),
+  reviewStatus: text('review_status').notNull().default('pending'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const tenderClarifications = sqliteTable('tender_clarifications', {
+  id: text('id').primaryKey(),
+  tenderId: text('tender_id').notNull(),
+  question: text('question').notNull(),
+  askedBy: text('asked_by').notNull(),
+  askedAt: text('asked_am').notNull(),
+  answer: text('answer'),
+  answeredBy: text('answered_by'),
+  answeredAt: text('answered_am'),
+  status: text('status').notNull().default('pending'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const tenderComplianceRequirements = sqliteTable('tender_compliance_requirements', {
+  id: text('id').primaryKey(),
+  tenderId: text('tender_id').notNull(),
+  requirement: text('requirement').notNull(),
+  sourceDocument: text('source_document'),
+  sectionReference: text('section_reference'),
+  mandatory: integer('mandatory').notNull().default(1),
+  owner: text('owner').notNull(),
+  dueDate: text('due_date'),
+  status: text('status').notNull().default('pending'),
+  evidenceAttached: integer('evidence_attached').default(0),
+  evidenceUrl: text('evidence_url'),
+  reviewedBy: text('reviewed_by'),
+  reviewedAt: text('reviewed_am'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const tenderSubmissionChecklists = sqliteTable('tender_submission_checklists', {
+  id: text('id').primaryKey(),
+  tenderId: text('tender_id').notNull(),
+  item: text('item').notNull(),
+  category: text('category').notNull().default('general'),
+  checked: integer('checked').notNull().default(0),
+  checkedBy: text('checked_by'),
+  checkedAt: text('checked_am'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const tenderSubmissionEvidence = sqliteTable('tender_submission_evidence', {
+  id: text('id').primaryKey(),
+  tenderId: text('tender_id').notNull(),
+  evidenceType: text('evidence_type').notNull(),
+  description: text('description'),
+  fileUrl: text('file_url'),
+  submittedBy: text('submitted_by').notNull(),
+  submittedAt: text('submitted_am').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const tenderApprovalReviews = sqliteTable('tender_approval_reviews', {
+  id: text('id').primaryKey(),
+  tenderId: text('tender_id').notNull(),
+  reviewedBy: text('reviewed_by').notNull(),
+  role: text('rolle').notNull().default('executive'),
+  stage: text('stage').notNull().default('final'),
+  decision: text('decision').notNull().default('pending'),
+  comments: text('comments'),
+  reviewedAt: text('reviewed_am').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const tenderOutcomes = sqliteTable('tender_outcomes', {
+  id: text('id').primaryKey(),
+  tenderId: text('tender_id').notNull(),
+  result: text('result').notNull().default('pending'),
+  contractValue: real('contract_value'),
+  announcedAt: text('announced_am'),
+  lessonsLearned: text('lessons_learned'),
+  knowledgeVaultUrl: text('knowledge_vault_url'),
+  recordedBy: text('recorded_by').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +1020,14 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  tenderDocuments,
+  tenderAddenda,
+  tenderClarifications,
+  tenderComplianceRequirements,
+  tenderSubmissionChecklists,
+  tenderSubmissionEvidence,
+  tenderApprovalReviews,
+  tenderOutcomes,
   session,
   account,
   verification,
