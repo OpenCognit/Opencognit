@@ -853,6 +853,74 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-EST-1: Estimate Register + BOQ Import =====
+export const estimates = sqliteTable('estimates', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('projekt_id'),
+  name: text('name').notNull(),
+  referenceCode: text('reference_code'),
+  status: text('status').notNull().default('draft'),
+  currency: text('currency').notNull().default('KES'),
+  totalAmount: real('total_amount').default(0),
+  marginPct: real('margin_pct'),
+  overheadPct: real('overhead_pct'),
+  createdBy: text('erstellt_von').notNull(),
+  approvedBy: text('genehmigt_von'),
+  approvedAt: text('genehmigt_am'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const estimateVersions = sqliteTable('estimate_versions', {
+  id: text('id').primaryKey(),
+  estimateId: text('estimate_id').notNull(),
+  versionNumber: integer('version_number').notNull().default(1),
+  status: text('status').notNull().default('working'),
+  totalAmount: real('total_amount').default(0),
+  description: text('beschreibung'),
+  createdBy: text('erstellt_von').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const estimateBoqItems = sqliteTable('estimate_boq_items', {
+  id: text('id').primaryKey(),
+  estimateId: text('estimate_id').notNull(),
+  versionId: text('version_id').notNull(),
+  itemCode: text('item_code'),
+  description: text('beschreibung').notNull(),
+  unit: text('einheit').notNull(),
+  quantity: real('menge').notNull().default(0),
+  rate: real('rate').notNull().default(0),
+  amount: real('amount').notNull().default(0),
+  quantitySource: text('quantity_source'),
+  rateSource: text('rate_source'),
+  assumptionNotes: text('assumption_notes'),
+  status: text('status').notNull().default('unpriced'),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const estimateAgentRecommendations = sqliteTable('estimate_agent_recommendations', {
+  id: text('id').primaryKey(),
+  estimateId: text('estimate_id').notNull(),
+  companyId: text('unternehmen_id').notNull(),
+  agentId: text('agent_id'),
+  issue: text('issue').notNull(),
+  severity: text('severity').notNull().default('P2'),
+  affectedItemId: text('affected_item_id'),
+  evidence: text('evidence'),
+  recommendedAction: text('recommended_action'),
+  owner: text('owner'),
+  linkIncidentId: text('link_incident_id'),
+  status: text('status').notNull().default('pending_review'),
+  detectedAt: text('detected_am').notNull(),
+  reviewedAt: text('reviewed_am'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +975,10 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  estimates,
+  estimateVersions,
+  estimateBoqItems,
+  estimateAgentRecommendations,
   session,
   account,
   verification,
