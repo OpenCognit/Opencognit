@@ -853,6 +853,82 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-PAW-1: Award Register + Contract Summary =====
+export const projectAwards = sqliteTable('project_awards', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  tenderId: text('tender_id').notNull(),
+  projectId: text('projekt_id'),
+  clientId: text('client_id'),
+  awardDate: text('award_date').notNull(),
+  contractSum: real('contract_sum').notNull(),
+  contractCurrency: text('contract_currency').default('KES'),
+  commencementDate: text('commencement_date'),
+  completionDate: text('completion_date'),
+  contractDurationDays: integer('contract_duration_days'),
+  awardStatus: text('award_status').notNull().default('pending_review'),
+  acceptedAt: text('accepted_am'),
+  acceptedBy: text('accepted_by'),
+  awardDocumentUrl: text('award_document_url'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const awardDocuments = sqliteTable('award_documents', {
+  id: text('id').primaryKey(),
+  awardId: text('award_id').notNull(),
+  documentType: text('document_type').notNull(),
+  title: text('title').notNull(),
+  fileUrl: text('file_url'),
+  receivedAt: text('received_am'),
+  reviewed: integer('reviewed').notNull().default(0),
+  reviewedBy: text('reviewed_by'),
+  reviewedAt: text('reviewed_am'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const contractConditionSummaries = sqliteTable('contract_condition_summaries', {
+  id: text('id').primaryKey(),
+  awardId: text('award_id').notNull(),
+  conditionType: text('condition_type').notNull(),
+  summary: text('summary').notNull(),
+  deviationFromTender: integer('deviation_from_tender').default(0),
+  riskLevel: text('risk_level').default('low'),
+  notes: text('notes'),
+  capturedBy: text('captured_by').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const postAwardReviews = sqliteTable('post_award_reviews', {
+  id: text('id').primaryKey(),
+  awardId: text('award_id').notNull(),
+  reviewedBy: text('reviewed_by').notNull(),
+  role: text('rolle').notNull().default('project_manager'),
+  reviewType: text('review_type').notNull().default('general'),
+  findings: text('findings'),
+  recommendedAction: text('recommended_action'),
+  decision: text('decision').notNull().default('pending'),
+  reviewedAt: text('reviewed_am').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const postAwardAgentRecommendations = sqliteTable('post_award_agent_recommendations', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  agentId: text('agent_id'),
+  awardId: text('award_id'),
+  issue: text('issue').notNull(),
+  riskLevel: text('risk_level').notNull().default('medium'),
+  evidence: text('evidence'),
+  recommendedAction: text('recommended_action').notNull(),
+  owner: text('owner'),
+  status: text('status').notNull().default('pending_review'),
+  detectedAt: text('detected_am').notNull(),
+  reviewedAt: text('reviewed_am'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +983,11 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  projectAwards,
+  awardDocuments,
+  contractConditionSummaries,
+  postAwardReviews,
+  postAwardAgentRecommendations,
   session,
   account,
   verification,
