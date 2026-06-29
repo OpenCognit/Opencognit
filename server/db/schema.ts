@@ -853,6 +853,27 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-HSE-4: Corrective Action Workflow =====
+export const hseCorrectiveActions = sqliteTable('hse_corrective_actions', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  incidentId: text('incident_id'),
+  observationId: text('observation_id'),
+  inspectionId: text('inspection_id'),
+  description: text('description').notNull(),
+  responsibleId: text('responsible_id').notNull(),
+  dueDate: text('due_date').notNull(),
+  closureEvidence: text('closure_evidence'),
+  verifiedBy: text('verified_by'),
+  verifiedAt: text('verified_am'),
+  status: text('status').notNull().default('open'),
+  priority: text('priority').notNull().default('medium'),
+  closedAt: text('closed_am'),
+  createdBy: text('erstellt_von').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +928,7 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  hseCorrectiveActions,
   session,
   account,
   verification,
