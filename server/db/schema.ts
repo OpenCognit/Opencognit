@@ -853,6 +853,52 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-STO-3: Returns, Wastage + Damage =====
+export const materialReturns = sqliteTable('material_returns', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  issueNoteId: text('issue_note_id'),
+  workPackId: text('work_pack_id'),
+  stockItemId: text('stock_item_id').notNull(),
+  materialName: text('material_name').notNull(),
+  unit: text('einheit').notNull(),
+  quantity: real('menge').notNull(),
+  reason: text('reason').notNull().default('excess'),
+  condition: text('condition').default('good'),
+  returnedTo: text('returned_to').notNull(),
+  returnedBy: text('returned_by').notNull(),
+  date: text('datum').notNull(),
+  status: text('status').notNull().default('received'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const materialWastageRecords = sqliteTable('material_wastage_records', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('projekt_id'),
+  stockItemId: text('stock_item_id').notNull(),
+  materialName: text('material_name').notNull(),
+  unit: text('einheit').notNull(),
+  quantity: real('menge').notNull(),
+  wastageType: text('wastage_type').notNull().default('normal_waste'),
+  reason: text('reason').notNull(),
+  valueKes: real('value_kes').default(0),
+  workPackId: text('work_pack_id'),
+  boqItemId: text('boq_item_id'),
+  activityId: text('activity_id'),
+  foremanId: text('foreman_id'),
+  reportedBy: text('reported_by').notNull(),
+  evidence: text('evidence'),
+  approvedByForeman: integer('approved_by_foreman').notNull().default(0),
+  approvedByPm: integer('approved_by_pm').notNull().default(0),
+  foremanApprovedAt: text('foreman_approved_am'),
+  pmApprovedAt: text('pm_approved_am'),
+  status: text('status').notNull().default('pending'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +953,8 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  materialReturns,
+  materialWastageRecords,
   session,
   account,
   verification,
