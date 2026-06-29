@@ -853,6 +853,125 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-AP-2+3+4+5: Payment Workflow, Disputes, Audit =====
+export const serviceConfirmations = sqliteTable('service_confirmations', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  poId: text('po_id').notNull(),
+  vendorId: text('vendor_id').notNull(),
+  serviceType: text('service_type').notNull(),
+  description: text('description'),
+  periodStart: text('period_start'),
+  periodEnd: text('period_end'),
+  confirmedDays: real('confirmed_days').notNull().default(0),
+  confirmedUnits: real('confirmed_units'),
+  confirmedBy: text('confirmed_by').notNull(),
+  confirmedAt: text('confirmed_am').notNull(),
+  status: text('status').notNull().default('confirmed'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const serviceConfirmationItems = sqliteTable('service_confirmation_items', {
+  id: text('id').primaryKey(),
+  confirmationId: text('confirmation_id').notNull(),
+  poItemId: text('po_item_id').notNull(),
+  description: text('description').notNull(),
+  orderedQty: real('ordered_qty').notNull(),
+  confirmedQty: real('confirmed_qty').notNull(),
+  unit: text('unit').notNull().default('days'),
+  unitRate: real('unit_rate'),
+  rejectionReason: text('rejection_reason'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const invoiceMatchExceptions = sqliteTable('invoice_match_exceptions', {
+  id: text('id').primaryKey(),
+  invoiceId: text('invoice_id').notNull(),
+  matchResultId: text('match_result_id'),
+  exceptionType: text('exception_type').notNull(),
+  description: text('description').notNull(),
+  severity: text('severity').notNull().default('medium'),
+  resolvedBy: text('resolved_by'),
+  resolvedAt: text('resolved_am'),
+  resolution: text('resolution'),
+  status: text('status').notNull().default('open'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const accountsPayableReviews = sqliteTable('accounts_payable_reviews', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  invoiceId: text('invoice_id').notNull(),
+  reviewedBy: text('reviewed_by').notNull(),
+  role: text('rolle').notNull().default('finance'),
+  decision: text('decision').notNull().default('pending'),
+  payableAmount: real('payable_amount').default(0),
+  comments: text('comments'),
+  reviewedAt: text('reviewed_am').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const paymentApprovalRequests = sqliteTable('payment_approval_requests', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  invoiceId: text('invoice_id').notNull(),
+  requestedBy: text('requested_by').notNull(),
+  amount: real('amount').notNull(),
+  approvalLevel: text('approval_level').notNull().default('finance_manager'),
+  status: text('status').notNull().default('pending'),
+  approvedBy: text('approved_by'),
+  approvedAt: text('approved_am'),
+  rejectionReason: text('rejection_reason'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const vendorPaymentRecords = sqliteTable('vendor_payment_records', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  invoiceId: text('invoice_id').notNull(),
+  vendorId: text('vendor_id').notNull(),
+  amountPaid: real('amount_paid').notNull(),
+  paymentDate: text('payment_date').notNull(),
+  paymentMethod: text('payment_method').notNull().default('bank_transfer'),
+  paymentRef: text('payment_ref'),
+  paidBy: text('paid_by').notNull(),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const vendorDisputes = sqliteTable('vendor_disputes', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  invoiceId: text('invoice_id'),
+  grnId: text('grn_id'),
+  vendorId: text('vendor_id').notNull(),
+  disputeType: text('dispute_type').notNull(),
+  description: text('description').notNull(),
+  amountDisputed: real('amount_disputed').default(0),
+  status: text('status').notNull().default('open'),
+  resolution: text('resolution'),
+  resolvedBy: text('resolved_by'),
+  resolvedAt: text('resolved_am'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const apAuditEvents = sqliteTable('ap_audit_events', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  invoiceId: text('invoice_id'),
+  paymentId: text('payment_id'),
+  eventType: text('event_type').notNull(),
+  actor: text('actor').notNull(),
+  oldValue: text('old_value'),
+  newValue: text('new_value'),
+  eventAt: text('event_am').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +1026,14 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  serviceConfirmations,
+  serviceConfirmationItems,
+  invoiceMatchExceptions,
+  accountsPayableReviews,
+  paymentApprovalRequests,
+  vendorPaymentRecords,
+  vendorDisputes,
+  apAuditEvents,
   session,
   account,
   verification,
