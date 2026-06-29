@@ -853,6 +853,78 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-VND-2: Vendor Performance, Compliance, Blacklist =====
+export const vendorBankDetails = sqliteTable('vendor_bank_details', {
+  id: text('id').primaryKey(),
+  vendorId: text('vendor_id').notNull(),
+  bankName: text('bank_name').notNull(),
+  accountNumber: text('account_number').notNull(),
+  accountName: text('account_name'),
+  branch: text('branch'),
+  swiftCode: text('swift_code'),
+  currency: text('currency').default('KES'),
+  isActive: integer('is_active').notNull().default(1),
+  changedBy: text('changed_by'),
+  changeReason: text('change_reason'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const vendorPerformanceReviews = sqliteTable('vendor_performance_reviews', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  vendorId: text('vendor_id').notNull(),
+  reviewPeriodStart: text('review_period_start').notNull(),
+  reviewPeriodEnd: text('review_period_end').notNull(),
+  reviewedBy: text('reviewed_by').notNull(),
+  role: text('rolle').notNull().default('procurement'),
+  deliveryScore: integer('delivery_score').default(0),
+  qualityScore: integer('quality_score').default(0),
+  pricingScore: integer('pricing_score').default(0),
+  responsivenessScore: integer('responsiveness_score').default(0),
+  complianceScore: integer('compliance_score').default(0),
+  overallScore: real('overall_score').default(0),
+  totalPosIssued: integer('total_pos_issued').default(0),
+  totalPosOnTime: integer('total_pos_on_time').default(0),
+  totalValueAwarded: real('total_value_awarded').default(0),
+  disputeCount: integer('dispute_count').default(0),
+  comments: text('comments'),
+  status: text('status').notNull().default('draft'),
+  nextReviewDate: text('next_review_date'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const vendorBlacklistEvents = sqliteTable('vendor_blacklist_events', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  vendorId: text('vendor_id').notNull(),
+  blacklistedBy: text('blacklisted_by').notNull(),
+  reason: text('reason').notNull(),
+  evidence: text('evidence'),
+  blacklistedAt: text('blacklisted_am').notNull(),
+  effectiveFrom: text('effective_from').notNull(),
+  effectiveUntil: text('effective_until'),
+  liftedBy: text('lifted_by'),
+  liftedAt: text('lifted_am'),
+  liftReason: text('lift_reason'),
+  status: text('status').notNull().default('active'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const vendorReviews = sqliteTable('vendor_reviews', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  vendorId: text('vendor_id').notNull(),
+  poId: text('po_id'),
+  reviewedBy: text('reviewed_by').notNull(),
+  role: text('rolle').notNull().default('procurement_officer'),
+  decision: text('decision').notNull().default('no_action'),
+  rating: integer('rating'),
+  comments: text('comments'),
+  reviewedAt: text('reviewed_am').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +979,10 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  vendorBankDetails,
+  vendorPerformanceReviews,
+  vendorBlacklistEvents,
+  vendorReviews,
   session,
   account,
   verification,
