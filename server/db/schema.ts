@@ -853,6 +853,32 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-SRCH-4+5: Search Agent + Analytics =====
+export const searchQueryIntents = sqliteTable('search_query_intents', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  userId: text('user_id'),
+  queryText: text('query_text').notNull(),
+  detectedIntent: text('detected_intent').notNull(),
+  confidence: real('confidence').notNull().default(0),
+  resolvedParams: text('resolved_params'),
+  resultSummary: text('result_summary'),
+  evidenceCount: integer('evidence_count').notNull().default(0),
+  recommendedAction: text('recommended_action'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const searchAnalyticsEvents = sqliteTable('search_analytics_events', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  eventType: text('event_type').notNull(),
+  queryText: text('query_text'),
+  affectedModule: text('affected_module'),
+  affectedRecordId: text('affected_record_id'),
+  detailJson: text('detail_json'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +933,8 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  searchQueryIntents,
+  searchAnalyticsEvents,
   session,
   account,
   verification,
