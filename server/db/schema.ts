@@ -853,6 +853,175 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-PRO-3+4+5: Quotation Comparison, PO + Commitment, Expediting =====
+export const vendorQuotations = sqliteTable('vendor_quotations', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  rfqId: text('rfq_id').notNull(),
+  vendorId: text('vendor_id').notNull(),
+  quotationRef: text('quotation_ref'),
+  submittedBy: text('submitted_by'),
+  submittedAt: text('submitted_am').notNull(),
+  totalAmount: real('total_amount').notNull().default(0),
+  taxAmount: real('tax_amount').default(0),
+  deliveryDays: integer('delivery_days'),
+  paymentTerms: text('payment_terms'),
+  warranty: text('warranty'),
+  validityDays: integer('validity_days'),
+  transportIncluded: integer('transport_included').notNull().default(0),
+  complianceScore: integer('compliance_score'),
+  status: text('status').notNull().default('received'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const vendorQuotationItems = sqliteTable('vendor_quotation_items', {
+  id: text('id').primaryKey(),
+  quotationId: text('quotation_id').notNull(),
+  rfqItemId: text('rfq_item_id'),
+  itemName: text('item_name').notNull(),
+  quantity: real('quantity').notNull(),
+  unit: text('unit').notNull().default('No.'),
+  unitRate: real('unit_rate').notNull(),
+  totalAmount: real('total_amount').notNull().default(0),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const quotationComparisons = sqliteTable('quotation_comparisons', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  rfqId: text('rfq_id').notNull(),
+  prId: text('pr_id'),
+  preparedBy: text('prepared_by').notNull(),
+  preparedAt: text('prepared_am').notNull(),
+  evaluationCriteria: text('evaluation_criteria'),
+  recommendation: text('recommendation'),
+  recommendedVendorId: text('recommended_vendor_id'),
+  recommendedReason: text('recommended_reason'),
+  status: text('status').notNull().default('draft'),
+  approvedBy: text('approved_by'),
+  approvedAt: text('approved_am'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const purchaseOrders = sqliteTable('purchase_orders', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('project_id').notNull(),
+  vendorId: text('vendor_id').notNull(),
+  prId: text('pr_id').notNull(),
+  quotationId: text('quotation_id'),
+  poNumber: text('po_number'),
+  deliveryLocation: text('delivery_location').notNull(),
+  deliveryDate: text('delivery_date').notNull(),
+  paymentTerms: text('payment_terms'),
+  subtotal: real('subtotal').notNull().default(0),
+  taxAmount: real('tax_amount').notNull().default(0),
+  totalAmount: real('total_amount').notNull().default(0),
+  currency: text('currency').default('KES'),
+  status: text('status').notNull().default('draft'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const purchaseOrderItems = sqliteTable('purchase_order_items', {
+  id: text('id').primaryKey(),
+  poId: text('po_id').notNull(),
+  prItemId: text('pr_item_id'),
+  rfqItemId: text('rfq_item_id'),
+  quotationItemId: text('quotation_item_id'),
+  itemName: text('item_name').notNull(),
+  itemType: text('item_type').notNull().default('material'),
+  quantity: real('quantity').notNull(),
+  unit: text('unit').notNull().default('No.'),
+  unitRate: real('unit_rate').notNull(),
+  totalAmount: real('total_amount').notNull().default(0),
+  taxRate: real('tax_rate').default(0),
+  boqItemId: text('boq_item_id'),
+  activityId: text('activity_id'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const poApprovals = sqliteTable('po_approvals', {
+  id: text('id').primaryKey(),
+  poId: text('po_id').notNull(),
+  approvedBy: text('approved_by').notNull(),
+  role: text('rolle').notNull().default('procurement_manager'),
+  decision: text('decision').notNull().default('pending'),
+  comments: text('comments'),
+  approvedAt: text('approved_am').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const poDeliverySchedules = sqliteTable('po_delivery_schedules', {
+  id: text('id').primaryKey(),
+  poId: text('po_id').notNull(),
+  poItemId: text('po_item_id'),
+  promisedDate: text('promised_date').notNull(),
+  confirmedDate: text('confirmed_date'),
+  quantityScheduled: real('quantity_scheduled').notNull(),
+  quantityDelivered: real('quantity_delivered').notNull().default(0),
+  status: text('status').notNull().default('pending'),
+  delayReason: text('delay_reason'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const procurementCommitments = sqliteTable('procurement_commitments', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('project_id').notNull(),
+  poId: text('po_id').notNull(),
+  committedAmount: real('committed_amount').notNull(),
+  currency: text('currency').default('KES'),
+  costCodeId: text('cost_code_id'),
+  commitmentDate: text('commitment_date').notNull(),
+  status: text('status').notNull().default('open'),
+  releasedAmount: real('released_amount').notNull().default(0),
+  releasedDate: text('released_date'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const procurementExpedites = sqliteTable('procurement_expedites', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  poId: text('po_id').notNull(),
+  deliveryScheduleId: text('delivery_schedule_id'),
+  activityId: text('activity_id'),
+  escalationLevel: text('escalation_level').notNull().default('vendor_only'),
+  issue: text('issue').notNull(),
+  criticalPathImpact: integer('critical_path_impact').notNull().default(0),
+  actionTaken: text('action_taken'),
+  nextFollowup: text('next_followup'),
+  status: text('status').notNull().default('open'),
+  resolvedBy: text('resolved_by'),
+  resolvedAt: text('resolved_am'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const procurementReviews = sqliteTable('procurement_reviews', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  poId: text('po_id').notNull(),
+  vendorId: text('vendor_id').notNull(),
+  reviewedBy: text('reviewed_by').notNull(),
+  role: text('rolle').notNull().default('procurement'),
+  ratingScore: integer('rating_score'),
+  onTimeDelivery: integer('on_time_delivery'),
+  qualityCompliance: integer('quality_compliance'),
+  documentationScore: integer('documentation_score'),
+  comments: text('comments'),
+  reviewedAt: text('reviewed_am').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +1076,16 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  vendorQuotations,
+  vendorQuotationItems,
+  quotationComparisons,
+  purchaseOrders,
+  purchaseOrderItems,
+  poApprovals,
+  poDeliverySchedules,
+  procurementCommitments,
+  procurementExpedites,
+  procurementReviews,
   session,
   account,
   verification,
