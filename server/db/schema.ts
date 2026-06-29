@@ -853,6 +853,99 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-EST-2: Rate Build-Up Engine =====
+export const estimateMaterialComponents = sqliteTable('estimate_material_components', {
+  id: text('id').primaryKey(),
+  boqItemId: text('boq_item_id').notNull(),
+  materialName: text('material_name').notNull(),
+  unit: text('einheit').notNull(),
+  qtyPerUnit: real('menge_pro_einheit').notNull().default(1),
+  unitPrice: real('einheitspreis').notNull().default(0),
+  linePrice: real('zeilenpreis').notNull().default(0),
+  wastagePct: real('wastage_pct').notNull().default(0),
+  quoteRef: text('quote_ref'),
+  quoteId: text('quote_id'),
+  vendorId: text('vendor_id'),
+  source: text('source').default('manual'),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const estimateLabourComponents = sqliteTable('estimate_labour_components', {
+  id: text('id').primaryKey(),
+  boqItemId: text('boq_item_id').notNull(),
+  tradeName: text('trade_name').notNull(),
+  unit: text('einheit').notNull().default('day'),
+  qtyPerUnit: real('menge_pro_einheit').notNull().default(1),
+  outputPerDay: real('output_pro_tag'),
+  labourDays: real('labour_days').notNull().default(1),
+  dayRate: real('tagessatz').notNull().default(0),
+  linePrice: real('zeilenpreis').notNull().default(0),
+  crewSize: integer('crew_size').default(1),
+  productivityBenchmarkId: text('productivity_benchmark_id'),
+  source: text('source').default('manual'),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const estimateEquipmentComponents = sqliteTable('estimate_equipment_components', {
+  id: text('id').primaryKey(),
+  boqItemId: text('boq_item_id').notNull(),
+  equipmentName: text('equipment_name').notNull(),
+  unit: text('einheit').notNull().default('day'),
+  qtyPerUnit: real('menge_pro_einheit').notNull().default(1),
+  hourlyRate: real('stundensatz').notNull().default(0),
+  hoursPerDay: real('stunden_pro_tag').default(8),
+  equipmentDays: real('equipment_days').notNull().default(1),
+  linePrice: real('zeilenpreis').notNull().default(0),
+  source: text('source').default('manual'),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const estimateSubcontractComponents = sqliteTable('estimate_subcontract_components', {
+  id: text('id').primaryKey(),
+  boqItemId: text('boq_item_id').notNull(),
+  scope: text('scope').notNull(),
+  unit: text('einheit').notNull(),
+  qtyPerUnit: real('menge_pro_einheit').notNull().default(1),
+  unitPrice: real('einheitspreis').notNull().default(0),
+  linePrice: real('zeilenpreis').notNull().default(0),
+  subcontractorId: text('subcontractor_id'),
+  quoteRef: text('quote_ref'),
+  quoteId: text('quote_id'),
+  exclusions: text('exclusions'),
+  riskFlag: text('risk_flag'),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const estimateRateSummaries = sqliteTable('estimate_rate_summaries', {
+  id: text('id').primaryKey(),
+  boqItemId: text('boq_item_id').notNull().unique(),
+  materialTotal: real('material_total').notNull().default(0),
+  labourTotal: real('labour_total').notNull().default(0),
+  equipmentTotal: real('equipment_total').notNull().default(0),
+  subcontractTotal: real('subcontract_total').notNull().default(0),
+  subtotal: real('subtotal').notNull().default(0),
+  overheadPct: real('overhead_pct').notNull().default(0),
+  overheadAmount: real('overhead_amount').notNull().default(0),
+  profitPct: real('profit_pct').notNull().default(0),
+  profitAmount: real('profit_amount').notNull().default(0),
+  riskAllowancePct: real('risk_allowance_pct').notNull().default(0),
+  riskAllowanceAmount: real('risk_allowance_amount').notNull().default(0),
+  finalRate: real('final_rate').notNull().default(0),
+  finalAmount: real('final_amount').notNull().default(0),
+  buildUpStatus: text('build_up_status').notNull().default('incomplete'),
+  assumptionNotes: text('assumption_notes'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +1000,11 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  estimateMaterialComponents,
+  estimateLabourComponents,
+  estimateEquipmentComponents,
+  estimateSubcontractComponents,
+  estimateRateSummaries,
   session,
   account,
   verification,
