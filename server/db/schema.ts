@@ -853,6 +853,79 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-PAW-2+3+4+5: Baseline, Mobilization, Activation =====
+export const projectBaselines = sqliteTable('project_baselines', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('projekt_id').notNull(),
+  awardId: text('award_id').notNull(),
+  baselineVersion: integer('baseline_version').notNull().default(1),
+  status: text('status').notNull().default('draft'),
+  approvedBy: text('approved_by'),
+  approvedAt: text('approved_am'),
+  lockedAt: text('locked_am'),
+  lockedBy: text('locked_by'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const projectBudgetBaselines = sqliteTable('project_budget_baselines', {
+  id: text('id').primaryKey(),
+  baselineId: text('baseline_id').notNull(),
+  boqItemId: text('boq_item_id'),
+  costCodeId: text('cost_code_id'),
+  activityId: text('activity_id'),
+  approvedAmount: real('approved_amount').notNull(),
+  tenderedAmount: real('tendered_amount'),
+  varianceAmount: real('variance_amount'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const projectScheduleBaselines = sqliteTable('project_schedule_baselines', {
+  id: text('id').primaryKey(),
+  baselineId: text('baseline_id').notNull(),
+  activityName: text('activity_name').notNull(),
+  startDate: text('start_date').notNull(),
+  endDate: text('end_date').notNull(),
+  durationDays: integer('duration_days'),
+  predecessor: text('predecessor'),
+  criticalPath: integer('critical_path').default(0),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const projectMobilizationPlans = sqliteTable('project_mobilization_plans', {
+  id: text('id').primaryKey(),
+  awardId: text('award_id').notNull(),
+  projectId: text('projekt_id').notNull(),
+  targetStartDate: text('target_start_date'),
+  status: text('status').notNull().default('planning'),
+  approvedBy: text('approved_by'),
+  approvedAt: text('approved_am'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const projectMobilizationItems = sqliteTable('project_mobilization_items', {
+  id: text('id').primaryKey(),
+  mobilizationPlanId: text('mobilization_plan_id').notNull(),
+  item: text('item').notNull(),
+  category: text('category').notNull().default('general'),
+  owner: text('owner'),
+  dueDate: text('due_date'),
+  completed: integer('completed').notNull().default(0),
+  completedBy: text('completed_by'),
+  completedAt: text('completed_am'),
+  blocker: integer('blocker').default(0),
+  blockerReason: text('blocker_reason'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +980,11 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  projectBaselines,
+  projectBudgetBaselines,
+  projectScheduleBaselines,
+  projectMobilizationPlans,
+  projectMobilizationItems,
   session,
   account,
   verification,
