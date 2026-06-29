@@ -853,6 +853,86 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-HSE-1: HSE Readiness + Toolbox Talk Register =====
+export const hseToolboxTalks = sqliteTable('hse_toolbox_talks', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('projekt_id'),
+  topic: text('topic').notNull(),
+  activityId: text('aktivitaet_id'),
+  workPackId: text('work_pack_id'),
+  crewId: text('crew_id'),
+  date: text('datum').notNull(),
+  time: text('uhrzeit'),
+  foremanId: text('vorarbeiter_id').notNull(),
+  hazardsDiscussed: text('hazards_discussed'),
+  controlsAgreed: text('controls_agreed'),
+  status: text('status').notNull().default('planned'),
+  photoEvidence: text('photo_evidence'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const hseToolboxAttendance = sqliteTable('hse_toolbox_attendance', {
+  id: text('id').primaryKey(),
+  toolboxId: text('toolbox_id').notNull(),
+  workerId: text('worker_id').notNull(),
+  workerName: text('worker_name').notNull(),
+  present: integer('present').notNull().default(1),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const hseWorkerInductions = sqliteTable('hse_worker_inductions', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  workerId: text('worker_id').notNull(),
+  inductionType: text('induktion_typ').notNull().default('general'),
+  inductedAt: text('induktion_am').notNull(),
+  expiryAt: text('expiry_am'),
+  completedBy: text('completed_by').notNull(),
+  status: text('status').notNull().default('active'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const hsePpeChecks = sqliteTable('hse_ppe_checks', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  workerId: text('worker_id').notNull(),
+  date: text('datum').notNull(),
+  helmet: integer('helmet').default(1),
+  boots: integer('boots').default(1),
+  vest: integer('vest').default(1),
+  gloves: integer('gloves'),
+  goggles: integer('goggles'),
+  harness: integer('harness'),
+  respiratory: integer('respiratory'),
+  status: text('status').notNull().default('ok'),
+  checkedBy: text('checked_by').notNull(),
+  comments: text('comments'),
+  workPackId: text('work_pack_id'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const hseAgentRecommendations = sqliteTable('hse_agent_recommendations', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('projekt_id'),
+  agentId: text('agent_id'),
+  issue: text('issue').notNull(),
+  severity: text('severity').notNull().default('medium'),
+  affectedWorkPack: text('affected_work_pack'),
+  affectedWorkerId: text('affected_worker_id'),
+  evidence: text('evidence'),
+  recommendedAction: text('recommended_action'),
+  owner: text('owner'),
+  status: text('status').notNull().default('pending_review'),
+  detectedAt: text('detected_am').notNull(),
+  reviewedAt: text('reviewed_am'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +987,11 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  hseToolboxTalks,
+  hseToolboxAttendance,
+  hseWorkerInductions,
+  hsePpeChecks,
+  hseAgentRecommendations,
   session,
   account,
   verification,
